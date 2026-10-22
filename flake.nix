@@ -3440,53 +3440,9 @@
           # in the contract now (53 MB of closure, measured).
           # keys.yaml's public view for nix, keys.json (modules/.common.d/keys-yaml.d/public.yq): rewritten by
           # the two programs below whenever they rewrite keys.yaml, and by hand after a manual edit.
-          keysJsonPackage = pkgsForSystem.writeShellApplication {
-            name = "ndh-keys-json";
-            runtimeInputs = with pkgsForSystem; [
-              coreutils
-              gnugrep
-              yq-go
-            ];
-            text = ''
-              set -- ${./modules/.common.d/keys-yaml.d/public.yq} "$@"
-            ''
-            + builtins.readFile ./modules/.common.d/keys-yaml.d/keys-json.sh;
-          };
-          sshKeysRenewPackage =
-            let
-              hosts = nixpkgs.lib.attrNames catalogData.netplan.baremetal;
-              guests = map (h: catalogData.netplan.baremetal.${h}.nixosHostname) hosts;
-            in
-            ndhStoreApiDarwin.installBinScript "ssh-keys-renew" (
-              pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh {
-                nixBashTrampoline = ndhNixBashTrampolineDarwin;
-                loggerTag = "ndh.ssh-keys-renew";
-                keysJson = "${keysJsonPackage}/bin/ndh-keys-json";
-                # What --public records, as ndh-keyring names it: a host key for each of the four machines
-                # (each operator seat and its guest), an sshfs key for each NixOS guest, a vz-recover key for
-                # each foreign vz-host.
-                machines = nixpkgs.lib.concatStringsSep " " (hosts ++ guests);
-                guests = nixpkgs.lib.concatStringsSep " " guests;
-                vzHosts = nixpkgs.lib.concatStringsSep " " (
-                  nixpkgs.lib.filter (h: catalogData.netplan.baremetal.${h}.vzHostKind == "foreign") hosts
-                );
-                toolPath = nixpkgs.lib.makeBinPath (
-                  with pkgsForSystem;
-                  [
-                    coreutils
-                    diffutils
-                    gawk
-                    git
-                    gnugrep
-                    gnused
-                    openssh
-                    sops
-                    step-cli
-                    yq-go
-                  ]
-                );
-              }
-            );
+          keysJsonPackage = import ./modules/.common.d/keys-yaml.d/json-tool.nix { pkgs = pkgsForSystem; };
+          # The operator seat's own tools, one definition each: bioskop's configuration builds them (ndh-ops's tools).
+          sshKeysRenewPackage = self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.sshKeysRenew;
           # The fleet's nix signing key, replaced on the operator seat (the interim rotation of 2026-10-13).
           cacheSigningKeyRotatePackage = ndhStoreApiDarwin.installBinScript "cache-signing-key-rotate" (
             pkgsForSystem.replaceVars ./modules/.common.d/cache-signing-key-rotate.d/cache-signing-key-rotate.sh
@@ -3496,38 +3452,7 @@
                 nix = "${pkgsForSystem.nix}/bin/nix";
               }
           );
-          # 6a: the operator seat signs every SSH certificate keys.yaml declares, host certificates for
-          # fleetHostCertificates; the activation only installs them.
-          sshKeysCertifyPackage = ndhStoreApiDarwin.installBinScript "ssh-keys-certify" (
-            pkgsForSystem.replaceVars ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh {
-              nixBashTrampoline = ndhNixBashTrampolineDarwin;
-              loggerTag = "ndh.ssh-keys-certify";
-              keysJson = "${keysJsonPackage}/bin/ndh-keys-json";
-              hostNames = nixpkgs.lib.concatStringsSep " " (
-                nixpkgs.lib.mapAttrsToList (
-                  machine: names: "${machine}=${nixpkgs.lib.concatStringsSep "," names}"
-                ) fleetHostCertificates.names
-              );
-              interimKey = fleetHostCertificates.interim.key;
-              interimMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.interim.machines;
-              ownMachines = nixpkgs.lib.concatStringsSep " " fleetHostCertificates.own;
-              sha256sum = "${pkgsForSystem.coreutils}/bin/sha256sum";
-              sshKeygen = "${pkgsForSystem.openssh}/bin/ssh-keygen";
-              toolPath = nixpkgs.lib.makeBinPath (
-                with pkgsForSystem;
-                [
-                  coreutils
-                  diffutils
-                  gawk
-                  gnugrep
-                  gnused
-                  openssh
-                  sops
-                  yq-go
-                ]
-              );
-            }
-          );
+          sshKeysCertifyPackage = self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.sshKeysCertify;
           # T14's closure: re-mint and install the Incus cluster certificate (one definition,
           # also packages.<system>.incus-cluster-cert-renew) — see its package.nix.
           # System-admin helper: prune darwin/HM/user generations + GC. Drives the
@@ -3657,23 +3582,7 @@
           # The armed delegation's runner: its tools are the very packages of their own apps, by store path.
           ndh-ops = {
             type = "app";
-            program = "${
-              import ./modules/.common.d/ndh-ops.d/package.nix {
-                pkgs = pkgsForSystem;
-                tools =
-                  let
-                    bioskop = self.darwinConfigurations.bioskop.config;
-                  in
-                  {
-                    ssh-keys-certify = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
-                    ssh-keys-renew = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-                    attic-leaf-sign = "${bioskop.ndh.atticLeaf.package}/bin/attic-leaf-sign";
-                    incus-cluster-cert-renew = "${bioskop.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
-                    ndh-keyring = "${bioskop.system.path}/bin/ndh-keyring";
-                    ndh-identity-push = "${bioskop.system.path}/bin/ndh-identity-push";
-                  };
-              }
-            }/bin/ndh-ops";
+            program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.ndhOps}/bin/ndh-ops";
             meta.description = "Run one of the operator's secret-reading tools on the delegation the operator armed (arm --hours N --tools a,b, operator only; status; disarm), every run logged — src: modules/.common.d/ndh-ops.d/";
           };
           incus-cluster-cert-renew = {
@@ -3984,6 +3893,8 @@
       # Every name a fleet machine answers to, from the map ssh-keys-certify signs (roles × keys S3a):
       # the clients trust the host authority for these names only, and check them strictly.
       fleetHostNames = nixpkgs.lib.concatLists (nixpkgs.lib.attrValues fleetHostCertificates.names);
+      # What ssh-keys-certify signs host certificates for, read by the seat's module (ndh.ndhSwitch.sshKeysCertify).
+      inherit fleetHostCertificates;
 
       darwinConfigurations = builtins.foldl' (
         acc: hostOutput: acc // hostOutput.darwinConfigurations
