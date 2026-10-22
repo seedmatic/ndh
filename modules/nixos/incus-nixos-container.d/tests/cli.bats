@@ -32,6 +32,13 @@ case "\$1 \$2" in
   "stop --project" | "stop --force") rm -f "$t/running" ;;
   # The container's units: "<unit> <state> [ConditionResult]" lines in units; a unit not listed is active.
   "exec --project")
+    # Before activation the guest has no systemctl: no-systemctl holds how many probes it still lasts.
+    if [ "\$7" = --version ]; then
+      n=\$(cat "$t/no-systemctl" 2>/dev/null || echo 0)
+      if [ "\$n" -gt 0 ]; then echo \$((n - 1)) >"$t/no-systemctl"; echo "Error: Command not found" >&2; exit 1; fi
+      exit 0
+    fi
+    if [ "\$(cat "$t/no-systemctl" 2>/dev/null || echo 0)" -gt 0 ]; then echo "Error: Command not found" >&2; exit 1; fi
     unit="\${@: -1}"
     line=\$(grep "^\$unit " "$t/units" 2>/dev/null || true)
     if [ "\$7" = is-active ]; then
@@ -43,10 +50,12 @@ case "\$1 \$2" in
     fi ;;
 esac
 EOF
-  # Records every call. The state dataset tank/nerd/attic is MODELLED, so a rollback can be checked on
-  # its content: its data is the directory $t/zfs/tank/nerd/attic, a snapshot a copy of it beside, a
-  # rollback that copy put back. Every other dataset only answers `list` as absent, as before.
-  mkdir -p "$t/zfs/tank/nerd/attic"
+  # Records every call. The state dataset tank/nerd/attic, tank/x and tank/db (the store's upper and nerd-nixos's DB) are
+  # MODELLED, so a rollback and a commit can be checked on what is left: a dataset is a directory under $t/zfs, a
+  # snapshot a copy of it beside, a rollback that copy put back. A snapshot still mounted under .zfs/snapshot (a line
+  # in $t/mounts) is busy, and its destroy refused, as ZFS refuses it.
+  mkdir -p "$t/zfs/tank/nerd/attic" "$t/zfs/tank/x" "$t/zfs/tank/db"
+  touch "$t/mounts"
   # The real cp, by its path: $t/bin/cp below stands for deliver's DB copy and copies nothing.
   realcp=$(command -v cp)
   cat >"$t/bin/zfs" <<EOF
@@ -67,23 +76,42 @@ case "\$1" in
     [ -d "\$z/\$ds@\$snap" ] || { echo "zfs rollback: no snapshot \$a" >&2; exit 1; }
     rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
   destroy)
-    a=\${args[-1]}; [[ \$a == *@* ]] && rm -rf "\$z/\$a" ;;
-  list)
     a=\${args[-1]}
-    if [ -d "\$z/\$a" ]; then
+    [[ \$a == *@* ]] || exit 0
+    if grep -q "/.zfs/snapshot/\${a#*@}\$" "$t/mounts"; then
+      echo "cannot destroy snapshot \$a: dataset is busy" >&2; exit 1
+    fi
+    rm -rf "\$z/\$a" ;;
+  list)
+    found=0
+    for a in "\${args[@]:1}"; do
+      [ "\${a#-}" = "\$a" ] || continue
+      case "\$a" in H|snapshot|name|filesystem) continue ;; esac
+      [ -d "\$z/\$a" ] || continue
+      found=1
       if [[ " \$* " == *" snapshot "* ]]; then
         for s in "\$z/\$a"@*; do [ -d "\$s" ] && echo "\$a@\${s##*@}"; done
       else
         echo "\$a"
       fi
-    else
-      exit 1
-    fi ;;
+    done
+    [ "\$found" = 1 ] ;;
 esac
 EOF
+  # findmnt -rn -o TARGET lists $t/mounts; -no FSTYPE|SOURCE answers for the store's upper and the DB.
   cat >"$t/bin/findmnt" <<EOF
 #!$BASH
-case "\$2" in FSTYPE) echo zfs ;; SOURCE) echo tank/x ;; esac
+case "\$*" in *"-o TARGET"*) cat "$t/mounts"; exit 0 ;; esac
+case "\$2 \$3" in "FSTYPE "*) echo zfs ;; "SOURCE /nix/var/nix/db") echo tank/db ;; "SOURCE "*) echo tank/x ;; esac
+EOF
+  cat >"$t/bin/umount" <<EOF
+#!$BASH
+printf 'umount %s\\n' "\$*" >>"$t/calls"
+[ ! -e "$t/umount-fails" ] || exit 1
+grep -vxF -- "\$1" "$t/mounts" >"$t/mounts.new" || true
+mv "$t/mounts.new" "$t/mounts"
+# A reader that comes back between the umount and the destroy: the automount is taken again, once.
+if [ -e "$t/remount-once" ]; then rm "$t/remount-once"; echo "\$1" >>"$t/mounts"; fi
 EOF
   # deliver copies the host DB's snapshot from a fixed path; the copy stands for it.
   cat >"$t/bin/cp" <<EOF
@@ -465,8 +493,10 @@ refused_untouched() {
 @test "mutant: without the snapshot check, a hostile name reaches zfs" {
   delivered_before
   mkdir -p "$t/attic/.previous-a@b"
-  grep -q 'is not a delivery snapshot of' "$cli"
-  sed '/is not a delivery snapshot of/d' "$cli" >"$t/mutant"
+  # The check dropped from rollback_steps alone, its call being the first line of it that names the snapshot.
+  grep -q '^  delivery_snapshot "\$1" "\$2"$' "$cli"
+  awk '/^rollback_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
   run --separate-stderr "$t/run" "$t/mutant" _rollback attic a@b <"$t/stdin"
   grep -qE '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
 }
@@ -593,4 +623,202 @@ system_current() {
   : >"$t/units"
   run --separate-stderr "$t/run" "$t/mutant-next" converge <"$t/stdin"
   [[ $stderr == *"already failed"* ]]
+}
+
+# The state bioskop-nixos was left in on 2026-10-22: attic delivered and healthy on 184302Z, its profiles declared,
+# and the commit died on a busy snapshot, so the previous delivery's pair (145633Z), the aside and the state snapshot of
+# 184302Z are still there, and so is a converge.failed from before.
+left_by_a_dead_commit() {
+  touch "$t/exists" "$t/running"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root" "$t/attic/.previous-ndh-incus-attic-20261022T184302Z"
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  echo ndh-incus-attic-20261022T184302Z >"$t/attic/lower.snapshot"
+  for ds in tank/x tank/db; do
+    mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261022T145633Z" "$t/zfs/$ds@ndh-incus-attic-20261022T184302Z"
+  done
+  mkdir -p "$t/zfs/tank/nerd/attic@ndh-incus-attic-20261022T184302Z"
+  printf 'tool\t/an/older/cli\n' >"$t/attic/converge.failed"
+}
+
+# Every delivery snapshot but the current one, every state snapshot and every aside: what a commit leaves none of.
+no_leftovers() {
+  [ -z "$(ls -d "$t/zfs/tank/x@"* "$t/zfs/tank/db@"* 2>/dev/null | grep -v '@ndh-incus-attic-20261022T184302Z$')" ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+  [ -d "$t/zfs/tank/db@ndh-incus-attic-20261022T184302Z" ]
+  [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
+  [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
+}
+
+@test "converge finishes a commit that died, on today's exact leftovers, with no gesture" {
+  left_by_a_dead_commit
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"previous delivery committed"* ]]
+  no_leftovers
+  [ ! -e "$t/attic/converge.failed" ]
+  # Nothing redelivered: the container already held its declared state.
+  run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a snapshot still automounted under .zfs/snapshot is unmounted, then destroyed" {
+  left_by_a_dead_commit
+  echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  grep -qxF 'umount /nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z' "$t/calls"
+  no_leftovers
+}
+
+@test "mutant: without the umount, the busy snapshot stops the commit, and the next converge resumes it" {
+  left_by_a_dead_commit
+  echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
+  grep -q '      umount "\$target" || true' "$cli"
+  sed '/      umount "\$target" || true/d' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"dataset is busy"* && $stderr == *"next converge resumes it"* ]]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
+  # The automount expires; the next converge, even this one, finishes.
+  : >"$t/mounts"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  no_leftovers
+}
+
+@test "a commit that fails after a healthy delivery keeps the system, marks no failed attempt, and is resumed" {
+  delivered_before
+  # The previous delivery's snapshot, still automounted.
+  for ds in tank/x tank/db; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261001T000000Z"; done
+  echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261001T000000Z" >"$t/mounts"
+  touch "$t/umount-fails"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $output == *healthy* ]]
+  [[ $stderr == *"commit is unfinished"* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic" ]
+  [ ! -e "$t/attic/converge.failed" ]
+  rm "$t/umount-fails"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"previous delivery committed"* ]]
+  [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-20261001T000000Z" 2>/dev/null)" ]
+  [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
+}
+
+@test "leftovers are kept while the container is unhealthy: its previous delivery is its way back" {
+  left_by_a_dead_commit
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"is unhealthy: its previous delivery is kept"* ]]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
+}
+
+@test "mutant: an up-to-date container with leftovers left as it is never finishes the commit" {
+  left_by_a_dead_commit
+  grep -q '      elif \[ -n "\$rest" \]; then' "$cli"
+  sed 's/      elif \[ -n "\$rest" \]; then/      elif false; then/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  run no_leftovers
+  [ "$status" -ne 0 ]
+}
+
+@test "the health wait waits out a guest without systemctl yet, quietly" {
+  delivered_before
+  echo 3 >"$t/no-systemctl"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *healthy* ]]
+  [[ $stderr != *"Command not found"* ]]
+  [ "$(cat "$t/no-systemctl")" = 0 ]
+}
+
+@test "mutant: without the wait, the probes run into the guest's missing systemctl" {
+  delivered_before
+  echo 3 >"$t/no-systemctl"
+  # The probes see no systemctl either while it lasts.
+  grep -q 'GUEST_SYSTEMCTL" --version >/dev/null 2>&1; do' "$cli"
+  sed 's/until incus exec --project "\$PROJECT" "\$1" -- "\$GUEST_SYSTEMCTL" --version >\/dev\/null 2>&1; do/until true; do/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [[ $stderr == *"Command not found"* ]]
+  [[ $output != *healthy* ]]
+}
+
+@test "a snapshot mounted again between the umount and the destroy is retried, and goes" {
+  left_by_a_dead_commit
+  echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
+  touch "$t/remount-once"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $stderr == *"dataset is busy"* ]]
+  no_leftovers
+}
+
+@test "a new declared system over today's leftovers: the old commit is finished first, then one delivery" {
+  left_by_a_dead_commit
+  # A new toplevel declared (another class of attic, say): a fresh delivery.
+  touch "$t/x-attic-2"
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.toplevel += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
+  run --separate-stderr "$t/run" "$t/cli-2" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"previous delivery committed"* && $output == *"x-attic-2, healthy"* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-2" ]
+  # Only the new delivery's pair is left, and nothing aside.
+  [ -z "$(ls -d "$t/zfs/tank/x@"* 2>/dev/null | grep -v '@ndh-incus-attic-20261018T000000Z$')" ]
+  [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
+  [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
+}
+
+@test "mutant: without finishing the old commit first, a failed new delivery rolls the old aside back too" {
+  left_by_a_dead_commit
+  touch "$t/x-attic-2"
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.toplevel += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
+  grep -q '    if \[ -n "\$rest" \]; then' "$t/cli-2"
+  sed 's/^    if \[ -n "\$rest" \]; then/    if false; then/' "$t/cli-2" >"$t/mutant"
+  echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  # The old delivery's aside is rolled back as well: its state snapshot is restored.
+  grep -q '^zfs rollback -r tank/nerd/attic@ndh-incus-attic-20261022T184302Z$' "$t/calls"
+}
+
+@test "_commit refuses a snapshot to keep that is not a delivery snapshot of this instance, and destroys nothing" {
+  left_by_a_dead_commit
+  for snapshot in '.*' '' 'ndh-incus-attic-.*' 'ndh-incus-other-20261022T184302Z' '../x' 'a@b' \
+    'ndh-incus-attic-20261022T184302Z@x' 'ndh-incus-attic-2026102T184302Z'; do
+    : >"$t/calls"
+    run --separate-stderr "$t/run" "$cli" _commit attic "$snapshot" <"$t/stdin"
+    [ "$status" -ne 0 ]
+    run grep -E '^(zfs destroy|umount)' "$t/calls"
+    [ "$status" -eq 1 ]
+  done
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
+  [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
+}
+
+@test "mutant: a _commit without its check, given .*, destroys the snapshot the container runs on" {
+  left_by_a_dead_commit
+  awk '/^commit_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
+  # Still matched as a fixed string: `.*` keeps nothing but itself, so every delivery snapshot goes, the current one too.
+  run --separate-stderr "$t/run" "$t/mutant" _commit attic '.*' <"$t/stdin"
+  [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
+}
+
+@test "mutant: 0e46f6a7's _commit (no check, the snapshot to keep as a pattern) keeps the old one and destroys the current" {
+  left_by_a_dead_commit
+  # The check gone, and `grep -v "@$2$"` back in place of the fixed-string match. `.*` there excludes every line, so
+  # it keeps all (measured); the danger is a pattern that matches ANOTHER snapshot: it keeps that one instead.
+  grep -q 'grep -vxF -e "\$rw@\$2" -e "\$db@\$2"' "$cli"
+  sed 's/grep -vxF -e "\$rw@\$2" -e "\$db@\$2"/grep -v "@$2$"/' "$cli" |
+    awk '/^commit_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' >"$t/mutant"
+  [ "$(grep -c 'grep -v "@\$2\$"' "$t/mutant")" = 1 ]
+  run --separate-stderr "$t/run" "$t/mutant" _commit attic 'ndh-incus-attic-2026102.T14....Z' <"$t/stdin"
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
+  [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
 }
