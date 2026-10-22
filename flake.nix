@@ -165,6 +165,13 @@
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+      # The checks run on both platforms the fleet runs (operator, 2026-10-22: « on check les deux systèmes,
+      # et on bascule la fleet quand on a besoin »): aarch64-linux through the seats' Linux builder. A check
+      # changes no machine; a switch stays its own, ordered gesture.
+      checkSystems = [
+        "aarch64-darwin"
+        "aarch64-linux"
+      ];
       # The seedmatic root's ceremony VM (roles × keys ⑧): aarch64-linux, built by revision, run by
       # ndh-ceremony-vm on an operator seat.
       ceremonyVm = nixpkgs.lib.nixosSystem {
@@ -1077,7 +1084,7 @@
       );
 
       # No treefmt check here (its API mismatched during evaluation); the formatter runs as a hook.
-      checks = forAllSystems (
+      checks = nixpkgs.lib.genAttrs checkSystems (
         system:
         let
           pkgs = pkgsFor { inherit system; };
@@ -1211,10 +1218,10 @@
                 inherit pkgs;
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
+          # The packaged program, built for this check's system: a darwin configuration's copy cannot run on linux.
           flox-config-bats = import ./modules/home-manager/flox-config.d/tests/package.nix {
             inherit pkgs;
-            floxConfig =
-              self.darwinConfigurations.bioskop.config.home-manager.users.nxmatic.ndh.floxConfig.package;
+            floxConfig = import ./modules/home-manager/flox-config.d/package.nix { inherit pkgs; };
           };
           # No nix file here reads a derivation's output at evaluation (import-from-derivation).
           no-ifd-readfile = import ./nix/no-ifd-readfile.nix {

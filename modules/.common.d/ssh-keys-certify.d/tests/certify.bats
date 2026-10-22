@@ -192,7 +192,10 @@ record_legacy() { # <key> <public file> <serial> <ca private>
     printf '%s\necho hostile-%s >&2\nexit 1\n' "$shebang" "$c" >"$BATS_TEST_TMPDIR/hostile/$c"
     chmod +x "$BATS_TEST_TMPDIR/hostile/$c"
   done
-  run env PATH="$BATS_TEST_TMPDIR/hostile:$PATH" LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 LC_COLLATE=fr_FR.UTF-8 \
+  # A caller's locale that is not the script's C: C.UTF-8, which both build sandboxes have. fr_FR.UTF-8 is missing in
+  # the linux sandbox, and the caller's own bash warned about it into the output compared below. No sandbox has
+  # locale data, so none changes sort's order (measured): the collation the script pins is proven outside, never here.
+  run env PATH="$BATS_TEST_TMPDIR/hostile:$PATH" LANG=C.UTF-8 LC_ALL=C.UTF-8 LC_COLLATE=C.UTF-8 \
     POSIXLY_CORRECT=1 SOPS_STUB=dry bash -c 'cd "$1" && bash -euo pipefail "$2"' _ "$repo" "$BATS_TEST_TMPDIR/ssh-keys-certify"
   [ "$status" -eq 0 ]
   [[ "$output" != *hostile-* ]]

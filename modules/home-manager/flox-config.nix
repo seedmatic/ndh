@@ -10,17 +10,7 @@
 # auth_notifications = false: we use no FloxHub account, and flox printed "You are not logged in to FloxHub" in
 # every shell. floxhub_token_storage goes: no FloxHub token is kept anywhere any more.
 let
-  floxConfig = pkgs.writeShellApplication {
-    name = "flox-config";
-    runtimeInputs = with pkgs; [
-      coreutils
-      dasel
-      diffutils
-      gawk
-      yq-go
-    ];
-    text = builtins.readFile ./flox-config.d/flox-config.sh;
-  };
+  floxConfig = import ./flox-config.d/package.nix { inherit pkgs; };
   file = "${config.xdg.configHome}/flox/flox.toml";
   cfg = config.ndh.floxConfig;
   # A TOML value: JSON's spelling of a bool, an integer and a basic string is TOML's.
