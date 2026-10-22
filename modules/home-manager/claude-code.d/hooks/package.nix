@@ -70,6 +70,13 @@ in
         hooks = [ (entry "leak-guard.sh" 5 "Checking for a working-tree evaluation...") ];
       }
     ];
+    # A step taken without touching the live page gets a reminder in the tool's result: never a block.
+    PostToolUse = [
+      {
+        matcher = "SendMessage|Bash";
+        hooks = [ (entry "whiteboard-reminder.sh" 5 "Checking the live page is current...") ];
+      }
+    ];
     PreCompact = [
       {
         matcher = "manual|auto";
