@@ -33,6 +33,25 @@ let
   tlsDir = "/var/lib/attic-tls";
   envFile = "${secretsDir}/server.env";
   loopback = "127.0.0.1:8080";
+  metalspace = if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn;
+  # The guest's half of keys-reconcile's attic-cache-key class: on the ndh trampoline and logger, as host-key-generate.
+  publish = ndh.store.installBinScript "attic-publish" (
+    pkgs.replaceVars ./attic-cache.d/publish.sh (
+      lib.mapAttrs (_: lib.escapeShellArg) {
+        machine = config.networking.hostName;
+        cache = metalspace;
+        keyNameRegex = ndh.context.catalog.privateCaches.keyNamePattern metalspace;
+        shared = "${paths.hostTls}/cache-key.public";
+        base = "/var/lib/ndh";
+        owner = "0";
+        inherit (paths) publishDir;
+        hostKey = config.ndh.hostKey.servedKeyFile;
+      }
+      // {
+        inherit (ndh.context) nixBashTrampoline;
+      }
+    )
+  );
 
   script =
     name: runtimeInputs: file:
@@ -188,6 +207,7 @@ let
             cfg.keyName
             cfg.retention
             "http://${loopback}"
+            "${tlsDir}/cache-key.public"
           ]
           ++ cfg.upstreamKeyNames
         );
@@ -429,6 +449,31 @@ in
         + builtins.readFile ./attic-cache.d/token-issue.sh;
       })
     ];
+
+    # The cache's public, written by attic-cache-ensure on the tls device this guest shares, is signed here with the key
+    # this guest serves and published for the seat (keys-reconcile, class attic-cache-key). At every activation, and
+    # whenever the container rewrites it: the path is a hint, the activation the gate, so a missed trigger waits one
+    # switch at most. Never fatal: nothing reads the publication until keys-reconcile collects it.
+    system.activationScripts.ndhAtticPublish = {
+      deps = [ "specialfs" ];
+      supportsDryActivation = false;
+      text = ''
+        if ! ${pkgs.bash}/bin/bash ${publish}/bin/attic-publish; then
+          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key; the next activation retries" >&2
+        fi
+      '';
+    };
+    systemd.paths.ndh-attic-publish = {
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathChanged = "${paths.hostTls}/cache-key.public";
+    };
+    systemd.services.ndh-attic-publish = {
+      description = "Publish the cache container's public key, signed by this guest";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.bash}/bin/bash ${publish}/bin/attic-publish";
+      };
+    };
 
     systemd.services.ndh-attic-dataset = {
       description = "The cache container's dataset, under its quota";

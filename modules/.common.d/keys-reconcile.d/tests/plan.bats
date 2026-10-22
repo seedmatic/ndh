@@ -38,12 +38,12 @@ publish() { # <new public file> <old private>: what K3's generate.sh publishes
 }
 
 batch() { # <recorded old public>
-  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
 }
 
 render() { # <revision>
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [write]="$BATS_TEST_DIRNAME/../write.sh"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$1" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/no-delegation" [keysJsonTool]="$t/no-keys-json" [ttyIn]="/dev/null" [ttyOut]="/dev/null"
   )
@@ -51,7 +51,7 @@ render() { # <revision>
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
@@ -109,7 +109,7 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   printf 'seedmatic-rotate v1\nname host-mate\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-mate@26-11-01.statement"
   ssh-keygen -q -Y sign -f "$t/old2" -n seedmatic-rotate "$t/published/host-mate@26-11-01.statement" </dev/null
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n- {name: mate, kind: darwin, ssh: "", ssh_opts: []}\n- {name: other, kind: nixos, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"class": "host-key", "machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
     "$old" "$(cut -d' ' -f1,2 "$t/old2.pub")" >"$t/batch.json"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
@@ -152,6 +152,64 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   kr plan
   [ "$(find "$t/published" "$t/keys.json" "$t/batch.json" -type f -exec sha256sum {} + | sort)" = "$before" ]
   [ -z "$(find "$t/published" -newer "$t/keys-reconcile" -type f)" ]
+}
+
+@test "a batch entry of a class keys-reconcile does not define is refused, nothing collected" {
+  for class in attic-nothing 'host-key;id' '' '../host-key'; do
+    C="$class" yq -i -p json -o json '.[0].class = strenv(C)' "$t/batch.json"
+    run --separate-stderr kr plan
+    [ "$status" -eq 3 ]
+    [[ $stderr == *"batch entry 0: no artifact class"* ]]
+    [[ $output != *"✓"* ]]
+  done
+}
+
+attic() { # <signing private> [public]: the guest's attic publication (publish.sh's shape), and a batch of that class only
+  local public="${2:-seedmatic-m1-attic-1:$(printf 'A%.0s' {1..43})=}" sum
+  install -d -m 0755 "$t/attic"
+  printf '%s\n' "$public" >"$t/attic/attic-m1.cache-key.public"
+  sum="$(sha256sum "$t/attic/attic-m1.cache-key.public" | cut -d' ' -f1)"
+  printf 'seedmatic-attic v1\nclass attic-cache-key\ncache m1\nmachine seat\nsha256 %s\n' "$sum" >"$t/attic/attic-m1.cache-key.statement"
+  rm -f "$t/attic/attic-m1.cache-key.statement.sig"
+  ssh-keygen -q -Y sign -f "$1" -n seedmatic-attic "$t/attic/attic-m1.cache-key.statement" </dev/null
+  printf '[{"class": "attic-cache-key", "machine": "seat", "cache": "m1", "fqdn": "attic.m1", "dir": "%s", "keyNameRegex": "seedmatic-m1-attic-[0-9]+", "servingPublic": "%s"}]\n' \
+    "$t/attic" "$old" >"$t/batch.json"
+}
+
+@test "attic-cache-key: a guest's publication verified against its RECORDED serving key" {
+  attic "$t/old"
+  run --separate-stderr kr plan
+  [ "$status" -eq 0 ]
+  [[ $output == *"✓ seat — cache m1 : seedmatic-m1-attic-1:"* ]]
+  [[ $output == *"entrée privateCaches.m1 à enregistrer"* ]]
+}
+
+@test "attic-cache-key mutant: a statement signed by another key than the recorded serving one is refused" {
+  ssh-keygen -q -t ed25519 -N "" -C forger -f "$t/forger"
+  attic "$t/forger"
+  run --separate-stderr kr plan
+  [ "$status" -eq 4 ]
+  [[ $output == *"not signed by the host key keys.yaml records as seat's serving one"* ]]
+}
+
+@test "attic-cache-key mutant: a public of another metalspace, or replaced after signing, is refused" {
+  attic "$t/old" "seedmatic-m2-attic-1:$(printf 'A%.0s' {1..43})="
+  run --separate-stderr kr plan
+  [ "$status" -eq 4 ]
+  [[ $output == *"not one m1 cache key named as the catalog accepts it"* ]]
+  attic "$t/old"
+  printf 'seedmatic-m1-attic-2:%s=\n' "$(printf 'B%.0s' {1..43})" >"$t/attic/attic-m1.cache-key.public"
+  run --separate-stderr kr plan
+  [ "$status" -eq 4 ]
+  [[ $output == *"its statement does not name this class, cache, guest and public"* ]]
+}
+
+@test "attic-cache-key mutant: a publication missing its signature is refused" {
+  attic "$t/old"
+  rm -f "$t/attic/attic-m1.cache-key.statement.sig"
+  run --separate-stderr kr plan
+  [ "$status" -eq 4 ]
+  [[ $output == *"statement.sig was not published"* ]]
 }
 
 @test "no private is ever printed" {

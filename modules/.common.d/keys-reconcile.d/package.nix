@@ -1,7 +1,9 @@
 # keys-reconcile (see keys-reconcile.sh) on ndh's bash trampoline. Its inputs are frozen into it at evaluation (F5):
 # the revision this closure is built from, the batch (every pending host-key slot, in fleet-switch's order, with the
 # recorded old public F1 is verified against and the files that gain its recipient), the machine list ndh-switch
-# reaches them by, and keys.json. Nothing is read from a working tree or an argument.
+# reaches them by, and keys.json. Nothing is read from a working tree or an argument. Then the attic cache keys
+# (class attic-cache-key): every declared cache (atticCaches, one per guest that enables ndh.atticCache) whose
+# metalspace the catalog records no key for, verified against the guest's RECORDED serving host key.
 {
   pkgs,
   ndh,
@@ -11,6 +13,8 @@
   machines,
   publishDir,
   hostNames,
+  # [ { machine; metalspace; fqdn; dir; } ]: the guests that declare a cache, from their own configurations.
+  atticCaches,
   keysJsonTool,
   delegation,
 }:
@@ -24,23 +28,43 @@ let
     "catalog/cache-trust.yaml"
     "modules/home-manager/ssh.d/keys.yaml"
   ];
-  batch = lib.concatMap (
-    machine:
-    let
-      key = "host-${machine}";
-      entry = keys.${key} or { };
-      r = roles entry;
-    in
-    lib.optional (r.pendingName != null) {
-      inherit machine key files;
-      # Sorted bytewise: the certificate's key id hashes this exact list.
-      principals = lib.sort lib.lessThan (
-        hostNames.${machine} or (throw "keys-reconcile: no host names for ${machine}")
-      );
-      slot = r.pendingName;
-      oldPublic = if r.current ? public then "${entry.type or "ssh-ed25519"} ${r.current.public}" else "";
-    }
-  ) queue.order;
+  batch =
+    lib.concatMap (
+      machine:
+      let
+        key = "host-${machine}";
+        entry = keys.${key} or { };
+        r = roles entry;
+      in
+      lib.optional (r.pendingName != null) {
+        class = "host-key";
+        inherit machine key files;
+        # Sorted bytewise: the certificate's key id hashes this exact list.
+        principals = lib.sort lib.lessThan (
+          hostNames.${machine} or (throw "keys-reconcile: no host names for ${machine}")
+        );
+        slot = r.pendingName;
+        oldPublic = if r.current ? public then "${entry.type or "ssh-ed25519"} ${r.current.public}" else "";
+      }
+    ) queue.order
+    ++ lib.concatMap (
+      c:
+      let
+        host = roles (keys."host-${c.machine}" or { });
+      in
+      lib.optional (!(catalog.privateCaches.entries ? ${c.metalspace})) {
+        class = "attic-cache-key";
+        inherit (c) machine fqdn dir;
+        cache = c.metalspace;
+        keyNameRegex = catalog.privateCaches.keyNamePattern c.metalspace;
+        # The guest's SERVING slot, as keys.yaml records it: what the statement must be signed by.
+        servingPublic =
+          if (host.current.state or "") == "serving" then
+            "${(keys."host-${c.machine}").type or "ssh-ed25519"} ${host.current.public}"
+          else
+            "";
+      }
+    ) atticCaches;
 in
 ndh.store.installBinScript "keys-reconcile" (
   pkgs.replaceVars ./keys-reconcile.sh {
@@ -64,6 +88,7 @@ ndh.store.installBinScript "keys-reconcile" (
     publishDir = lib.escapeShellArg publishDir;
     verify = ./verify.sh;
     write = ./write.sh;
+    classes = ./classes;
     delegation = lib.escapeShellArg delegation;
     inherit keysJsonTool;
     ttyIn = "/dev/tty";

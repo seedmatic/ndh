@@ -4,7 +4,7 @@
 # public (keys.yaml's current slot), in namespace seedmatic-rotate, and must name exactly this key, this slot and the
 # public published beside it; the public must be new to the whole fleet, recorded or retired.
 #
-#   reconcile::verify <dir> <key> <slot> <recorded old public> <every public keys.json holds, one per line>
+#   reconcile::host-key::verify <dir> <key> <slot> <recorded old public> <every public keys.json holds, one per line>
 # prints the verified public on stdout, or refuses on stderr with the reason, and returns non-zero.
 
 reconcile::refuse() {
@@ -12,7 +12,7 @@ reconcile::refuse() {
   return 1
 }
 
-reconcile::verify() {
+reconcile::host-key::verify() {
   local dir="$1" keyName="$2" slot="$3" oldPublic="$4" known="$5"
   local stem="${dir}/${keyName}@${slot}" public allowed
 

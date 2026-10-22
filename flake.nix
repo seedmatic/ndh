@@ -1183,6 +1183,46 @@
           private-caches-schema = builtins.deepSeq catalogData.privateCaches.entries (
             import ./catalog/private-caches.d/tests/checks.nix { inherit pkgs; }
           );
+          # Each recorded private cache key is the one keys-reconcile verified: a hand edit of private-caches.json
+          # has no statement its guest's recorded host key signed. A forged entry must be caught.
+          private-caches-recorded =
+            let
+              lib = nixpkgs.lib;
+              keys = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
+              signers = lib.listToAttrs (
+                lib.concatMap
+                  (
+                    c:
+                    let
+                      a = c.config.ndh.atticCache;
+                      machine = c.config.networking.hostName;
+                      key = keys."host-${machine}" or { };
+                    in
+                    lib.optional a.enable {
+                      name = a.metalspace;
+                      value = {
+                        inherit machine;
+                        public = "${key.type or "ssh-ed25519"} ${(roles key).current.public or ""}";
+                      };
+                    }
+                  )
+                  (
+                    map (m: self.nixosConfigurations.${m.name}) (lib.filter (m: m.kind == "nixos") catalogData.machines)
+                  )
+              );
+            in
+            import ./catalog/private-caches.d/tests/recorded.nix {
+              inherit pkgs signers;
+              entries = catalogData.privateCaches.entries;
+              # A hand-added entry, with no statement any guest signed.
+              forged = catalogData.privateCaches.entries // {
+                bioskop = {
+                  publicKey = "seedmatic-bioskop-attic-1:${lib.strings.replicate 43 "A"}=";
+                };
+              };
+              statements = ./catalog/private-caches.d/statements;
+            };
           # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
           # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
           attic-cache-key-name =
@@ -1510,6 +1550,8 @@
                   machines = "/dev/null";
                   publishDir = "/var/lib/ndh/host-key/published";
                   hostNames = lib.genAttrs [ "g1" "g2" "mac" "seat" ] (m: [ m ]);
+                  # Host keys only: no guest declares a cache here.
+                  atticCaches = [ ];
                   keysJsonTool = "/dev/null";
                   delegation = "/dev/null";
                 }).passthru.batch;
@@ -2673,7 +2715,10 @@
             inherit pkgs;
             src = self;
           };
-          attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix { inherit pkgs; };
+          attic-cache-bats = import ./modules/nixos/attic-cache.d/tests/package.nix {
+            inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+          };
           # ndh-incus-container: no incus call waits on an open stdin, as over `ssh host sudo …`.
           incus-nixos-container-bats = import ./modules/nixos/incus-nixos-container.d/tests/package.nix {
             inherit pkgs;

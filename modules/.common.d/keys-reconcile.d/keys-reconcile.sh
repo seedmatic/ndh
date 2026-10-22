@@ -23,6 +23,7 @@ readonly bare="${XDG_CACHE_HOME:-$HOME/.cache}/keys-reconcile/ndh.git"
 readonly ttyIn=@ttyIn@ ttyOut=@ttyOut@
 source @verify@
 source @write@
+source @classes@/attic-cache-key.sh
 
 die() {
   printf '[keys-reconcile] refused: %s\n' "$*" >&2
@@ -52,48 +53,84 @@ pushed() {
   die "${revision} is not pushed to ${remote} (develop or main): switch the seat to a pushed revision first"
 }
 
-collect() { # <machine> <key> <slot> <into dir>: the three published files, read over the machine's certified ssh
-  local machine="$1" keyName="$2" slot="$3" into="$4" entry name f
+fetch() { # <machine> <published dir> <into dir> <file>...: files a machine published, read over its certified ssh
+  local machine="$1" from="$2" into="$3" entry name f
+  shift 3
   entry=$(m=$machine yq -e -o=json -I=0 '.[] | select(.name == strenv(m))' "$machines") || die "${machine} is not in the machine list"
   name=$(yq -r .ssh <<<"$entry")
   local -a opts
   mapfile -t opts < <(yq -r '.ssh_opts[]' <<<"$entry")
-  for f in public statement statement.sig; do
-    local src="${publishDir}/${keyName}@${slot}.${f}"
+  for f in "$@"; do
+    local src="${from}/${f}"
     if [[ -z $name ]]; then
-      [[ -f $src ]] && cp "$src" "${into}/${keyName}@${slot}.${f}"
+      [[ -f $src ]] && cp "$src" "${into}/${f}"
     else
       ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "${opts[@]}" "$name" "cat '$src'" \
-        >"${into}/${keyName}@${slot}.${f}" 2>/dev/null || rm -f "${into}/${keyName}@${slot}.${f}"
+        >"${into}/${f}" 2>/dev/null || rm -f "${into}/${f}"
     fi
   done
 }
 
-measure() { # <work dir>: collect and verify every slot of the batch into <work>; prints the plan, returns 4 if any is not ready
-  local work="$1" n known ok=0 bad=0 i machine keyName slot oldPublic public files
+# An artifact class is a row of functions, reconcile::<class>::{measure,recheck,write,check}. The class names one only if it
+# comes from the batch frozen at evaluation and names a row this tool defines: no string a machine published ever
+# reaches a function name.
+class_of() { # <batch index> → its class, or fails
+  local class f
+  class=$(yq -r -p json -o json ".[$1].class" "$batch")
+  [[ $class =~ ^[a-z][a-z0-9-]*$ ]] || return 1
+  for f in measure recheck write check; do declare -F "reconcile::${class}::${f}" >/dev/null || return 1; done
+  printf '%s\n' "$class"
+}
+
+: "row one, the host key (K4): a pending slot's public, its F1 statement and signature"
+reconcile::host-key::collect() { # <batch index> <into dir>
+  local keyName slot
+  keyName=$(yq -r -p json -o json ".[$1].key" "$batch")
+  slot=$(yq -r -p json -o json ".[$1].slot" "$batch")
+  fetch "$(yq -r -p json -o json ".[$1].machine" "$batch")" "$publishDir" "$2" "${keyName}@${slot}".{public,statement,statement.sig}
+}
+
+reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify one slot, print its plan lines, record it
+  local i="$1" work="$2" machine keyName slot oldPublic public files
+  machine=$(yq -r -p json -o json ".[$i].machine" "$batch")
+  keyName=$(yq -r -p json -o json ".[$i].key" "$batch")
+  slot=$(yq -r -p json -o json ".[$i].slot" "$batch")
+  oldPublic=$(yq -r -p json -o json ".[$i].oldPublic" "$batch")
+  files=$(yq -r -p json -o json ".[$i].files | join(\", \")" "$batch")
+  reconcile::host-key::collect "$i" "$work"
+  if public=$(reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" 2>"$work/why"); then
+    printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
+    printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
+      "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
+    known+=$'\n'"${public#ssh-ed25519 }"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$i" "$keyName" "$slot" "$public" \
+      "$(cat "$work/${keyName}@${slot}".{public,statement,statement.sig} | sha256sum | cut -d' ' -f1)" >>"$work/measured"
+  else
+    printf '  ✗ %s — %s@%s : %s\n' "$machine" "$keyName" "$slot" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
+    return 1
+  fi
+}
+
+reconcile::host-key::recheck() { # <work dir> <again dir>: the measured slots, re-collected: a publication changed since is refused
+  local i keyName slot public hash
+  while IFS=$'\t' read -r i keyName slot public hash; do
+    reconcile::host-key::collect "$i" "$2"
+    [[ "$(cat "$2/${keyName}@${slot}".{public,statement,statement.sig} 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$hash" ]] ||
+      die "${keyName}@${slot}: its publication changed since it was measured: nothing written"
+  done <"$1/measured"
+}
+
+measure() { # <work dir>: collect and verify every entry of the batch into <work>; prints the plan, returns 4 if any is not ready
+  local work="$1" n bad=0 i class
   n=$(yq -p json -o json 'length' "$batch")
   known=$(yq -r -p json -o json '[(.keys, .authorities)[].slots[].public, (.revoked // {})[].public] | .[] | select(. != null)' "$keysJson")
+  present=()
   echo "plan de ${revision:0:12}, ${n} clé(s), dans l'ordre de fleet-switch :"
   : >"$work/measured"
   for ((i = 0; i < n; i++)); do
-    machine=$(yq -r -p json -o json ".[$i].machine" "$batch")
-    keyName=$(yq -r -p json -o json ".[$i].key" "$batch")
-    slot=$(yq -r -p json -o json ".[$i].slot" "$batch")
-    oldPublic=$(yq -r -p json -o json ".[$i].oldPublic" "$batch")
-    files=$(yq -r -p json -o json ".[$i].files | join(\", \")" "$batch")
-    collect "$machine" "$keyName" "$slot" "$work"
-    if public=$(reconcile::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" 2>"$work/why"); then
-      printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
-      printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
-        "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
-      known+=$'\n'"${public#ssh-ed25519 }"
-      printf '%s\t%s\t%s\t%s\t%s\n' "$i" "$keyName" "$slot" "$public" \
-        "$(cat "$work/${keyName}@${slot}".{public,statement,statement.sig} | sha256sum | cut -d' ' -f1)" >>"$work/measured"
-      ok=$((ok + 1))
-    else
-      printf '  ✗ %s — %s@%s : %s\n' "$machine" "$keyName" "$slot" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
-      bad=$((bad + 1))
-    fi
+    class=$(class_of "$i") || die "batch entry ${i}: no artifact class '$(yq -r -p json -o json ".[$i].class" "$batch")' in keys-reconcile"
+    [[ " ${present[*]} " == *" ${class} "* ]] || present+=("$class")
+    "reconcile::${class}::measure" "$i" "$work" || bad=$((bad + 1))
   done
   if ((bad > 0)); then
     echo "refusé : ${bad} clé(s) sur ${n} ne sont pas prêtes ; rien ne sera écrit."
@@ -128,20 +165,21 @@ window() {
   measure "$work" || return $?
   : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
   local answer
-  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(wc -l <"$work/measured")" "${revision:0:12}" >"$ttyOut"
+  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >"$ttyOut"
   read -r answer <"$ttyIn" || answer=""
   [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
 
   : "the same measure, re-collected and re-verified seconds later: a publication changed since is refused"
-  local again i keyName slot public hash machine
+  local again class
   again=$(mktemp -d "$work/again.XXXXXX")
-  while IFS=$'\t' read -r i keyName slot public hash; do
-    machine=$(yq -r -p json -o json ".[$i].machine" "$batch")
-    collect "$machine" "$keyName" "$slot" "$again"
-    [[ "$(cat "$again/${keyName}@${slot}".{public,statement,statement.sig} 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$hash" ]] ||
-      die "${keyName}@${slot}: its publication changed since it was measured: nothing written"
-  done <"$work/measured"
-  reconcile::write "$work"
+  for class in "${present[@]}"; do "reconcile::${class}::recheck" "$work" "$again"; done
+  : "one worktree; every class writes into it; then EVERY class's postconditions, so a later class cannot spoil an"
+  : "earlier one's file; one commit"
+  reconcile::tree::open || return 1
+  for class in "${present[@]}"; do "reconcile::${class}::write" "$work" || return 1; done
+  for class in "${present[@]}"; do "reconcile::${class}::check" "$work" || return 1; done
+  reconcile::tree::check || return 1
+  reconcile::tree::commit
 }
 
 main() {

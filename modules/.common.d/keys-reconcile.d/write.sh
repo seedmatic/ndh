@@ -2,7 +2,7 @@
 # the « oui » and the re-verification of the measure. It writes into a clean worktree of the bare at the revision,
 # never into a checkout a session works in, and commits there once; it pushes nothing.
 #
-#   reconcile::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
+#   reconcile::host-key::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
 #
 # Per slot: the public, its age, `recipient: true`, `state: recorded` and its ssh-host certificate, each by `sops set`
 # on keys.yaml; each new age into every rule of .sops.yaml; then `sops updatekeys` of every file those rules govern;
@@ -32,19 +32,51 @@ reconcile::sopsSet() { # <file> <path as a yq-style list of keys> <JSON value>
   ((rc == 0)) || reconcile::fail "sops set failed (exit ${rc}) on ${1##*/} at ${2}"
 }
 
-reconcile::write() {
-  local work="$1" i keyName slot public hash age entry authority authSlot serial principals certId cert value
-  local branch="keys-reconcile/${revision:0:12}"
-  tree="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"
+# The sops files whose every rule carries a host recipient: the encrypted values the window must leave byte-identical.
+sopsFiles=(.secrets catalog/cache-trust.yaml modules/home-manager/ssh.d/keys.yaml)
 
-  : "a clean worktree of the bare at the revision, on its own local branch"
+# reconcile::tree::open: the window's one clean worktree of the bare at the revision, on its own local branch; every
+# class writes into it, and reconcile::tree::commit commits it once. The encrypted values are snapshotted here, before
+# ANY class writes, so the byte-identity postcondition covers every class's writes, not only the host keys'.
+reconcile::tree::open() {
+  local f
+  branch="keys-reconcile/${revision:0:12}"
+  tree="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"
   [[ ! -e $tree ]] || reconcile::fail "${tree} already exists: a previous window was not closed (read it, then remove it)" || return 1
   git -C "$bare" cat-file -e "${revision}^{commit}" 2>/dev/null || reconcile::fail "${revision} is not in ${bare}" || return 1
   git -C "$bare" worktree add -q -b "$branch" "$tree" "$revision" || reconcile::fail "cannot add the worktree at ${revision}" || return 1
-  local keysYaml="$tree/modules/home-manager/ssh.d/keys.yaml" sopsYaml="$tree/.sops.yaml"
-  local -a sopsFiles=(.secrets catalog/cache-trust.yaml modules/home-manager/ssh.d/keys.yaml)
-  local f
   for f in "${sopsFiles[@]}"; do reconcile::encrypted "$tree/$f" >"$work/before.${f//\//_}"; done
+  : >"$work/staged"
+  : >"$work/summary"
+}
+
+# reconcile::tree::check: after EVERY class wrote, before the commit: no encrypted value of any sops file moved (a
+# whole-file re-encryption is refused, by whichever class), and no private is left in clear.
+reconcile::tree::check() {
+  local f
+  for f in "${sopsFiles[@]}"; do
+    reconcile::encrypted "$tree/$f" >"$work/after.${f//\//_}"
+    [[ "$(cut -f2 "$work/before.${f//\//_}")" == "$(cut -f2 "$work/after.${f//\//_}")" ]] ||
+      reconcile::fail "${f}: an encrypted value changed (a whole-file re-encryption?): only recipient stanzas may move" || return 1
+  done
+  [[ "$(yq '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$tree/modules/home-manager/ssh.d/keys.yaml")" == true ]] ||
+    reconcile::fail "a private is not encrypted in keys.yaml" || return 1
+}
+
+# reconcile::tree::commit: one local commit of what the classes staged (<work>/staged, one path per line), with each
+# class's summary lines (<work>/summary) as its message; never pushed.
+reconcile::tree::commit() {
+  local -a paths
+  mapfile -t paths < <(sort -u "$work/staged")
+  git -C "$tree" add -- "${paths[@]}"
+  git -C "$tree" commit -q -F "$work/summary" || reconcile::fail "the commit failed" || return 1
+  echo "écrit dans ${tree}, branche ${branch} (locale, non poussée) : à relire puis à fusionner, avec ton feu vert."
+}
+
+reconcile::host-key::write() {
+  local work="$1" i keyName slot public hash age entry authority authSlot serial principals certId cert value
+  local keysYaml="$tree/modules/home-manager/ssh.d/keys.yaml" sopsYaml="$tree/.sops.yaml"
+  local f
   cp "$keysYaml" "$work/expected.yaml"
 
   : "the ssh authority's signing slot: the oldest not compromised, as every trust store carries it"
@@ -107,21 +139,15 @@ reconcile::write() {
     (cd "$tree" && sops updatekeys -y --input-type yaml "$f" >/dev/null 2>&1) || reconcile::fail "sops updatekeys failed on ${f}" || return 1
   done
 
-  : "postconditions, before anything is committed"
-  [[ "$(yq 'del(.sops)' "$keysYaml")" == "$(yq 'del(.sops)' "$work/expected.yaml")" ]] ||
-    reconcile::fail "keys.yaml changed more than the fields this window set" || return 1
-  for f in "${sopsFiles[@]}"; do
-    reconcile::encrypted "$tree/$f" >"$work/after.${f//\//_}"
-    [[ "$(cut -f2 "$work/before.${f//\//_}")" == "$(cut -f2 "$work/after.${f//\//_}")" ]] ||
-      reconcile::fail "${f}: an encrypted value changed (a whole-file re-encryption?): only recipient stanzas may move" || return 1
-  done
-  [[ "$(yq '[.keys[].slots[].private, .authorities[].slots[].private] | map(select(. != null)) | all_c(test("^ENC\["))' "$keysYaml")" == true ]] ||
-    reconcile::fail "a private is not encrypted in keys.yaml" || return 1
-
   "$keysJsonTool" "$keysYaml" || reconcile::fail "keys.json could not be regenerated" || return 1
-  git -C "$tree" add .sops.yaml "${sopsFiles[@]}" modules/home-manager/ssh.d/keys.json
-  git -C "$tree" commit -q -m "keys-reconcile: record $(wc -l <"$work/measured") host key(s) at ${revision:0:12}
+  printf '%s\n' .sops.yaml "${sopsFiles[@]}" modules/home-manager/ssh.d/keys.json >>"$work/staged"
+  printf 'keys-reconcile: record %s host key(s) at %s\n\n%s\n' "$(wc -l <"$work/measured")" "${revision:0:12}" \
+    "$(cut -f2,3 "$work/measured" | tr '\t' '@')" >>"$work/summary"
+}
 
-$(cut -f2,3 "$work/measured" | tr '\t' '@')" || reconcile::fail "the commit failed" || return 1
-  echo "écrit dans ${tree}, branche ${branch} (locale, non poussée) : à relire puis à fusionner, avec ton feu vert."
+# The host keys' own postcondition, run by the window after every class wrote: keys.yaml is the input plus exactly the
+# fields this window set (the encrypted values and the privates are reconcile::tree::check's, for every class).
+reconcile::host-key::check() {
+  [[ "$(yq 'del(.sops)' "$tree/modules/home-manager/ssh.d/keys.yaml")" == "$(yq 'del(.sops)' "$1/expected.yaml")" ]] ||
+    reconcile::fail "keys.yaml changed more than the fields this window set" || return 1
 }
