@@ -278,6 +278,9 @@ delivered_before() {
   stop=$(grep -n '^incus stop --project ndh attic$' "$t/calls" | cut -d: -f1)
   snap=$(grep -n '^zfs snapshot -r tank/nerd/attic@' "$t/calls" | cut -d: -f1)
   start=$(grep -n '^incus start --project ndh attic$' "$t/calls" | head -1 | cut -d: -f1)
-  [ -n "$stop" ] && [ -n "$snap" ] && [ -n "$start" ]
-  [ "$stop" -lt "$snap" ] && [ "$snap" -lt "$start" ]
+  [ -n "$stop" ]
+  [ -n "$snap" ]
+  [ -n "$start" ]
+  [ "$stop" -lt "$snap" ]
+  [ "$snap" -lt "$start" ]
 }
