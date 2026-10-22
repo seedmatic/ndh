@@ -345,7 +345,8 @@ delivered_before() {
   # The postcondition goes too, so only the process boundary stands between the failure and "healthy".
   sed -e 's/bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/deliver_steps "$1"/' \
     -e '/^  declared_ok "\$1" >&2 || die/d' "$cli" >"$t/mutant"
-  ! grep -q 'declared_ok "\$1" >&2' "$t/mutant"
+  run grep -q 'declared_ok "\$1" >&2' "$t/mutant"
+  [ "$status" -eq 1 ]
   run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
