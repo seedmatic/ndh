@@ -33,48 +33,11 @@ let
       ++ lib.concatMap (secret: secret.restartUnits or [ ]) (lib.attrValues (config.sops.secrets or { }))
     )
   );
-  hostKeyReaders = [
-    "sshd.service"
-  ]
-  ++ lib.optional config.services.tailscale.enable "tailscaled.service";
-  identityReload = pkgs.writeShellApplication {
-    name = "ndh-identity-reload";
-    text = ''
-      # After the operator placed an identity: one command instead of restarting units by name.
-      ${config.systemd.package}/bin/systemctl restart ${bootstrapUnit}
-      ${config.systemd.package}/bin/systemctl restart sops-install-secrets.service
-      ${lib.optionalString (
-        secretReaders != [ ]
-      ) "${config.systemd.package}/bin/systemctl restart ${lib.concatStringsSep " " secretReaders}"}
-      echo "[ndh-identity-reload] sops and its readers restarted: ${lib.concatStringsSep " " secretReaders}"
-      ${lib.optionalString config.ndh.hostKey.own ''
-        # The push placed a new host key under them, and both read it only at start.
-        ${config.systemd.package}/bin/systemctl try-restart ${lib.concatStringsSep " " hostKeyReaders}
-        echo "[ndh-identity-reload] host key readers restarted: ${lib.concatStringsSep " " hostKeyReaders}"
-      ''}
-    '';
-  };
-  # The machine's side of ndh-identity-push: places what bioskop sends, then ndh-identity-reload.
-  identityPush = import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; };
-  machine = config.networking.hostName;
-  # The operator seat whose guest this is: its host key gives this machine's age identity (its access point).
-  # A bring-up guest belongs to no metalspace: its catalog carries no netplan, so it has no seat and no access point.
-  baremetal = (ndh.context.catalog.netplan or { }).baremetal or { };
-  seat = lib.findFirst (h: baremetal.${h}.nixosHostname == machine) null (lib.attrNames baremetal);
-  identityReceive = identityPush.receive {
-    inherit machine;
-    keyFile = config.sops.age.keyFile;
-    sshfs = config.services.sshfsMounts.enable;
-    served =
-      if config.ndh.hostKey.own then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key.pub";
-    owner = "root:root";
-    recorded = {
-      hostKey = identityPush.recordedPublic config.ndh.keysYaml.keys "host-${machine}";
-      sshfsKey = identityPush.recordedPublic config.ndh.keysYaml.keys "sshfs-${machine}";
-      accessPoint =
-        if seat == null then "" else identityPush.recordedPublic config.ndh.keysYaml.keys "host-${seat}";
-    };
-  };
+  # The machine's sops identity, from keys.yaml (roles × keys K5): its own served host key once its current slot is
+  # `serving` and was born on it (`origin: host`), as the darwin hosts do; until then the age identity placed at its
+  # keyFile, read as before. Never a pushed key: the push channel is gone.
+  roles = import ../.common.d/host-key.d/slots.nix { inherit lib; } config.ndh.hostKey.entry;
+  ownSopsKey = (roles.current.state or "") == "serving" && (roles.current.origin or "") == "host";
 in
 {
   # The age-bootstrap service imports keys from the host-provided virtiofs
@@ -84,8 +47,6 @@ in
   imports = [
     ./systemd/tart-host-shares.nix
     (worktreePath.of "modules/.common.d/host-key.nix")
-    # Whether the frame carries the sshfs key: declared wherever the receive is, the bringup included.
-    ./sshfs-mounts.nix
   ];
 
   config = {
@@ -149,16 +110,15 @@ in
             keysTargetUnit
             "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
           ];
-          # Not gated on the key file's existence: the bootstrap unit before it fails loudly when the
-          # identity is missing, and ndh-identity-reload restarts both once the operator placed it.
+          # Not gated on the key file's existence: the bootstrap unit before it fails loudly when the identity
+          # is missing.
         };
 
-    environment.systemPackages =
-      lib.mkIf ((config.sops.useSystemdActivation or false) && hasManagedSecrets)
-        [
-          identityReload
-          identityReceive
-        ];
+    # Born on the machine and served: sops opens its files with that key, the files' recipients name its age (R1).
+    sops.age = lib.mkIf ownSopsKey {
+      keyFile = lib.mkForce null;
+      sshKeyPaths = lib.mkForce [ config.ndh.hostKey.servedKeyFile ];
+    };
 
   };
 }

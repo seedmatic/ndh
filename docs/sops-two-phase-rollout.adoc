@@ -27,22 +27,9 @@ the keyFile is absent  ──► ONE loud fault naming the path ──► the un
 
 == Placing an identity
 
-From bioskop, with the keyring open, for bioskop's own guest. The age identity is that of the access
-point: `ssh-to-age` of the operator seat's host key, derived in memory.
-
-[source,bash]
-----
-# 1. at the machine's console: the fingerprint its sshd serves
-ndh-identity-receive
-# 2. on bioskop: the machine's host key on fd 3, the operator seat's on fd 4, fed by the keyring
-ndh-identity-push bioskop-nixos 3<"<machine host key>" 4<"<operator seat host key>"
-----
-
-The push asks for the fingerprint read at the console and trusts that key only. It reaches the machine
-at its inventory address, through the operator seat's own link. It places both identities (0400, both or
-nothing), checks their publics, and runs `ndh-identity-reload`. This rests on one assumption: the home
-LAN carries only the operator's devices. The guest is bridged onto that LAN, so the bridge proves
-nothing by itself. The host key is placed at `/var/lib/ndh/host-key/` and not yet served by sshd.
+The push from bioskop is gone (roles × keys K5): a machine's key is born on it for a pending slot and
+recorded through `ops next`, and once a machine serves it, its sops identity is that key. Until then, a guest
+reads the identity placed before the migration; if a reset wiped it, it is restored by hand, at the console.
 
 By hand, at the console:
 
@@ -52,7 +39,7 @@ By hand, at the console:
 rm -f /var/lib/sops-nix/<machine>.age
 umask 077; cat > /var/lib/sops-nix/<machine>.age   # paste the identity, then Ctrl-D
 age-keygen -y /var/lib/sops-nix/<machine>.age      # must print the recipient listed in .sops.yaml
-ndh-identity-reload                                # restarts sops and every unit that reads a secret
+systemctl restart sops-install-secrets              # then every unit that reads a secret
 ----
 
 `rm -f` first: `umask` applies only when a file is created, and a file left by an earlier attempt keeps

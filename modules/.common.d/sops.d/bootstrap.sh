@@ -49,7 +49,7 @@ fi
 if [ ! -s "$key_file" ]; then
   echo "[sops-age-bootstrap] ERROR: no age identity at $key_file" >&2
   echo "[sops-age-bootstrap] it comes from the operator's keyring and is never generated here." >&2
-  echo "[sops-age-bootstrap] place it there (root, mode 0400), then run: ndh-identity-reload" >&2
+  echo "[sops-age-bootstrap] a machine decrypts with its placed identity until it serves a key born on it (ops next)" >&2
   exit 1
 fi
 

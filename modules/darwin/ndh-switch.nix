@@ -74,7 +74,6 @@ in
           attic-leaf-sign = "${config.ndh.atticLeaf.package}/bin/attic-leaf-sign";
           incus-cluster-cert-renew = "${config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
           ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
-          ndh-identity-push = "${config.ndh.identityPush.package}/bin/ndh-identity-push";
           keys-reconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
         };
       };

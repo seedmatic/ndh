@@ -38,7 +38,7 @@ mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
   [ "$status" -eq 1 ]
   [[ "$output" == *"no age identity at $key"* ]]
   [[ "$output" == *"never generated here"* ]]
-  [[ "$output" == *"ndh-identity-reload"* ]]
+  [[ "$output" == *"until it serves a key born on it"* ]]
   [ ! -e "$key" ]
   run ! grep -q 'age-keygen' "$t/calls"
 }

@@ -306,13 +306,13 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "operator tool: attic-leaf-sign" { run hook 'attic-leaf-sign --dry-run'; denied; }
 @test "operator tool: incus-cluster-cert-renew" { run hook 'incus-cluster-cert-renew --dry-run'; denied; }
 @test "operator tool: ndh-keyring" { run hook 'ndh-keyring --dry-run'; denied; }
-@test "operator tool: ndh-identity-push" { run hook 'ndh-identity-push --dry-run'; denied; }
+@test "operator tool: keys-reconcile window" { run hook 'keys-reconcile window'; denied; }
 @test "operator tool: by its store path" { run hook '/nix/store/abc-ssh-keys-renew/bin/ssh-keys-renew --revoke-host x'; denied; }
 @test "operator tool: nix run of a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#ssh-keys-certify -- --apply'; denied; }
 @test "operator tool: nix run by revision of the bare" { run hook 'nix run "git+file:///Volumes/git-bare-store/seedmatic/ndh.git?rev=0123abcd#attic-leaf-sign"'; denied; }
 @test "operator tool: inside a bash -c" { run hook "bash -c 'ndh-keyring status'"; denied; }
 @test "operator tool: through flox and sudo" { run hook 'flox activate -- sudo incus-cluster-cert-renew'; denied; }
-@test "operator tool: over ssh" { run hook 'ssh darwin.nikopol ndh-identity-push'; denied; }
+@test "operator tool: over ssh" { run hook 'ssh darwin.nikopol ndh-keyring host-key nikopol'; denied; }
 @test "ok reading an operator tool's source" { run hook 'cat modules/.common.d/ssh-keys-certify.d/certify.sh'; allowed; }
 @test "ok building an operator tool by revision" { run hook 'nix build github:seedmatic/ndh/0123abcd#ssh-keys-certify'; allowed; }
 @test "ops: ndh-ops arm is the operator's"      { run hook 'ndh-ops arm --hours 4 --tools ssh-keys-renew'; denied; }

@@ -1,8 +1,8 @@
 # What sshd serves, read from the evaluated configurations: no NixOS configuration generates a host key,
 # and every guest and operator seat serves exactly the key ndh.hostKey.own says, with its certificate.
-# Both values of ndh.hostKey.own are forced on each machine, whatever its configuration commits (bioskop and
-# bioskop-nixos commit true since S3a): own = true with a test certificate, as keys.yaml holds none for a machine
-# whose key is not recorded yet, and ndh.hostKey.certificate is otherwise read from it.
+# Both values of ndh.hostKey.own are reached on each machine through its slot state (own is read from it, K5): a
+# serving slot with a test certificate, as keys.yaml holds none for a machine whose key is not recorded yet, and
+# ndh.hostKey.certificate is otherwise read from it; a recorded one for the other side.
 {
   pkgs,
   pkgsForLinux,
@@ -14,20 +14,27 @@
 }:
 let
   testCertificate = "ssh-ed25519-cert-v01@openssh.com AAAAtest host-test";
-  owning =
-    system:
+  # ndh.hostKey.own is read from the slot state (K5): each side is reached by giving the machine a host-key entry whose
+  # current slot is, or is not, `serving`.
+  withSlot =
+    state: extra: system:
     (system.extendModules {
       modules = [
         {
           ndh.hostKey = {
-            own = lib.mkForce true;
-            certificate = testCertificate;
-          };
+            entry = lib.mkForce {
+              slots."26-01-01" = {
+                inherit state;
+                origin = "keyring";
+              };
+            };
+          }
+          // extra;
         }
       ];
     }).config;
-  sharing =
-    system: (system.extendModules { modules = [ { ndh.hostKey.own = lib.mkForce false; } ]; }).config;
+  owning = withSlot "serving" { certificate = testCertificate; };
+  sharing = withSlot "recorded" { };
   linesOf = keyword: text: lib.filter (lib.hasPrefix "${keyword} ") (lib.splitString "\n" text);
   expect =
     what: actual: wanted:
@@ -53,13 +60,6 @@ let
         lib.elem (builtins.toJSON { inherit (c.ndh.hostKey) own file; }) (
           (units c).tailscaled.restartTriggers or [ ]
         );
-      identityReloadText =
-        c:
-        builtins.unsafeDiscardStringContext
-          (lib.findFirst (
-            p: lib.getName p == "ndh-identity-reload"
-          ) (throw "${name}: no ndh-identity-reload") c.environment.systemPackages).text;
-      restartsHostKeyReaders = lib.hasInfix "/bin/systemctl try-restart sshd.service tailscaled.service";
       reloadScript = lib.last (
         lib.splitString " " (
           lib.findFirst (lib.hasInfix "openssh-sshd-host-identity-reload") (throw "${name}: no rdp-host copy")
@@ -84,9 +84,6 @@ let
     assert expect "${name} /etc/ssh tmpfiles rules (own = false)" (etcSshRules shared) [ ];
     assert lib.assertMsg (restartsTailscaledOn shared)
       "${name} (own = false): tailscaled does not restart on the own state";
-    assert lib.assertMsg (
-      !(restartsHostKeyReaders (identityReloadText shared))
-    ) "${name} (own = false): ndh-identity-reload restarts the host key readers";
     assert expect "${name} hostKeys (own = true)" owned.services.openssh.hostKeys [ ];
     assert expect "${name} HostKey (own = true)" (linesOf "HostKey" owned.services.openssh.extraConfig)
       [
@@ -113,9 +110,15 @@ let
     ];
     assert lib.assertMsg (restartsTailscaledOn owned)
       "${name} (own = true): tailscaled does not restart on the own state";
-    assert lib.assertMsg (restartsHostKeyReaders (
-      identityReloadText owned
-    )) "${name} (own = true): ndh-identity-reload does not restart sshd and tailscaled";
+    assert lib.assertMsg (
+      !(lib.any (
+        p:
+        lib.elem (lib.getName p) [
+          "ndh-identity-reload"
+          "ndh-identity-receive"
+        ]
+      ) owned.environment.systemPackages)
+    ) "${name}: a push receiver is still installed (K5 deleted the push channel)";
     # The sandbox has no placed key: the check must fail, naming the file and the gesture.
     pkgsForLinux.runCommand "host-key-served-${name}" { } ''
       if ${owned.ndh.hostKey.check} 2>err; then
@@ -123,7 +126,7 @@ let
         exit 1
       fi
       grep -qF ${lib.escapeShellArg owned.ndh.hostKey.file} err
-      grep -qF "ndh-identity-push ${owned.networking.hostName}" err
+      grep -qF "ops next" err
       # The rdp-host copy restarts tailscaled from install_host_key, after its unchanged-key return.
       sed -n '/^install_host_key()/,/^}/p' ${reloadScript} >install
       grep -n 'cmp -s' install | head -1 | cut -d: -f1 >cmp

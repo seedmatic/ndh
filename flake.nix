@@ -1314,27 +1314,27 @@
                 darwin.config.ndh.nixSigning.placeScript
               ];
             } "touch $out";
-          # ndh.hostKey.own and keys.yaml's slot state agree on every machine of the fleet, and the assertion that
-          # holds them together bites both ways: own on a machine whose slot is not `serving`, and a `serving` slot on
-          # a machine that does not set own.
+          # ndh.hostKey.own is read from keys.yaml's slot state (roles × keys K5), never set: each fleet machine's value
+          # is exactly "its current host-key slot is serving", and a configuration that tries to set it fails.
           host-key-own-is-serving =
             let
               lib = nixpkgs.lib;
-              failed =
-                c: lib.any (a: !a.assertion && lib.hasInfix "ndh.hostKey.own is" a.message) c.config.assertions;
+              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
               machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
-              ownOff = self.darwinConfigurations.bioskop.extendModules {
-                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce false; } ];
-              };
-              ownOn = self.darwinConfigurations.nikopol.extendModules {
-                modules = [ { ndh.hostKey.own = nixpkgs.lib.mkForce true; } ];
-              };
+              agrees =
+                c:
+                c.config.ndh.hostKey.own == ((roles c.config.ndh.hostKey.entry).current.state or "" == "serving");
+              forced =
+                builtins.tryEval
+                  (self.darwinConfigurations.nikopol.extendModules {
+                    modules = [ { ndh.hostKey.own = true; } ];
+                  }).config.ndh.hostKey.own;
             in
+            assert lib.assertMsg (lib.all agrees machines)
+              "host-key-own-is-serving: a machine's own differs from its slot state";
             assert lib.assertMsg (
-              !(lib.any failed machines)
-            ) "host-key-own-is-serving: a machine of the fleet drifts";
-            assert lib.assertMsg (failed ownOff) "host-key-own-is-serving: own off on a serving slot passed";
-            assert lib.assertMsg (failed ownOn) "host-key-own-is-serving: own on a recorded slot passed";
+              !forced.success
+            ) "host-key-own-is-serving: a configuration could set ndh.hostKey.own";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
@@ -2097,7 +2097,6 @@
           baremetal-link-deploy-bats = import ./pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
           # incus-cluster-join: a join that did not take is never reported joined.
           incus-cluster-join-bats = import ./pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
-          identity-push-bats = import ./modules/.common.d/identity-push.d/tests/package.nix { inherit pkgs; };
           keyring-bats = import ./modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
           root-attest-bats = import ./modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
           root-ceremony-bats = import ./modules/.common.d/root-ceremony.d/tests/package.nix { inherit pkgs; };

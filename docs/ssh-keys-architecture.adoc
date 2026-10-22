@@ -236,17 +236,18 @@ carries everyday access
 | Operator seat
 | bioskop, nikopol
 | the delegated authorities sign here; the sops operator identity lives here; bioskop builds and
-sends closures, holds the operator's keyring and pushes machine identities
+sends closures and holds the operator's keyring; it collects, certifies and records the machines' keys born on
+them (`keys-reconcile`, through `ops next`), and pushes none
 
 | Darwin host
 | bioskop, nikopol
-| its own sshd host key, from the operator's keyring; its `ssh-to-age` is its access point's age identity;
-nix signing key
+| its own sshd host key, born on it for a pending slot (or from the keyring before the migration); its
+`ssh-to-age` is its sops identity; nix signing key
 
 | NixOS guest (VM)
 | bioskop-nixos, nikopol-nixos
-| its own sshd host key, from the keyring; the age identity of its access point (its operator seat's), placed by
-the operator; both pushed by bioskop, never generated on the guest
+| its own sshd host key, born on it at its activation for a pending slot; once it serves it, its `ssh-to-age` is
+its sops identity. Until then, the keys placed before the migration, read as they are; nothing is pushed any more
 
 | Corporate bare-metal (vz-host)
 | the MDM-managed Mac
@@ -513,8 +514,11 @@ project `rke2lab` · the node's `sops-install-secrets`
   that slot's root; the new generation signs only once phase 2 drops the old one, and a compromised
   slot never signs and leaves every trust store. Stated once in the schema, enforced by a check, in
   ndh and in rke2lab's keystore reader alike.
-. **No key is generated at activation.** An unrecorded key cannot be revoked. The Incus certificate step
-  signs the key Incus generated and records the certificate: it generates nothing.
+. **No key is USED before its public is recorded and certified.** An unrecorded key cannot be revoked. A machine
+  generates its next host key at activation for a slot keys.yaml declares `pending`, and serves it only once
+  keys-reconcile has recorded its public, its age and its certificate from a statement its old key signed (the
+  fabric-delivery frame, roles × keys K3–K5). The Incus certificate step signs the key Incus generated and records
+  the certificate.
 . **Each host receives a projection, computed, never placed by hand** (next section).
 . **Effort follows the lifecycle** (<<lifecycle>>).
 
@@ -605,8 +609,8 @@ certificate per machine
 | a certificate opens one account
 
 | 8
-| the keyring on bioskop and its push: `ndh-identity-push <machine>`, private LAN only, the first push
-authenticated by a console fingerprint; a missing identity is a loud fault, never a generation
+| the keyring on bioskop, for the keys born there (cluster-age, the operator's own); a machine's key is born on
+it and only its public travels (K3–K5); the push is deleted
 | a machine's identity has one source, the operator
 
 | 9.0
@@ -650,7 +654,7 @@ ndh-keyring host-key <machine> |   # or in one gesture: record the public as a p
     --create host-<machine> --public - --usage ssh-host --apply
 nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-certify" -- --apply   # on the operator seat: one cert
 git add modules/home-manager/ssh.d/keys.yaml && git commit   # the public and its certificate together
-ndh-identity-push <machine>   # on bioskop, the keyring opened, at install or after a reset (step 8)
+# a machine's key is no longer pushed: it is born on it for a pending slot, then recorded through `ops next`
 ----
 
 `--public -` records the one `ssh-ed25519` line read from stdin under `keys.host-<machine>`: usage and
@@ -680,8 +684,7 @@ ndh-keyring sshfs-key <guest> |   # the private into the keyring, as seedmatic/s
   nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- \
     --create sshfs-<guest> --public - --usage ssh-user --apply
 git add modules/home-manager/ssh.d/keys.yaml && git commit   # then switch the guest's operator seat
-ndh-identity-push <guest> 3<… 4<… 5<"its sshfs key"           # placed at /var/lib/ndh/sshfs/id_ed25519
-# then a commit setting ndh.sshfs.ownKey = true for <guest>, and its switch
+# nothing places it on the guest any more: its key born there, as a host key's, is a step of its own
 ----
 
 `sshfs-<guest>` is recorded public-only, with no authority and no certificate. Its operator seat authorizes
@@ -751,7 +754,8 @@ inventory names, `{host}-nixos`, `nixos.{host}`)
 
 | A NixOS guest cannot decrypt its secrets
 | its access point's age identity is missing at its keyFile (a reset wipes it)
-| push it from bioskop (`ndh-identity-push`), then check its public against the recipient
+| until it serves a key born on it, restore the placed identity from the keyring by hand (the
+recovery runbook); once it serves its own, its sops identity is its host key and a reset re-generates nothing
 
 | Incus serves a self-signed certificate after a reset
 | Incus re-initialised its key and certificate

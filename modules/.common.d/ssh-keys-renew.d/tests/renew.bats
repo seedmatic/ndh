@@ -328,7 +328,7 @@ sshfs_record() {
   decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/before.yaml"
   run sshfs_record --apply <"$BATS_TEST_TMPDIR/line"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"never certified"*"ndh-identity-push bioskop-nixos with the key on fd 5"* ]]
+  [[ "$output" == *"never certified"*"reaches bioskop-nixos only as a key born there"* ]]
   [[ "$output" != *"ssh-keys-certify"* ]]
   [ "$(yq eval -r "$entry.type" "$keys")" = ssh-ed25519 ]
   [ "$(yq eval -r "$entry.usage | join(\",\")" "$keys")" = ssh-user ]

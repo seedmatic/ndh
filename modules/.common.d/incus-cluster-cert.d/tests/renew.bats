@@ -254,7 +254,6 @@ hostile() { # <cmd>... — runs <cmd> under it
     ssh-keys-certify.d/ssh-keys-certify.sh \
     cache-signing-key-rotate.d/cache-signing-key-rotate.sh \
     authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
-    identity-push.d/ndh-identity-push.sh identity-push.d/ndh-identity-receive.sh \
     keyring.d/ndh-keyring.sh attic-leaf.d/attic-leaf-sign.sh ../nixos/attic-cache.d/token-issue.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   done

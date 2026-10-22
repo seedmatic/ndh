@@ -1,5 +1,6 @@
-# Whether a machine serves its OWN host key, placed by ndh-identity-push, or the shared rdp-host (roles × keys
-# S3a). One declaration for NixOS guests and operator seats; the platform openssh modules read it.
+# Whether a machine serves its OWN host key or the shared rdp-host, read from keys.yaml's slot state (roles × keys
+# S3a, K5), and the key born on it for a pending slot (K3). One declaration for NixOS guests and operator seats; the
+# platform openssh modules read it.
 {
   config,
   lib,
@@ -15,19 +16,21 @@ in
   options.ndh.hostKey = {
     own = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      readOnly = true;
+      default =
+        ((import ./host-key.d/slots.nix { inherit lib; } cfg.entry).current.state or "") == "serving";
       description = ''
-        Serve this machine's own host key, at `ndh.hostKey.file`, with the certificate keys.yaml records
-        for `host-<hostName>`. Turned on only once the key is placed: sshd serves no other, so switching
-        before it is there stops sshd.
+        Whether this machine serves its own host key, at `ndh.hostKey.file`, with the certificate keys.yaml records
+        for `host-<hostName>`: read from keys.yaml, true exactly when its current slot is `serving` (roles × keys
+        K5). Never set by hand: a slot reaches `serving` only once its key is there and certified.
       '';
     };
 
     file = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
-      default = (import ./identity-push.d/package.nix { inherit pkgs lib; }).hostKeyFile;
-      description = "Where ndh-identity-push places the machine's own host key.";
+      default = "/var/lib/ndh/host-key/ssh_host_ed25519_key";
+      description = "Where the machine's own host key of its current slot lives (pushed there before K5; the keys born on it live under slotDir).";
     };
 
     # Not read-only only so the eval checks can give a test configuration a certificate that keys.yaml
@@ -52,7 +55,7 @@ in
       default = pkgs.writeShellScript "ndh-host-key-check" ''
         [[ -s ${cfg.file} ]] && exit 0
         echo "ERROR: ${cfg.file} is missing, and ${machine}'s sshd serves no other host key (ndh.hostKey.own)." >&2
-        echo "Place it: ndh-identity-push ${machine} from bioskop, or ndh-identity-receive --accept at ${machine}'s console." >&2
+        echo "Its current slot is serving, so keys.yaml expects it there: a machine born key lives under ${cfg.slotDir} (ops next)." >&2
         exit 1
       '';
       description = "Fails, naming the file and the gesture that places it, when the machine's own host key is missing.";
@@ -112,28 +115,15 @@ in
     let
       entry = cfg.entry;
       roles = import ./host-key.d/slots.nix { inherit lib; } entry;
-      serving = (roles.current.state or "") == "serving";
       pendingName = roles.pendingName;
     in
     {
-      # keys.yaml's slot state and this flag say the same thing (roles × keys K1): a machine serves its own host
-      # key exactly when its current slot is `serving`. Until the flag is derived from the state, a drift either
-      # way is refused here, before any host is switched.
       assertions = [
         {
           # slots.nix takes the newest usable slot for the current one: a pending slot named before it would be
           # generated, recorded, and then never served.
           assertion = pendingName == null || roles.currentName == null || roles.currentName < pendingName;
           message = "${machine}: host-${machine}@${toString pendingName} is pending, but it does not sort after the current slot ${toString roles.currentName}: name the new slot by a later date.";
-        }
-        {
-          assertion = cfg.own == serving;
-          message = ''
-            ${machine}: ndh.hostKey.own is ${lib.boolToString cfg.own}, but keys.yaml's current host-${machine} slot is
-            ${
-              if roles.currentName == null then "absent" else "in state `${roles.current.state or "(none)"}`"
-            }: a machine serves its own host key
-            exactly when that slot is `serving`. Change both in the same commit.'';
         }
       ];
 

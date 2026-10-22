@@ -7,7 +7,8 @@
 let
   cfg = config.services.sshfsMounts;
   ownKey = config.ndh.sshfs.ownKey;
-  sshfsKeyFile = (import ../.common.d/identity-push.d/package.nix { inherit pkgs lib; }).sshfsKeyFile;
+  # The guest's own sshfs key, used once ndh.sshfs.ownKey is set.
+  sshfsKeyFile = "/var/lib/ndh/sshfs/id_ed25519";
 
   # Reliability options shared by every sshfs mount. sshfs rides ONE ssh channel — no nfsd /
   # lockd / statd / mountd / portmapper / stale-handles (the whole NFS surface that hung us). The key
@@ -66,9 +67,9 @@ in
     type = lib.types.bool;
     default = false;
     description = ''
-      Mount the operator seat's git stores read-only with this guest's own key, `sshfs-<hostName>`, placed
-      by ndh-identity-push at ${sshfsKeyFile}, instead of identityFile. Turned on only once the key is
-      recorded in keys.yaml, the operator seat switched (it authorizes the key) and the key placed.
+      Mount the operator seat's git stores read-only with this guest's own key, `sshfs-<hostName>`, at
+      ${sshfsKeyFile}, instead of identityFile. Off on every guest: its key born on the guest, like the host
+      key's (K3), is a step of its own; nothing places one there any more (the push channel is gone, K5).
     '';
   };
 
