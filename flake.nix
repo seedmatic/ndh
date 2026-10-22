@@ -172,6 +172,33 @@
         "aarch64-darwin"
         "aarch64-linux"
       ];
+      # The checks that cannot run on aarch64-linux, each with why. The linux set is the darwin set minus exactly these.
+      darwinOnlyChecks = {
+        claude-code-backend-seats = "runs each darwin seat's own claudeCodeBackend activation, whose yq is an aarch64-darwin binary";
+      };
+      # The checks of every system from ONE body that drops nothing: linux is cut by darwinOnlyChecks alone, and any other
+      # difference between the systems (an optionalAttrs on system inside the body, a stale entry) fails the evaluation.
+      splitChecks =
+        body:
+        let
+          lib = nixpkgs.lib;
+          declared = builtins.attrNames darwinOnlyChecks;
+          names = system: builtins.attrNames (body system);
+          darwin = names "aarch64-darwin";
+          linux = names "aarch64-linux";
+          stale = builtins.filter (n: !builtins.elem n darwin) declared;
+          undeclared = builtins.filter (n: !builtins.elem n linux) darwin;
+          linuxOnly = builtins.filter (n: !builtins.elem n darwin) linux;
+        in
+        assert lib.assertMsg (
+          stale == [ ]
+        ) "darwinOnlyChecks names checks that do not exist: ${toString stale}";
+        assert lib.assertMsg (undeclared == [ ] && linuxOnly == [ ])
+          "the checks differ between systems outside darwinOnlyChecks: darwin only ${toString undeclared}, linux only ${toString linuxOnly}";
+        lib.genAttrs checkSystems (
+          system:
+          if system == "aarch64-linux" then builtins.removeAttrs (body system) declared else body system
+        );
       # The seedmatic root's ceremony VM (roles × keys ⑧): aarch64-linux, built by revision, run by
       # ndh-ceremony-vm on an operator seat.
       ceremonyVm = nixpkgs.lib.nixosSystem {
@@ -1084,7 +1111,7 @@
       );
 
       # No treefmt check here (its API mismatched during evaluation); the formatter runs as a hook.
-      checks = nixpkgs.lib.genAttrs checkSystems (
+      checks = splitChecks (
         system:
         let
           pkgs = pkgsFor { inherit system; };
@@ -3207,9 +3234,6 @@
               pkgs = linuxPkgs;
               nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
             };
-        }
-        # It runs the darwin seats' own activation, whose binaries only a darwin builder executes.
-        // nixpkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
           # env), telemetry off included, and no layer names a retired backend key.
           claude-code-backend-seats =
