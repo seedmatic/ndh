@@ -1,6 +1,6 @@
 # ops-queue's checks as one flake check:
 #   1. the derivation: each state of a machine slot gives the expected step, in fleet-switch's order, and the
-#      repo's own keys.json gives an empty head today (no slot born on a host yet);
+#      repo's own keys.json gives a head of exactly its declared pending slots;
 #   2. the BUILT `ops` on queues derived from fixtures (bats), including mutants of the frozen queue it must refuse.
 {
   pkgs,
@@ -149,16 +149,32 @@ let
     ];
     true;
 
+  repoKeys = (builtins.fromJSON (builtins.readFile ../../../home-manager/ssh.d/keys.json)).keys;
   repoQueue = import ../queue.nix {
     inherit lib catalog;
-    keys = (builtins.fromJSON (builtins.readFile ../../../home-manager/ssh.d/keys.json)).keys;
+    keys = repoKeys;
   };
   ops = lib.mapAttrs build fixtures;
 in
 assert derivationOk;
-assert lib.assertMsg (
-  repoQueue.head == [ ]
-) "ops-queue: the repo's keys.json offers a step today: ${builtins.toJSON repoQueue.head}";
+# The repo's own queue offers exactly its declared pending slots, born on their machine (none before M1; M1 declares
+# bioskop-nixos's): a step appears only from a declaration.
+assert lib.assertMsg
+  (
+    map (e: "${e.step}:${e.key}@${e.slot}") repoQueue.head == lib.concatLists (
+      lib.mapAttrsToList (
+        k: key:
+        map (slot: "generate:${k}@${slot}") (
+          lib.attrNames (
+            lib.filterAttrs (_: s: (s.state or "") == "pending" && (s.origin or "") == "host") (
+              key.slots or { }
+            )
+          )
+        )
+      ) (lib.filterAttrs (k: _: lib.hasPrefix "host-" k || lib.hasPrefix "sshfs-" k) repoKeys)
+    )
+  )
+  "ops-queue: the repo's queue head is not its declared pending slots: ${builtins.toJSON repoQueue.head}";
 pkgs.runCommand "ops-queue-checks"
   {
     nativeBuildInputs = with pkgs; [
