@@ -1162,6 +1162,16 @@
             sopsYaml = ./.sops.yaml;
             keysJson = ./modules/home-manager/ssh.d/keys.json;
           };
+          keys-yaml-hidden-slots = import ./modules/.common.d/keys-yaml.d/tests/hidden-slots.nix {
+            inherit pkgs;
+            inherit (nixpkgs) lib;
+            keysYamlModule = ./modules/.common.d/keys-yaml.nix;
+            splitExp = ./modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq;
+            enrich = ./modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh;
+            krl = ./modules/.common.d/keys-yaml.d/krl.sh;
+            certify = ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh;
+            renew = ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh;
+          };
           keys-json-fresh = import ./modules/.common.d/keys-yaml.d/tests/keys-json-fresh.nix {
             inherit pkgs;
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;

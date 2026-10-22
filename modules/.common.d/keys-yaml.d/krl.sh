@@ -69,7 +69,7 @@ while IFS=$'\t' read -r where cert; do
 	if [[ -n "${revokedIds[$id]+set}" ]]; then
 		fail "${where}: its recorded certificate has the key id revoked_certificates.${revokedIds[$id]} revokes — it would be cut with it"
 	fi
-done < <(yq -r '(.keys // {}) | to_entries[] | .key as $k | (.value.slots // {}) | to_entries[] | .key as $s | (.value.certificates // {}) | to_entries[] | .key as $a | .value | to_entries[] | select(.value | tag == "!!str") | ($k + "@" + $s + " " + $a + " " + .key) + "\t" + .value' "$json")
+done < <(yq -r '(.keys // {}) | to_entries[] | .key as $k | (.value.slots // {}) | with_entries(select((.value.state // "") != "pending" and (.value.state // "") != "retired")) | to_entries[] | .key as $s | (.value.certificates // {}) | to_entries[] | .key as $a | .value | to_entries[] | select(.value | tag == "!!str") | ($k + "@" + $s + " " + $a + " " + .key) + "\t" + .value' "$json")
 
 ssh-keygen -k -f "$work/krl" "$work/keys.spec"
 # ssh-keygen stamps the header's generated_date (PROTOCOL.krl: a uint64 after the magic, the format version and

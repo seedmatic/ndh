@@ -69,7 +69,9 @@ env(TMPDIR) + "/" as $tmpdir |
     .key as $basename |
     .value.type as $keyType |
     .value.comment as $keyComment |
-    ( ( .value.slots // {} ) | to_entries | sort_by(.key) ) as $slots |
+    # A slot `pending` (no key yet) or `retired` (no longer used) is not this machine's to install or present
+    # (roles × keys K5+): dropped before anything reads the slots.
+    ( ( .value.slots // {} ) | to_entries | map(select((.value.state // "") != "pending" and (.value.state // "") != "retired")) | sort_by(.key) ) as $slots |
     ( $slots | .[-1].key ) as $presented |
 
     # The yaml passed to this split expression is already filtered by profile
