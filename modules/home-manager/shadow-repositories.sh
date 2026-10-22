@@ -15,10 +15,10 @@ dmg:createOrUpdate() {
 shadow:detach:filter() {
   local dmg="$1"
     cat <<! | cut -c 7-
-      .images[] | 
+      .images[] |
         select( .image-path == "$dmg" ) |
         .system-entities[] |
-        .mount-point
+        .mount-point | select( . != null )
 !
 }
 

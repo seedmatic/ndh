@@ -43,7 +43,9 @@ in
         RunAtLoad = true;
         KeepAlive = false;
         EnvironmentVariables = {
-          PATH = "/usr/sbin:${pkgs.coreutils}/bin:${pkgs.rsync}/bin:${pkgs.yq}/bin:$PATH";
+          # yq-go: the script is written in its syntax (-p json, -o yaml). pkgs.yq is the PYTHON yq, which wraps
+          # jq and refuses `-p` (exit 2, measured), so every call failed and is_mounted always read "not mounted".
+          PATH = "/usr/sbin:${pkgs.coreutils}/bin:${pkgs.rsync}/bin:${pkgs.yq-go}/bin:$PATH";
         };
       };
     };
