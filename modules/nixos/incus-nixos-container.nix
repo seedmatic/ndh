@@ -327,75 +327,77 @@ in
       prestartHook
     ];
 
-    # The switch alone moves a container to its declared system, and so does a boot.
-    systemd.services.ndh-incus-container-converge = {
-      description = "Converge ndh's NixOS containers to their declared systems";
-      wantedBy = [ "multi-user.target" ];
-      after = [
-        "incus.service"
-        "incus-startup.service"
-      ];
-      requires = [ "incus.service" ];
-      # Never restarted by the switch itself, which would then wait on every container's restart and health.
-      restartIfChanged = false;
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "${lib.getExe operatorCli} converge";
-      };
-    };
-    # What the switch restarts instead: changed whenever a declared system changes (the CLI carries them), and
-    # restarted AFTER the switch's daemon-reload, so it queues the converge on the NEW definitions. An activation
-    # script would run before that reload and queue the old ones. It only queues, so the switch never waits.
-    systemd.services.ndh-incus-container-converge-trigger = {
-      description = "Queue the convergence of ndh's NixOS containers after a switch";
-      wantedBy = [ "multi-user.target" ];
-      restartTriggers = [ operatorCli ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${config.systemd.package}/bin/systemctl --no-block start ndh-incus-container-converge.service";
-      };
-    };
-
-    systemd.services = lib.mapAttrs' (
-      name: info:
-      lib.nameValuePair "ndh-incus-container-store-${name}" {
-        description = "Store overlay of the NixOS container ${name}";
-        # Wanted, never required, by the autostart: one container's failure must not stop the others,
-        # the cluster nodes included. Its own container refuses to start through its pre-start hook.
-        wantedBy = [
-          "multi-user.target"
-          "incus-startup.service"
-        ];
-        before = [
-          "incus.service"
-          "incus-startup.service"
-        ];
-        after = [ "zfs-mount.service" ];
-        unitConfig = {
-          # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
-          # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
-          # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
-          ConditionPathIsMountPoint = info.dir;
-          # Written by the first `deliver`: before it there is no snapshot to mount.
-          ConditionPathExists = "${info.dir}/lower.snapshot";
-        };
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStop = [
-            "${pkgs.util-linux}/bin/umount ${info.dir}/root/nix/store"
-            "${pkgs.util-linux}/bin/umount ${info.dir}/view/nix/store"
+    systemd.services =
+      lib.mapAttrs' (
+        name: info:
+        lib.nameValuePair "ndh-incus-container-store-${name}" {
+          description = "Store overlay of the NixOS container ${name}";
+          # Wanted, never required, by the autostart: one container's failure must not stop the others,
+          # the cluster nodes included. Its own container refuses to start through its pre-start hook.
+          wantedBy = [
+            "multi-user.target"
+            "incus-startup.service"
           ];
+          before = [
+            "incus.service"
+            "incus-startup.service"
+          ];
+          after = [ "zfs-mount.service" ];
+          unitConfig = {
+            # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
+            # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
+            # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
+            ConditionPathIsMountPoint = info.dir;
+            # Written by the first `deliver`: before it there is no snapshot to mount.
+            ConditionPathExists = "${info.dir}/lower.snapshot";
+          };
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStop = [
+              "${pkgs.util-linux}/bin/umount ${info.dir}/root/nix/store"
+              "${pkgs.util-linux}/bin/umount ${info.dir}/view/nix/store"
+            ];
+          };
+          environment = {
+            LAYER_CONTRACT = layerContract;
+            CONTAINER_DIR = info.dir;
+            CONTAINER_NAME = name;
+            CONTAINER_PRIVILEGED = lib.boolToString info.privileged;
+          };
+          script = lib.getExe storeScript;
+        }
+      ) instanceInfo
+      // {
+        # The switch alone moves a container to its declared system, and so does a boot.
+        ndh-incus-container-converge = {
+          description = "Converge ndh's NixOS containers to their declared systems";
+          wantedBy = [ "multi-user.target" ];
+          after = [
+            "incus.service"
+            "incus-startup.service"
+          ];
+          requires = [ "incus.service" ];
+          # Never restarted by the switch itself, which would then wait on every container's restart and health.
+          restartIfChanged = false;
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = "${lib.getExe operatorCli} converge";
+          };
         };
-        environment = {
-          LAYER_CONTRACT = layerContract;
-          CONTAINER_DIR = info.dir;
-          CONTAINER_NAME = name;
-          CONTAINER_PRIVILEGED = lib.boolToString info.privileged;
+        # What the switch restarts instead: changed whenever a declared system changes (the CLI carries them), and
+        # restarted AFTER the switch's daemon-reload, so it queues the converge on the NEW definitions. An activation
+        # script would run before that reload and queue the old ones. It only queues, so the switch never waits.
+        ndh-incus-container-converge-trigger = {
+          description = "Queue the convergence of ndh's NixOS containers after a switch";
+          wantedBy = [ "multi-user.target" ];
+          restartTriggers = [ operatorCli ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = "${config.systemd.package}/bin/systemctl --no-block start ndh-incus-container-converge.service";
+          };
         };
-        script = lib.getExe storeScript;
-      }
-    ) instanceInfo;
+      };
   };
 }
