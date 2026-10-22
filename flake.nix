@@ -1534,6 +1534,58 @@
                 ++ nixpkgs.lib.mapAttrsToList (line "darwin") self.darwinConfigurations
               )
             );
+          # The bringup profile carries its contract: every command ndh.bringupRuntime.requiredCommands names
+          # resolves in its bin/, on each machine built for this system. The trampoline refuses a script whose
+          # profile lacks one; this finds it at build, not at a switch or a hand-run app. A symlinkJoin links
+          # only each package's default output, so a split one (util-linux.bin) or a dependency's command (gpg
+          # under pass) shows here first.
+          bringup-profile-contract =
+            let
+              all = self.nixosConfigurations // self.darwinConfigurations;
+              mine = nixpkgs.lib.filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system == system) all;
+              # The checks run on ${system} only (defaultSystems): a machine of another platform is NOT checked
+              # here, and the check says so by name rather than passing by omission.
+              others = builtins.attrNames (
+                nixpkgs.lib.filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system != system) all
+              );
+              line =
+                name: c:
+                let
+                  r = c.config.ndh.bringupRuntime;
+                in
+                "${name} ${r.runtimePackage} ${nixpkgs.lib.concatStringsSep " " r.requiredCommands}";
+              # The reviewed exceptions stay OUT of the profile, or the list and the profile say two things.
+              exceptions = builtins.attrNames (
+                import ./modules/.common.d/bringup-runtime.d/profile-exceptions.nix
+              );
+            in
+            pkgs.runCommand "bringup-profile-contract"
+              {
+                exceptions = nixpkgs.lib.concatStringsSep " " exceptions;
+                passAsFile = [ "machines" ];
+                machines = nixpkgs.lib.concatLines (
+                  nixpkgs.lib.mapAttrsToList line (
+                    nixpkgs.lib.filterAttrs (_: c: c.config.ndh.bringupRuntime.enable or false) mine
+                  )
+                );
+              }
+              ''
+                [ -s "$machinesPath" ] || { echo "no machine of ${system} carries the bringup profile" >&2; exit 1; }
+                rc=0
+                while read -r name profile commands; do
+                  missing=""
+                  for c in $commands; do [ -e "$profile/bin/$c" ] || missing="$missing $c"; done
+                  if [ -n "$missing" ]; then echo "$name: its profile lacks:$missing" >&2; rc=1; else echo "$name: $(echo $commands | wc -w) commands"; fi
+                  # The exception names its package; its main command is the package's name, or the usual one.
+                  for e in $exceptions; do
+                    case $e in qemu) cmd=qemu-system-aarch64 ;; mtools) cmd=mcopy ;; check-jsonschema) cmd=check-jsonschema ;; *) cmd=$e ;; esac
+                    if [ -e "$profile/bin/$cmd" ]; then echo "$name: $e is a reviewed exception, yet the profile carries $cmd" >&2; rc=1; fi
+                  done
+                done <"$machinesPath"
+                echo "not checked here (another platform): ${nixpkgs.lib.concatStringsSep " " others}"
+                [ "$rc" = 0 ] && touch $out
+                exit "$rc"
+              '';
           # Every app still EVALUATES, by its name in the flake: ndh-ops broke for a day unseen (2026-10-18, an
           # operator tool added to verbs.json without its delegation list). Its program's path, context discarded,
           # so this evaluates the app's assertions and builds nothing.

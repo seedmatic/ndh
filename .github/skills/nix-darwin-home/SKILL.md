@@ -95,8 +95,8 @@ ndh.store.installScript { name = "zpool-sync"; source = pkgs.replaceVars ...; mo
 **String alias pattern** (when a script path is passed as `@placeholder@` via `pkgs.replaceVars inherit`):
 ```nix
 # The pkg holds the bin/, but the variable stays a string for transparent inherit:
-bioskopFstabPkg    = ndh.store.installBinScript "bioskop-fstab" (pkgs.replaceVars ...);
-bioskopFstabScript = "${bioskopFstabPkg}/bin/bioskop-fstab";  # string for replaceVars
+opensshActivationScript = ndh.store.installBinScript "openssh-activation" (pkgs.replaceVars ...);
+opensshActivation       = "${opensshActivationScript}/bin/openssh-activation";  # string for replaceVars
 ```
 
 ## Flake Architecture
