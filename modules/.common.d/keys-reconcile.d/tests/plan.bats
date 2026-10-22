@@ -38,7 +38,7 @@ publish() { # <new public file> <old private>: what K3's generate.sh publishes
 }
 
 batch() { # <recorded old public>
-  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
 }
 
 render() { # <revision>
@@ -109,7 +109,7 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   printf 'seedmatic-rotate v1\nname host-mate\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-mate@26-11-01.statement"
   ssh-keygen -q -Y sign -f "$t/old2" -n seedmatic-rotate "$t/published/host-mate@26-11-01.statement" </dev/null
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n- {name: mate, kind: darwin, ssh: "", ssh_opts: []}\n- {name: other, kind: nixos, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"class": "host-key", "machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
     "$old" "$(cut -d' ' -f1,2 "$t/old2.pub")" >"$t/batch.json"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
@@ -152,6 +152,16 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   kr plan
   [ "$(find "$t/published" "$t/keys.json" "$t/batch.json" -type f -exec sha256sum {} + | sort)" = "$before" ]
   [ -z "$(find "$t/published" -newer "$t/keys-reconcile" -type f)" ]
+}
+
+@test "a batch entry of a class keys-reconcile does not define is refused, nothing collected" {
+  for class in attic-nothing 'host-key;id' '' '../host-key'; do
+    C="$class" yq -i -p json -o json '.[0].class = strenv(C)' "$t/batch.json"
+    run --separate-stderr kr plan
+    [ "$status" -eq 3 ]
+    [[ $stderr == *"batch entry 0: no artifact class"* ]]
+    [[ $output != *"✓"* ]]
+  done
 }
 
 @test "no private is ever printed" {

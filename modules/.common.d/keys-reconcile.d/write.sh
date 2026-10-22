@@ -2,7 +2,7 @@
 # the « oui » and the re-verification of the measure. It writes into a clean worktree of the bare at the revision,
 # never into a checkout a session works in, and commits there once; it pushes nothing.
 #
-#   reconcile::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
+#   reconcile::host-key::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
 #
 # Per slot: the public, its age, `recipient: true`, `state: recorded` and its ssh-host certificate, each by `sops set`
 # on keys.yaml; each new age into every rule of .sops.yaml; then `sops updatekeys` of every file those rules govern;
@@ -32,7 +32,7 @@ reconcile::sopsSet() { # <file> <path as a yq-style list of keys> <JSON value>
   ((rc == 0)) || reconcile::fail "sops set failed (exit ${rc}) on ${1##*/} at ${2}"
 }
 
-reconcile::write() {
+reconcile::host-key::write() {
   local work="$1" i keyName slot public hash age entry authority authSlot serial principals certId cert value
   local branch="keys-reconcile/${revision:0:12}"
   tree="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"

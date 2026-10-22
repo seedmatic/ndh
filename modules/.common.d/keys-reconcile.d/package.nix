@@ -32,6 +32,7 @@ let
       r = roles entry;
     in
     lib.optional (r.pendingName != null) {
+      class = "host-key";
       inherit machine key files;
       # Sorted bytewise: the certificate's key id hashes this exact list.
       principals = lib.sort lib.lessThan (

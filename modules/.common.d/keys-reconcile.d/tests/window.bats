@@ -55,7 +55,7 @@ EOF
   install -d -m 0755 "$t/published"
   publish "$t/new.pub" "$t/old"
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '[{"machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' \
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' \
     "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/batch.json"
   arm "$(($(date +%s) + 600))" keys-reconcile
   render
@@ -156,7 +156,7 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   : "a writer racing the window: the publication changes right after the « oui » (injected into a test copy)"
   printf 'swap() { cut -d" " -f1,2 %q >%q; }\n' "$t/other.pub" "$t/published/host-seat@26-11-01.public" >"$t/swap.sh"
   sed -i -e "s|^source .*/write.sh\$|&\nsource $t/swap.sh|" \
-    -e 's|^  local again i keyName slot public hash machine$|  swap\n&|' "$t/keys-reconcile"
+    -e 's|^  local again class$|  swap\n&|' "$t/keys-reconcile"
   grep -q '^  swap$' "$t/keys-reconcile"
   run --separate-stderr window oui
   [ "$status" -ne 0 ]
