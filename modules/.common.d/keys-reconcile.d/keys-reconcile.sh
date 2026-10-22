@@ -172,7 +172,10 @@ window() {
   local again class
   again=$(mktemp -d "$work/again.XXXXXX")
   for class in "${present[@]}"; do "reconcile::${class}::recheck" "$work" "$again"; done
-  for class in "${present[@]}"; do "reconcile::${class}::write" "$work"; done
+  : "one worktree, every class writes into it and checks its own postconditions, one commit"
+  reconcile::tree::open || return 1
+  for class in "${present[@]}"; do "reconcile::${class}::write" "$work" || return 1; done
+  reconcile::tree::commit
 }
 
 main() {

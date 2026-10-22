@@ -32,15 +32,30 @@ reconcile::sopsSet() { # <file> <path as a yq-style list of keys> <JSON value>
   ((rc == 0)) || reconcile::fail "sops set failed (exit ${rc}) on ${1##*/} at ${2}"
 }
 
-reconcile::host-key::write() {
-  local work="$1" i keyName slot public hash age entry authority authSlot serial principals certId cert value
-  local branch="keys-reconcile/${revision:0:12}"
+# reconcile::tree::open: the window's one clean worktree of the bare at the revision, on its own local branch; every
+# class writes into it, and reconcile::tree::commit commits it once.
+reconcile::tree::open() {
+  branch="keys-reconcile/${revision:0:12}"
   tree="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"
-
-  : "a clean worktree of the bare at the revision, on its own local branch"
   [[ ! -e $tree ]] || reconcile::fail "${tree} already exists: a previous window was not closed (read it, then remove it)" || return 1
   git -C "$bare" cat-file -e "${revision}^{commit}" 2>/dev/null || reconcile::fail "${revision} is not in ${bare}" || return 1
   git -C "$bare" worktree add -q -b "$branch" "$tree" "$revision" || reconcile::fail "cannot add the worktree at ${revision}" || return 1
+  : >"$work/staged"
+  : >"$work/summary"
+}
+
+# reconcile::tree::commit: one local commit of what the classes staged (<work>/staged, one path per line), with each
+# class's summary lines (<work>/summary) as its message; never pushed.
+reconcile::tree::commit() {
+  local -a paths
+  mapfile -t paths < <(sort -u "$work/staged")
+  git -C "$tree" add -- "${paths[@]}"
+  git -C "$tree" commit -q -F "$work/summary" || reconcile::fail "the commit failed" || return 1
+  echo "écrit dans ${tree}, branche ${branch} (locale, non poussée) : à relire puis à fusionner, avec ton feu vert."
+}
+
+reconcile::host-key::write() {
+  local work="$1" i keyName slot public hash age entry authority authSlot serial principals certId cert value
   local keysYaml="$tree/modules/home-manager/ssh.d/keys.yaml" sopsYaml="$tree/.sops.yaml"
   local -a sopsFiles=(.secrets catalog/cache-trust.yaml modules/home-manager/ssh.d/keys.yaml)
   local f
@@ -119,9 +134,7 @@ reconcile::host-key::write() {
     reconcile::fail "a private is not encrypted in keys.yaml" || return 1
 
   "$keysJsonTool" "$keysYaml" || reconcile::fail "keys.json could not be regenerated" || return 1
-  git -C "$tree" add .sops.yaml "${sopsFiles[@]}" modules/home-manager/ssh.d/keys.json
-  git -C "$tree" commit -q -m "keys-reconcile: record $(wc -l <"$work/measured") host key(s) at ${revision:0:12}
-
-$(cut -f2,3 "$work/measured" | tr '\t' '@')" || reconcile::fail "the commit failed" || return 1
-  echo "écrit dans ${tree}, branche ${branch} (locale, non poussée) : à relire puis à fusionner, avec ton feu vert."
+  printf '%s\n' .sops.yaml "${sopsFiles[@]}" modules/home-manager/ssh.d/keys.json >>"$work/staged"
+  printf 'keys-reconcile: record %s host key(s) at %s\n\n%s\n' "$(wc -l <"$work/measured")" "${revision:0:12}" \
+    "$(cut -f2,3 "$work/measured" | tr '\t' '@')" >>"$work/summary"
 }
