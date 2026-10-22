@@ -42,7 +42,7 @@ listing() {
 status() {
   local manifest
   if [ -s "$RUN_DIR/store-stack.json" ]; then
-    echo "this boot: $(jq -c '{manifest, frozen}' "$RUN_DIR/store-stack.json")"
+    echo "this boot: $(yq -p json -o json -I0 '{"manifest": .manifest, "frozen": .frozen}' "$RUN_DIR/store-stack.json")"
   else
     echo "this boot: no stack description from the initrd"
   fi
@@ -53,7 +53,7 @@ status() {
   fi
   for manifest in next current previous; do
     if [ -e "$STACK_DIR/$manifest.json" ]; then
-      echo "$manifest: $(jq -c '{kind, layers: [.layers[].snapshot]}' "$STACK_DIR/$manifest.json" 2>/dev/null || echo unreadable)"
+      echo "$manifest: $(yq -p json -o json -I0 '{"kind": .kind, "layers": [.layers[].snapshot]}' "$STACK_DIR/$manifest.json" 2>/dev/null || echo unreadable)"
     fi
   done
   if [ -s "$RW_MOUNT/upper.base" ]; then
@@ -240,8 +240,8 @@ accept() {
 # and the upper disagree, and nothing is done.
 base_layers() {
   local base='[]'
-  if [ -s "$STACK_DIR/current.json" ]; then base=$(jq -c '.layers' "$STACK_DIR/current.json"); fi
-  if [ "$(jq -r '[.[].snapshot] | join(" ")' <<<"$base")" != "$(cat "$RW_MOUNT/upper.base" 2>/dev/null || true)" ]; then
+  if [ -s "$STACK_DIR/current.json" ]; then base=$(yq -p json -o json -I0 '.layers' "$STACK_DIR/current.json"); fi
+  if [ "$(yq -p json -o json -r '[.[].snapshot] | join(" ")' <<<"$base")" != "$(cat "$RW_MOUNT/upper.base" 2>/dev/null || true)" ]; then
     die "current.json is not what the upper sits on (upper.base) — nothing done"
   fi
   echo "$base"
@@ -249,19 +249,22 @@ base_layers() {
 
 # layer {dataset} {snapshot}: the manifest entry of a layer just snapshotted.
 layer() {
-  jq -cn --arg ds "$1" --arg s "$2" --arg g "$(zfs get -H -o value guid "$1@$2")" \
-    '{dataset: $ds, snapshot: $s, guid: $g}'
+  local guid
+  guid=$(zfs get -H -o value guid "$1@$2")
+  # strenv keeps each value a string, as jq's --arg did: a guid is never read as a number.
+  DS="$1" S="$2" G="$guid" yq -n -o json -I0 '{"dataset": strenv(DS), "snapshot": strenv(S), "guid": strenv(G)}'
 }
 
 # stage_next {kind} {layers} {base}: the next stack, built over the base, then the reboot that
 # stacks it.
 stage_next() {
   local kind="$1" layers="$2" base="$3" snapshot instance
-  snapshot=$(jq -r '.[0].snapshot' <<<"$layers")
-  write "$STACK_DIR/next.json" "$(jq -cn --arg v "$MANIFEST_VERSION" --arg k "$kind" \
-    --arg sys "$(readlink -f "$CURRENT_SYSTEM")" --argjson layers "$layers" --argjson base "$base" \
-    '{version: ($v | tonumber), kind: $k, layers: $layers, over: [$base[].snapshot], frozenFor: $sys}')"
-  write "$STACK_DIR/request.json" "$(jq -cn --arg s "$snapshot" '{snapshot: $s}')"
+  snapshot=$(yq -p json -o json -r '.[0].snapshot' <<<"$layers")
+  # The manifest the initrd reads at the next boot: version a NUMBER (from_json), the rest strings and lists.
+  write "$STACK_DIR/next.json" "$(V="$MANIFEST_VERSION" K="$kind" SYS="$(readlink -f "$CURRENT_SYSTEM")" \
+    L="$layers" B="$base" yq -n -o json -I0 \
+    '{"version": (strenv(V) | from_json), "kind": strenv(K), "layers": (strenv(L) | from_json), "over": [(strenv(B) | from_json) | .[].snapshot], "frozenFor": strenv(SYS)}')"
+  write "$STACK_DIR/request.json" "$(S="$snapshot" yq -n -o json -I0 '{"snapshot": strenv(S)}')"
   say "$kind staged as $snapshot; the next boot stacks it"
 
   while read -r instance; do
@@ -279,7 +282,7 @@ new_name() {
 # The layers above the EROFS ones, top first: the upper, then this boot's frozen layers.
 upper_layers() {
   echo "$RW_MOUNT/upper"
-  jq -r '.frozen[]' "$RUN_DIR/store-stack.json"
+  yq -p json -o json -r '.frozen[]' "$RUN_DIR/store-stack.json"
 }
 
 # top_of {name}: the directory of the layer above the EROFS ones that holds that store entry, or
@@ -396,7 +399,7 @@ freeze() {
   gc_and_verify
   snapshot=$(new_name)
   zfs snapshot "$RW_DATASET@$snapshot" "$DB_DATASET@$snapshot"
-  stage_next freeze "$(jq -c --argjson new "$(layer "$RW_DATASET" "$snapshot")" '[$new] + .' <<<"$base")" "$base"
+  stage_next freeze "$(N="$(layer "$RW_DATASET" "$snapshot")" yq -p json -o json -I0 '[strenv(N) | from_json] + .' <<<"$base")" "$base"
 }
 
 # A compaction keeps only the current generation, so it waits until that generation has booted:
@@ -502,8 +505,8 @@ confirm() {
   [ ! -e "$RUN_DIR/store-degraded" ] || die "this boot is degraded — repair it first"
   [ ! -e "$STACK_DIR/next.json" ] || die "a new stack is pending in next.json — reboot first"
   [ -s "$STACK_DIR/current.json" ] || die "no current stack"
-  keep=$(jq -r '.layers[].snapshot' "$STACK_DIR/current.json")
-  [ "$(jq -r '.frozen | map(split("/")[-2]) | join(" ")' "$RUN_DIR/store-stack.json")" = "$(paste -sd' ' <<<"$keep")" ] ||
+  keep=$(yq -p json -o json -r '.layers[].snapshot' "$STACK_DIR/current.json")
+  [ "$(yq -p json -o json -r '.frozen | map(split("/") | .[-2]) | join(" ")' "$RUN_DIR/store-stack.json")" = "$(paste -sd' ' <<<"$keep")" ] ||
     die "this boot is not on current.json's stack — reboot on it first"
   # A listing that fails dies: a broken pool must not read as nothing to release.
   listed=$(zfs list -H -t snapshot -o name "$RW_DATASET" "$DB_DATASET") ||

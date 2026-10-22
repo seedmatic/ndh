@@ -67,10 +67,7 @@ let
 
   commitScript = pkgs.writeShellApplication {
     name = "ndh-store-commit";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.jq
-    ];
+    runtimeInputs = runtimeInputs.commit;
     text = ''
       ${exports}
       ${builtins.readFile ./store-freeze.d/commit.sh}
@@ -105,6 +102,9 @@ let
     pkgs.coreutils
     pkgs.gawk
     pkgs.gnused
+    # The ONE reviewed exception to jq → yq (operator, 2026-10-22): stack.sh reads its manifest in the initrd,
+    # paid at every stage-1 boot; jq's binary is 71 KB, yq-go's 13.6 MB (+4.2 MB on nikopol-nixos's initrd,
+    # measured). The no-jq check names this line and nothing else.
     pkgs.jq
     pkgs.util-linux
     config.boot.zfs.package
