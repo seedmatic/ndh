@@ -42,14 +42,6 @@ let
     };
 
   guest = {
-    # The trampoline's bringup profile, so the container's scripts can move onto the trampoline (batch 2): a bare
-    # container imports none of ndh's common modules, and the strict trampoline refuses where the profile is missing.
-    # The host's own runtime package (the container takes the host's pkgs), linked at activation as
-    # bringup-minimal-system does: the link is in the toplevel, so whatever delivers the container delivers it.
-    system.activationScripts.ndhBringupRuntime = ''
-      install -d -m 0755 ${builtins.dirOf config.ndh.bringupRuntime.profileDir}
-      ln -sfn ${config.ndh.bringupRuntime.runtimePackage} ${config.ndh.bringupRuntime.profileDir}
-    '';
     networking.useDHCP = false;
     # networkd without systemd-resolved, which a container's host resolv.conf refuses; the cache
     # container resolves nothing.
@@ -362,6 +354,26 @@ in
       # atticd and nginx face the fabric: a compromise must not be the NixOS guest's root.
       privileged = false;
       modules = [ guest ];
+      # The trampoline's bringup profile, so the container's scripts can move onto the trampoline (batch 2): a bare
+      # container imports none of ndh's common modules, and the strict trampoline refuses where the profile is
+      # missing. Set host side at each delivery, never from the container's activation: unprivileged, its root
+      # cannot write in the host-owned /nix bind, and the link failed there silently (🎛️, 2026-10-22).
+      profiles.${config.ndh.bringupRuntime.profileDir} = config.ndh.bringupRuntime.runtimePackage;
+      # The state, secrets and TLS key, all in one dataset: atticd migrates its DB forward on start, so a rollback
+      # must bring the data back with the system (🛡️'s condition, the operator's ZFS-snapshot form, 2026-10-22).
+      stateDatasets = [ cfg.dataset ];
+      # attic-cache-ensure is the one that proves the cache private and its key well named. nginx waits on its TLS
+      # leaf (ConditionPathExists), so before that leaf it is skipped, not failed.
+      health.units = [
+        "atticd.service"
+        "attic-server-secret.service"
+        "attic-tls-key.service"
+        "attic-cache-ensure.service"
+        {
+          unit = "nginx.service";
+          kind = "conditional";
+        }
+      ];
       devices = {
         fabric = {
           type = "nic";

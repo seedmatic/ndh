@@ -1,12 +1,15 @@
-# The operator's gestures on ndh's NixOS containers. Nothing here runs by itself: creating and
-# delivering change the live system.
+# ndh's NixOS containers. `create` is the operator's gesture; `converge` runs by itself after every
+# switch and boot (ndh-incus-container-converge.service), and is the only thing that moves a container
+# to a new system: the hand verbs below stay for the probe and for repairs.
 #
 #   ndh-incus-container list
-#   ndh-incus-container create  {name}   dataset, project, instance and its devices
-#   ndh-incus-container deliver {name}   restart the container on a snapshot of this generation's store
+#   ndh-incus-container create   {name}   dataset, project, instance and its devices
+#   ndh-incus-container deliver  {name}   restart the container on a snapshot of this generation's store
+#   ndh-incus-container converge          deliver every declared container whose system differs, keep it if
+#                                         healthy, restore the previous system if not
 #
 # Set by the wrapper: INSTANCES (JSON), PROJECT, POOL, LAYER_CONTRACT, GUEST_LOWER, GUEST_UPPER,
-# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG.
+# PRESTART_HOOK, STACK_DESCRIPTION, STORE_DEGRADED, GCROOTS, NIX_CONFIG, HEALTH_TIMEOUT.
 
 usage() {
   # By its content, not its line numbers: the wrapper puts its own lines before this file.
@@ -133,8 +136,18 @@ root_own() {
   done
 }
 
-deliver() {
-  local info dir toplevel store upper_root rw db snapshot aside entry old
+# deliver_keep {name}: the delivery up to the container's start, the previous state kept aside in
+# `.previous-<snapshot>` (its upper, DB, lowers stamps and profiles) and its snapshot kept, so
+# `rollback` can put it back exactly. Prints ONLY the new snapshot's name on stdout: what the steps
+# print goes to stderr, since the caller captures stdout.
+deliver_keep() {
+  local snapshot
+  snapshot=$(deliver_steps "$1" 3>&1 1>&2) || return 1
+  echo "$snapshot"
+}
+
+deliver_steps() {
+  local info dir toplevel store upper_root rw db snapshot aside entry runtime
   info=$(instance "$1")
   dir=$(field "$info" dir)
   toplevel=$(field "$info" toplevel)
@@ -167,6 +180,12 @@ deliver() {
 
   snapshot="ndh-incus-$1-$(date -u +%Y%m%dT%H%M%SZ)"
   zfs snapshot "$rw@$snapshot" "$db@$snapshot"
+  # The service's data, at every delivery and with the container stopped, so the snapshot is consistent:
+  # a ZFS snapshot costs nothing, and whether the new system migrates its data is not knowable here.
+  local state
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$info"); do
+    zfs snapshot -r "${state:?}@$snapshot"
+  done
   # Reached host-side first: a snapshot automounted from a private namespace is ENOENT there.
   [ -d "$upper_root/.zfs/snapshot/$snapshot/upper" ] || die "snapshot $snapshot has no upper"
 
@@ -201,18 +220,172 @@ deliver() {
   # signature, so a checked copy would refuse the first path of any delta.
   nix copy --no-check-sigs --to "$store" "$toplevel"
   nix-env --store "$store" -p "$dir/root/nix/var/nix/profiles/system" --set "$toplevel"
+  # Every profile the system declares, host side like the system's: the container's root cannot write
+  # in the host-owned /nix bind when it is idmapped (EPERM, silently, from the container's activation:
+  # measured by 🎛️ on bioskop-nixos, 2026-10-22, for the bringup runtime profile).
+  while IFS=$'\t' read -r profile runtime; do
+    [ -n "$profile" ] || continue
+    nix copy --no-check-sigs --to "$store" "$runtime"
+    nix-env --store "$store" -p "$dir/root$profile" --set "$runtime"
+  done < <(yq -p json -oy -r '(.profiles // {}) | to_entries | .[] | .key + "\t" + .value' <<<"$info")
   # nerd-nixos's GC, freeze and compaction keep what a container runs.
   mkdir -p "$GCROOTS"
   ln -sfn "$toplevel" "$GCROOTS/$1"
   incus start --project "$PROJECT" "$1"
+  echo "$snapshot" >&3
+}
 
-  # The container runs on the new snapshot: every other delivery snapshot of it — the previous one,
-  # and any a delivery that failed midway left behind — and what was set aside, can go.
-  for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$snapshot\$" || true); do
+# state_snapshots {info} {name}: every delivery snapshot on the instance's state datasets.
+state_snapshots() {
+  local state
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$1"); do
+    zfs list -H -t snapshot -o name "${state:?}" | grep -E "@ndh-incus-$2-[0-9]{8}T[0-9]{6}Z\$" || true
+  done
+}
+
+# commit {name} {snapshot}: the container runs on {snapshot} and is kept; every other delivery snapshot
+# of it (the previous one, and any a failed delivery left) and what was set aside can go. Its state
+# snapshots all go, this delivery's included: they were only the way back.
+commit() {
+  local info dir upper_root rw db old
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$2\$" || true); do
     zfs destroy "$old"
   done
+  for old in $(state_snapshots "$info" "$1"); do zfs destroy -r "$old"; done
   for old in "$dir"/.previous-*; do rm -rf --one-file-system "$old"; done
-  echo "ndh-incus-container: $1 ← $toplevel, on snapshot $snapshot"
+}
+
+# rollback {name} {snapshot}: put back what `.previous-{snapshot}` kept, so the container restarts on
+# its previous system, upper, DB, lowers and profiles byte for byte, and its state datasets as they
+# were when it stopped; then {snapshot} goes. What the service wrote to its data meanwhile is lost: it
+# is the price of bringing a forward data migration back.
+rollback() {
+  local info dir toplevel upper_root rw db aside entry previous state fs
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  toplevel=$(field "$info" toplevel)
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  aside="$dir/.previous-$2"
+  [ -d "$aside" ] || die "nothing kept for $1 at $aside — no rollback possible"
+
+  incus stop --force --project "$PROJECT" "$1" || true
+  systemctl stop "ndh-incus-container-store-$1.service"
+  for entry in upper work upper.layer-set lower.snapshot lower.layers lower.frozen; do
+    rm -rf --one-file-system "${dir:?}/$entry"
+    if [ -e "$aside/$entry" ]; then mv "$aside/$entry" "$dir/"; fi
+  done
+  rm -rf --one-file-system "$dir/root/nix/var/nix" "$dir/view/nix/var/nix/db"
+  if [ -e "$aside/root/nix/var/nix" ]; then mv "$aside/root/nix/var/nix" "$dir/root/nix/var/"; fi
+  if [ -e "$aside/view/nix/var/nix/db" ]; then mv "$aside/view/nix/var/nix/db" "$dir/view/nix/var/nix/"; fi
+  rm -rf --one-file-system "$aside"
+  # The data as it was when the container stopped for this delivery: `zfs rollback` is per filesystem,
+  # so every one under the declared dataset, each to its own snapshot of the recursive pair.
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$info"); do
+    for fs in $(zfs list -H -o name -r -t filesystem "${state:?}"); do
+      zfs rollback -r "$fs@$2"
+    done
+    zfs destroy -r "$state@$2"
+  done
+  zfs destroy "$rw@$2"
+  zfs destroy "$db@$2"
+  previous=$(cat "$dir/lower.snapshot" 2>/dev/null || true)
+  [ -n "$previous" ] || die "$1 had no delivery before $2: it stays STOPPED"
+  systemctl start "ndh-incus-container-store-$1.service"
+  # The GC root follows what runs again: the previous system is the profile's target.
+  ln -sfn "$(readlink -f "$dir/root/nix/var/nix/profiles/system")" "$GCROOTS/$1"
+  incus start --project "$PROJECT" "$1"
+  echo "ndh-incus-container: $1 rolled back from $toplevel to snapshot $previous"
+}
+
+deliver() {
+  local snapshot
+  snapshot=$(deliver_keep "$1")
+  commit "$1" "$snapshot"
+  echo "ndh-incus-container: $1 ← $(field "$(instance "$1")" toplevel), on snapshot $snapshot"
+}
+
+# healthy {name}: RUNNING, then each declared health unit active within HEALTH_TIMEOUT seconds; a unit
+# declared `conditional` is also healthy when systemd skipped it on its condition (ConditionResult=no),
+# so a service waiting for material that is not there yet (nginx before its TLS leaf) is not a failure.
+healthy() {
+  local info deadline unit kind state result
+  info=$(instance "$1")
+  deadline=$(($(date +%s) + HEALTH_TIMEOUT))
+  until [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Running ]; do
+    [ "$(date +%s)" -lt "$deadline" ] || {
+      echo "ndh-incus-container: $1 is not RUNNING after ${HEALTH_TIMEOUT}s" >&2
+      return 1
+    }
+    sleep 2
+  done
+  while IFS=$'\t' read -r unit kind; do
+    [ -n "$unit" ] || continue
+    until state=$(incus exec --project "$PROJECT" "$1" -- systemctl is-active "$unit" || true) && [ "$state" = active ]; do
+      if [ "$kind" = conditional ]; then
+        result=$(incus exec --project "$PROJECT" "$1" -- systemctl show -p ConditionResult --value "$unit" || true)
+        [ "$result" != no ] || break
+      fi
+      [ "$state" != failed ] && [ "$(date +%s)" -lt "$deadline" ] || {
+        echo "ndh-incus-container: $1's $unit is ${state:-unknown}, not active" >&2
+        return 1
+      }
+      sleep 2
+    done
+  done < <(yq -p json -oy -r '(.health.units // []) | .[] | .unit + "\t" + (.kind // "active")' <<<"$info")
+}
+
+# converge: every declared container whose system profile is not its declared toplevel is delivered,
+# then kept if healthy, rolled back if not. One attempt per toplevel: a rolled-back one is marked in
+# its dir, so a boot does not loop on the same bad system; the next guest generation retries. A container
+# not yet created is the operator's (`create`), and is skipped, loudly. The exit status is 1 if any
+# container could not be converged, so the unit fails visibly.
+converge() {
+  local name info dir toplevel current snapshot failed=0
+  for name in $(yq -p json -oy -r 'keys | .[]' <<<"$INSTANCES"); do
+    info=$(instance "$name")
+    dir=$(field "$info" dir)
+    toplevel=$(field "$info" toplevel)
+    if ! incus info --project "$PROJECT" "$name" >/dev/null 2>&1; then
+      echo "ndh-incus-container: $name is declared but not created: run ndh-incus-container create $name" >&2
+      failed=1
+      continue
+    fi
+    # Both sides resolved: a profile is a chain of links (system → system-N-link → the store path).
+    current=$(readlink -f "$dir/root/nix/var/nix/profiles/system" 2>/dev/null || true)
+    if [ -n "$current" ] && [ "$current" = "$(readlink -f "$toplevel")" ]; then
+      echo "ndh-incus-container: $name runs its declared system"
+      continue
+    fi
+    if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$toplevel" ]; then
+      echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
+      failed=1
+      continue
+    fi
+    if ! snapshot=$(deliver_keep "$name"); then
+      echo "ndh-incus-container: $name could not be delivered" >&2
+      echo "$toplevel" >"$dir/converge.failed"
+      failed=1
+      continue
+    fi
+    if healthy "$name"; then
+      commit "$name" "$snapshot"
+      rm -f "$dir/converge.failed"
+      echo "ndh-incus-container: $name ← $toplevel, healthy, on snapshot $snapshot"
+    else
+      echo "$toplevel" >"$dir/converge.failed"
+      rollback "$name" "$snapshot" || echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
+      echo "ndh-incus-container: $name was unhealthy on $toplevel and is back on its previous system" >&2
+      failed=1
+    fi
+  done
+  return "$failed"
 }
 
 case "${1:-}" in
@@ -221,5 +394,6 @@ case "${1:-}" in
     [ -n "${2:-}" ] || usage
     "$1" "$2"
     ;;
+  converge) converge ;;
   *) usage ;;
 esac
