@@ -236,7 +236,8 @@ deliver_steps() {
     [ -n "$profile" ] || continue
     parent=$(dirname "${profile#/}")
     root_own "$dir/root" "$parent"
-    mkdir -p -m 0755 "$dir/root/$parent"
+    # 0755 at every level it makes, whatever the caller's umask; `-m` would apply to the deepest one only.
+    (umask 022 && mkdir -p "$dir/root/$parent")
     nix copy --no-check-sigs --to "$store" "$runtime"
     nix-env --store "$store" -p "$dir/root$profile" --set "$runtime"
     # Read on what landed: the profile resolves to the declared package.

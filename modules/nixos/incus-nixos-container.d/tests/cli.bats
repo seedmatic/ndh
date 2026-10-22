@@ -301,17 +301,20 @@ delivered_before() {
   delivered_before
   # The old /nix/var/nix, per-user/root with it, goes aside at delivery: nothing of the parent is left.
   [ ! -e "$t/attic/root/nix/var/nix/profiles/per-user" ]
+  # A strict umask in the caller: the mode below is the CLI's doing.
+  umask 077
   run --separate-stderr bash "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [ -d "$t/attic/root/nix/var/nix/profiles/per-user/root" ]
+  [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user")" = 755 ]
   [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user/root")" = 755 ]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$t/x-runtime" ]
 }
 
 @test "mutant: without the parent's mkdir, the delivery fails and rolls back, never healthy" {
   delivered_before
-  grep -q 'mkdir -p -m 0755 "\$dir/root/\$parent"' "$cli"
-  sed '/mkdir -p -m 0755 "\$dir\/root\/\$parent"/d' "$cli" >"$t/mutant"
+  grep -q '^    (umask 022 && mkdir -p "\$dir/root/\$parent")$' "$cli"
+  sed '/^    (umask 022 && mkdir -p "\$dir\/root\/\$parent")$/d' "$cli" >"$t/mutant"
   run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"cannot read directory"* ]]
