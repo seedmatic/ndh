@@ -739,3 +739,11 @@ wb() { # $1 = tool, $2 = command (Bash), $3 = session id
   run wb Bash 'cd /x && git -C /y push origin feature/z'
   [[ "$output" == *"a commit or a push"* ]]
 }
+
+@test "whiteboard-reminder: an operator turn older than the transcript's tail is still found" {
+  whiteboard_setup
+  TZ=UTC touch -t 202610220700 "$PAGE"
+  for i in $(seq 2100); do printf '{"type":"assistant","n":%s}\n' "$i"; done >>"$TR"
+  run wb SendMessage
+  [[ "$output" == *"has not changed in this turn"* ]]
+}

@@ -36,8 +36,13 @@ scratch="${CLAUDE_SCRATCHPAD:-$HOME/.claude/.scratchpad.d}"
 page="$(grep -lxF "> conversation: ${session_id}" "$scratch"/*/LIVE.md 2>/dev/null | head -1 || true)"
 [[ -n "$page" ]] || exit 0
 
-start_epoch="$(jq -r 'select(.type == "user" and .origin.kind == "human") | .timestamp // empty' "$transcript" 2>/dev/null |
-  tail -1 | jq -Rr 'sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601' 2>/dev/null || true)"
+# The transcript's tail first: the operator's last message is near its end, and the whole file of a long session
+# (155 MB, measured) takes a second to read, which the hook's timeout would turn into silence. The whole file only when
+# the tail holds none.
+last_human() { jq -r 'select(.type == "user" and .origin.kind == "human") | .timestamp // empty' 2>/dev/null | tail -1; }
+start="$(tail -n 2000 "$transcript" | last_human)"
+[[ -n "$start" ]] || start="$(last_human <"$transcript")"
+start_epoch="$(printf '%s' "$start" | jq -Rr 'sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601' 2>/dev/null || true)"
 [[ -n "$start_epoch" ]] || exit 0
 page_epoch="$(stat -c %Y "$page")"
 ((page_epoch < start_epoch)) || exit 0
