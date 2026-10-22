@@ -117,7 +117,7 @@ let
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
-    inherit (instance) profiles;
+    inherit (instance) profiles stateDatasets;
     health.units = map (u: if lib.isString u then { unit = u; } else u) instance.health.units;
   }) cfg.instances;
 
@@ -266,6 +266,17 @@ in
                 Nix profiles besides the system's, by their path inside the container, set host side at
                 each delivery. Never from the container's own activation: an unprivileged container's root
                 cannot write in the host-owned /nix bind.
+              '';
+            };
+            stateDatasets = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "tank/nerd/attic" ];
+              description = ''
+                ZFS datasets holding the service's data (its disk devices' sources). `converge` snapshots
+                each, recursively, before it delivers a new system, and a rollback restores them with the
+                previous system, so data a new version migrated on start comes back too. A commit destroys
+                the snapshots. A rollback also discards whatever the service wrote meanwhile.
               '';
             };
             health.units = lib.mkOption {

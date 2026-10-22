@@ -26,7 +26,9 @@ case "\$1 \$2" in
     for m in nix/.lower/nix/store nix/.lower/nix/var/nix nix/.upper; do
       [ -d "$t/attic/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
     done
-    touch "$t/running" ;;
+    touch "$t/running"
+    # A test's stand-in for what the new system does on its first start (a data migration).
+    [ ! -x "$t/on-start" ] || "$t/on-start" ;;
   "stop --project" | "stop --force") rm -f "$t/running" ;;
   # The container's units: "<unit> <state> [ConditionResult]" lines in units; a unit not listed is active.
   "exec --project")
@@ -41,10 +43,42 @@ case "\$1 \$2" in
     fi ;;
 esac
 EOF
+  # Records every call. The state dataset tank/nerd/attic is MODELLED, so a rollback can be checked on
+  # its content: its data is the directory $t/zfs/tank/nerd/attic, a snapshot a copy of it beside, a
+  # rollback that copy put back. Every other dataset only answers `list` as absent, as before.
+  mkdir -p "$t/zfs/tank/nerd/attic"
+  # The real cp, by its path: $t/bin/cp below stands for deliver's DB copy and copies nothing.
+  realcp=$(command -v cp)
   cat >"$t/bin/zfs" <<EOF
 #!$BASH
 printf 'zfs %s\n' "\$*" >>"$t/calls"
-[ "\$1" != list ]
+z=$t/zfs
+args=("\$@")
+case "\$1" in
+  snapshot)
+    for a in "\${args[@]:1}"; do
+      [ "\$a" != -r ] || continue
+      ds=\${a%@*} snap=\${a#*@}
+      [ ! -d "\$z/\$ds" ] || { rm -rf "\$z/\$ds@\$snap"; $realcp -a "\$z/\$ds" "\$z/\$ds@\$snap"; }
+    done ;;
+  rollback)
+    a=\${args[-1]}; ds=\${a%@*} snap=\${a#*@}
+    [ -d "\$z/\$ds@\$snap" ] || { echo "zfs rollback: no snapshot \$a" >&2; exit 1; }
+    rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
+  destroy)
+    a=\${args[-1]}; [[ \$a == *@* ]] && rm -rf "\$z/\$a" ;;
+  list)
+    a=\${args[-1]}
+    if [ -d "\$z/\$a" ]; then
+      if [[ " \$* " == *" snapshot "* ]]; then
+        for s in "\$z/\$a"@*; do [ -d "\$s" ] && echo "\$a@\${s##*@}"; done
+      else
+        echo "\$a"
+      fi
+    else
+      exit 1
+    fi ;;
+esac
 EOF
   cat >"$t/bin/findmnt" <<EOF
 #!$BASH
@@ -85,7 +119,7 @@ EOF
   {
     printf 'set -euo pipefail\nexport PATH=%q:$PATH\n' "$t/bin"
     printf 'INSTANCES=%q PROJECT=ndh POOL=default PRESTART_HOOK=/run/current-system/sw/bin/ndh-incus-container-prestart\n' \
-      '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
+      '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"stateDatasets":["tank/nerd/attic"],"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
     printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q HEALTH_TIMEOUT=20\n' \
       "$t/layers.json" "$t/stack.json" "$t/degraded" "$t/gcroots"
     cat "$BATS_TEST_DIRNAME/../cli.sh"
@@ -153,6 +187,7 @@ delivered_before() {
   ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/system"
   echo ndh-incus-attic-20261001T000000Z >"$t/attic/lower.snapshot"
   echo old-upper >"$t/attic/upper/marker"
+  echo schema-1 >"$t/zfs/tank/nerd/attic/db"
 }
 
 @test "converge on the declared system does nothing" {
@@ -206,4 +241,43 @@ delivered_before() {
   [[ $stderr == *"attic is declared but not created"* ]]
   run grep -E '^(zfs|incus (start|stop|init))' "$t/calls"
   [ "$status" -eq 1 ]
+}
+
+@test "converge rolls the state dataset back too: a migration the new system made is undone" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  # The NEW system migrates its data on its first start, then turns out unhealthy; the previous system,
+  # restarted by the rollback, does not migrate.
+  printf '#!%s\n[ -e %q ] || { echo schema-2 >%q; touch %q; }\n' "$BASH" "$t/migrated" "$t/zfs/tank/nerd/attic/db" "$t/migrated" >"$t/on-start"
+  chmod +x "$t/on-start"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
+  grep -q '^zfs snapshot -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
+  grep -q '^zfs rollback -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
+  # No snapshot of the state is left behind.
+  [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
+}
+
+@test "converge keeps the migrated state when healthy, and destroys its snapshot" {
+  delivered_before
+  printf '#!%s\necho schema-2 >%q\n' "$BASH" "$t/zfs/tank/nerd/attic/db" >"$t/on-start"
+  chmod +x "$t/on-start"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
+  grep -q '^zfs destroy -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
+  [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
+}
+
+@test "the state snapshot is taken with the container stopped, before anything is delivered" {
+  delivered_before
+  touch "$t/running"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  stop=$(grep -n '^incus stop --project ndh attic$' "$t/calls" | cut -d: -f1)
+  snap=$(grep -n '^zfs snapshot -r tank/nerd/attic@' "$t/calls" | cut -d: -f1)
+  start=$(grep -n '^incus start --project ndh attic$' "$t/calls" | head -1 | cut -d: -f1)
+  [ -n "$stop" ] && [ -n "$snap" ] && [ -n "$start" ]
+  [ "$stop" -lt "$snap" ] && [ "$snap" -lt "$start" ]
 }

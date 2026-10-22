@@ -180,6 +180,12 @@ deliver_steps() {
 
   snapshot="ndh-incus-$1-$(date -u +%Y%m%dT%H%M%SZ)"
   zfs snapshot "$rw@$snapshot" "$db@$snapshot"
+  # The service's data, at every delivery and with the container stopped, so the snapshot is consistent:
+  # a ZFS snapshot costs nothing, and whether the new system migrates its data is not knowable here.
+  local state
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$info"); do
+    zfs snapshot -r "${state:?}@$snapshot"
+  done
   # Reached host-side first: a snapshot automounted from a private namespace is ENOENT there.
   [ -d "$upper_root/.zfs/snapshot/$snapshot/upper" ] || die "snapshot $snapshot has no upper"
 
@@ -229,8 +235,17 @@ deliver_steps() {
   echo "$snapshot" >&3
 }
 
+# state_snapshots {info} {name}: every delivery snapshot on the instance's state datasets.
+state_snapshots() {
+  local state
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$1"); do
+    zfs list -H -t snapshot -o name "${state:?}" | grep -E "@ndh-incus-$2-[0-9]{8}T[0-9]{6}Z\$" || true
+  done
+}
+
 # commit {name} {snapshot}: the container runs on {snapshot} and is kept; every other delivery snapshot
-# of it (the previous one, and any a failed delivery left) and what was set aside can go.
+# of it (the previous one, and any a failed delivery left) and what was set aside can go. Its state
+# snapshots all go, this delivery's included: they were only the way back.
 commit() {
   local info dir upper_root rw db old
   info=$(instance "$1")
@@ -241,15 +256,16 @@ commit() {
   for old in $(zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" | grep -v "@$2\$" || true); do
     zfs destroy "$old"
   done
+  for old in $(state_snapshots "$info" "$1"); do zfs destroy -r "$old"; done
   for old in "$dir"/.previous-*; do rm -rf --one-file-system "$old"; done
 }
 
 # rollback {name} {snapshot}: put back what `.previous-{snapshot}` kept, so the container restarts on
-# its previous system, upper, DB, lowers and profiles byte for byte; then {snapshot} goes. Its service
-# data lives on its own devices and is never touched; what its new system wrote there stays, so a
-# service that migrated its data forward on start (a database schema) is the one non-exact case.
+# its previous system, upper, DB, lowers and profiles byte for byte, and its state datasets as they
+# were when it stopped; then {snapshot} goes. What the service wrote to its data meanwhile is lost: it
+# is the price of bringing a forward data migration back.
 rollback() {
-  local info dir toplevel upper_root rw db aside entry previous
+  local info dir toplevel upper_root rw db aside entry previous state fs
   info=$(instance "$1")
   dir=$(field "$info" dir)
   toplevel=$(field "$info" toplevel)
@@ -269,6 +285,14 @@ rollback() {
   if [ -e "$aside/root/nix/var/nix" ]; then mv "$aside/root/nix/var/nix" "$dir/root/nix/var/"; fi
   if [ -e "$aside/view/nix/var/nix/db" ]; then mv "$aside/view/nix/var/nix/db" "$dir/view/nix/var/nix/"; fi
   rm -rf --one-file-system "$aside"
+  # The data as it was when the container stopped for this delivery: `zfs rollback` is per filesystem,
+  # so every one under the declared dataset, each to its own snapshot of the recursive pair.
+  for state in $(yq -p json -oy -r '(.stateDatasets // []) | .[]' <<<"$info"); do
+    for fs in $(zfs list -H -o name -r -t filesystem "${state:?}"); do
+      zfs rollback -r "$fs@$2"
+    done
+    zfs destroy -r "$state@$2"
+  done
   zfs destroy "$rw@$2"
   zfs destroy "$db@$2"
   previous=$(cat "$dir/lower.snapshot" 2>/dev/null || true)

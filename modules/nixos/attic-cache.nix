@@ -359,6 +359,9 @@ in
       # missing. Set host side at each delivery, never from the container's activation: unprivileged, its root
       # cannot write in the host-owned /nix bind, and the link failed there silently (🎛️, 2026-10-22).
       profiles.${config.ndh.bringupRuntime.profileDir} = config.ndh.bringupRuntime.runtimePackage;
+      # The state, secrets and TLS key, all in one dataset: atticd migrates its DB forward on start, so a rollback
+      # must bring the data back with the system (🛡️'s condition, the operator's ZFS-snapshot form, 2026-10-22).
+      stateDatasets = [ cfg.dataset ];
       # attic-cache-ensure is the one that proves the cache private and its key well named. nginx waits on its TLS
       # leaf (ConditionPathExists), so before that leaf it is skipped, not failed.
       health.units = [
