@@ -165,6 +165,13 @@
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
+      # The checks run on both platforms the fleet runs (operator, 2026-10-22: « on check les deux systèmes,
+      # et on bascule la fleet quand on a besoin »): aarch64-linux through the seats' Linux builder. A check
+      # changes no machine; a switch stays its own, ordered gesture.
+      checkSystems = [
+        "aarch64-darwin"
+        "aarch64-linux"
+      ];
       # The seedmatic root's ceremony VM (roles × keys ⑧): aarch64-linux, built by revision, run by
       # ndh-ceremony-vm on an operator seat.
       ceremonyVm = nixpkgs.lib.nixosSystem {
@@ -1077,7 +1084,7 @@
       );
 
       # No treefmt check here (its API mismatched during evaluation); the formatter runs as a hook.
-      checks = forAllSystems (
+      checks = nixpkgs.lib.genAttrs checkSystems (
         system:
         let
           pkgs = pkgsFor { inherit system; };
