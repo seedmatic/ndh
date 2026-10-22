@@ -1,12 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
-# caller's set -x): this script handles private keys, and a trace prints every value it expands.
-case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
-export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
-unset BASH_XTRACEFD 2>/dev/null || true
-unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # ssh-keys-renew — phase 1 of an SSH key renewal in
 # modules/home-manager/ssh.d/keys.yaml.
 #
@@ -425,13 +418,16 @@ renew::one() { # <section> <name> <keyType>
 	# `comment:`, and consumers rebuild the line from the three. Writing a whole
 	# line here doubles both in every rebuilt line, and the schema refuses it.
 	pub="$(cut -d' ' -f2 <"${out}.pub")"
-	priv="$(<"$out")"
 
 	log::info "generating ${section}.${name} slot ${today} (${keyType})"
+	ndh::secret:begin "the new private is written into the decrypted document"
+	priv="$(<"$out")"
 	PUB="$pub" PRIV="$priv" yq eval -i "
 		.${section}.\"${name}\".slots.\"${today}\".public  = strenv(PUB) |
 		.${section}.\"${name}\".slots.\"${today}\".private = strenv(PRIV)
 	" "$decrypted"
+	priv=""
+	ndh::secret:end
 
 	# ⛔ NOT optional. sops encrypts by `encrypted_comment_regex: 'sops:encrypted'`,
 	# so a private without this comment is committed IN THE CLEAR — which is
@@ -697,17 +693,26 @@ public::check_record() {
 # Exactly one `ssh-ed25519 <blob> [comment]` line from stdin into createPublicBlob. Nothing read is
 # ever printed: a mistaken pipe may carry a private.
 public::read() {
-	local input type blob rest bits
+	local input type blob rest bits refused=""
+	ndh::secret:begin "stdin is read: a mistaken pipe may carry a private"
 	input="$(cat)"
 	if [[ "$input" == *"PRIVATE KEY"* ]]; then
+		refused=private
+	elif [[ -z "$input" || "$input" == *$'\n'* ]]; then
+		refused=lines
+	else
+		read -r type blob rest <<<"$input"
+	fi
+	input=""
+	ndh::secret:end
+	if [[ "$refused" == private ]]; then
 		log::error "stdin holds a PRIVATE key — refused, and not printed: pipe the public only (ndh-keyring prints it)"
 		return 1
 	fi
-	if [[ -z "$input" || "$input" == *$'\n'* ]]; then
+	if [[ "$refused" == lines ]]; then
 		log::error "--public - reads exactly ONE line from stdin: ssh-ed25519 <blob> [comment]"
 		return 1
 	fi
-	read -r type blob rest <<<"$input"
 	if [[ "$type" != ssh-ed25519 || ! "$blob" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
 		log::error "stdin is not an ssh-ed25519 public line — a recorded key is ed25519 only"
 		return 1
@@ -861,10 +866,17 @@ nixsign::run() {
 		log::error "--record-nix-signing ${key@Q}: host-MACHINE, MACHINE one of: ${machines[*]}"
 		return 1
 	fi
+	local public=0
+	ndh::secret:begin "stdin is read: a mistaken pipe may carry a secret"
 	input="$(cat)"
 	# A public is 32 bytes, 44 base64 characters; a nix secret, 64 bytes, cannot match.
-	if [[ "$input" == *"PRIVATE KEY"* || "$input" == *$'\n'* ||
-		! "$input" =~ ^(seedmatic-[a-z][a-z0-9.-]*-[0-9]+):([A-Za-z0-9+/]{43}=)$ ]]; then
+	if [[ "$input" != *"PRIVATE KEY"* && "$input" != *$'\n'* &&
+		"$input" =~ ^(seedmatic-[a-z][a-z0-9.-]*-[0-9]+):([A-Za-z0-9+/]{43}=)$ ]]; then
+		public=1
+	fi
+	input=""
+	ndh::secret:end
+	if ((public == 0)); then
 		log::error "stdin is not ONE nix signing public, <name>:<base64 of 32 bytes> — refused, and not printed"
 		log::error "pipe ndh-keyring nix-signing-public ${machine} into it"
 		return 1

@@ -1,6 +1,6 @@
 # secret-xtrace-guard: no secret VALUE reaches a trace or an argv in the scripts ndh runs (check.py). Built over
-# the repo's own .sh files at the revision, no IFD: shfmt parses each, the checker reads the ASTs. REPORT mode in
-# batch G: it fails only on its strict classes; batch 1 makes the report classes it gates strict with the flip.
+# the repo's own .sh files at the revision, no IFD: shfmt parses each, the checker reads the ASTs. It fails only on
+# its strict classes; the rest is a report.
 { pkgs, src }:
 let
   lib = pkgs.lib;
@@ -21,7 +21,8 @@ let
       "shfmt: `\"$FLAKE\"#@systemAttr@`; sets a boot generation, no secret";
   };
   # A tracked value handed to a function the check cannot follow, followed by a reviewer: the function, and the
-  # channel the value reaches a command through. All three scripts carry the whole-script guard (no trace).
+  # channel the value reaches a command through. Each call sits under no trace: sops.sh's whole-script guard,
+  # enrich's secret window.
   reviewed = {
     "modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh" = {
       "key::set_field" = "slot::set: VALUE=… yq strenv(VALUE), a prefix assignment: environment, no argv";

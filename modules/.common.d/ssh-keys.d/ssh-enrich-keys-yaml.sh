@@ -1,12 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
-# caller's set -x): this script handles private keys, and a trace prints every value it expands.
-case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
-export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
-unset BASH_XTRACEFD 2>/dev/null || true
-unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # SSH keys bundle enrichment — v2 schema.
 #
 # Reads a v2-shaped keys.yaml:
@@ -253,17 +246,24 @@ sign::tls_server() {
 	# tempfiles step-cli can read.  Re-uses the $tmpdir/auth-<name> cache
 	# populated by the SSH signing path when present; otherwise creates
 	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
-	local authPriv
-	authority::assert_slots "$authorityName" || return 1
-	authPriv="$(authority::signing "$authorityName" private)" || return 1
-	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
-		log::error "authority ${authorityName} has no private key"
-		return 1
-	fi
+	# The returns sit outside the windows: a window is closed on every path, then the outcome is judged.
+	local authPriv authRead=1 authHeld=1
 	local authFile="${tmpdir}/auth-${authorityName}"
-	if [[ ! -s "$authFile" ]]; then
+	authority::assert_slots "$authorityName" || return 1
+	ndh::secret:begin "the authority's private is materialised for step"
+	authPriv="$(authority::signing "$authorityName" private)" || authRead=0
+	if [[ -z "$authPriv" || "$authPriv" == "null" ]]; then
+		authHeld=0
+	elif [[ ! -s "$authFile" ]]; then
 		printf '%s\n' "$authPriv" >"$authFile"
 		chmod 400 "$authFile"
+	fi
+	authPriv=""
+	ndh::secret:end
+	((authRead == 1)) || return 1
+	if ((authHeld == 0)); then
+		log::error "authority ${authorityName} has no private key"
+		return 1
 	fi
 
 	# The subject key must already exist (either present in the input
@@ -275,25 +275,29 @@ sign::tls_server() {
 	# generate-if-missing dance.
 	local leafKeyFile="${tmpdir}/${keyName}@${keySlot}"
 	if [[ ! -s "$leafKeyFile" ]]; then
-		local keyPriv keyType keyComment
-		keyPriv="$(key::field "$keyName" "$keySlot" private)"
+		local keyPriv keyType comment keygenFailed=0
 		keyType="$(yq::get ".keys.\"${keyName}\".type")"
-		keyComment="$(yq::get ".keys.\"${keyName}\".comment")"
-		[[ -n "$keyComment" && "$keyComment" != "null" ]] || keyComment="$keyName"
+		comment="$(yq::get ".keys.\"${keyName}\".comment")"
+		[[ -n "$comment" && "$comment" != "null" ]] || comment="$keyName"
+		ndh::secret:begin "the leaf's private is read, or born and recorded"
+		keyPriv="$(key::field "$keyName" "$keySlot" private)"
 		if [[ -z "$keyPriv" || "$keyPriv" == "null" ]]; then
-			local genType="${keyType#ssh-}"
-			if ! ssh-keygen -q -t "$genType" -N "" -f "$leafKeyFile" -C "$keyComment"; then
-				log::error "failed to generate keypair for ${keyName}@${keySlot}"
-				return 1
+			if ssh-keygen -q -t "${keyType#ssh-}" -N "" -f "$leafKeyFile" -C "$comment"; then
+				keyPriv="$(<"$leafKeyFile")"
+				key::set_field "$keyName" "$keySlot" public "$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
+				key::set_field "$keyName" "$keySlot" private "$keyPriv"
+			else
+				keygenFailed=1
 			fi
-			local keyPub
-			keyPub="$(cut -d' ' -f2 <"${leafKeyFile}.pub")"
-			keyPriv="$(<"$leafKeyFile")"
-			key::set_field "$keyName" "$keySlot" public "$keyPub"
-			key::set_field "$keyName" "$keySlot" private "$keyPriv"
 		else
 			printf '%s\n' "$keyPriv" >"$leafKeyFile"
 			chmod 0400 "$leafKeyFile"
+		fi
+		keyPriv=""
+		ndh::secret:end
+		if ((keygenFailed == 1)); then
+			log::error "failed to generate keypair for ${keyName}@${keySlot}"
+			return 1
 		fi
 	fi
 

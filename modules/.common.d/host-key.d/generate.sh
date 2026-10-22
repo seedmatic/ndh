@@ -1,13 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
-# caller's set -x, NDH_LOGGER_XTRACE): this script handles a private key, and a trace prints every value it expands.
-# The whole script, not a window: no check can prove a window encloses every use of a value.
-case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
-export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
-unset BASH_XTRACEFD 2>/dev/null || true
-unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # ndh-host-key-generate: give this machine its next host key, born here (roles × keys K3, the fabric-delivery frame).
 # Rendered by pkgs.replaceVars with the values of keys.yaml's ONE pending host-<machine> slot, shell-quoted: machine,
 # slot, base (the root of the directory walk), slotDir, owner (0: root), keyFile, publishDir, oldKey, oldPublic. A
@@ -19,8 +11,9 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 # stopped between the two is completed by the next. Nothing serves the new key: sshd and sops keep the old one
 # until keys.yaml records the slot and a later switch serves it.
 #
-# The run logs into the system log through ndh's trampoline and logger, untraced (the guard above): only names,
-# paths, fingerprints and publics are ever printed.
+# The run logs into the system log through ndh's trampoline and logger, traced like any other: the private only ever
+# moves between files and ssh-keygen, never through a variable, so a trace prints names, paths, fingerprints and
+# publics alone.
 source @nixBashTrampoline@
 
 readonly machine=@machine@ slot=@slot@ base=@base@ slotDir=@slotDir@ owner=@owner@

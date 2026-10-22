@@ -134,6 +134,25 @@ hostile() { # <cmd>... — runs <cmd> under it
   decrypted | yq eval -r ".keys.bot.slots.\"$today\".private" - | grep -q 'BEGIN OPENSSH PRIVATE KEY'
 }
 
+# Batch 1's flip traces every script: the trace carries the run, and the windows keep the new private out of it.
+@test "traced, --create --apply's trace carries the run and not the new private" {
+  (cd "$repo" && bash -x "$BATS_TEST_TMPDIR/ssh-keys-renew" --create bot --usage bot-signing --apply) \
+    >/dev/null 2>"$BATS_TEST_TMPDIR/trace"
+  grep -q '^+* renew::one ' "$BATS_TEST_TMPDIR/trace"
+  grep -qF 'secret window: the new private is written into the decrypted document' "$BATS_TEST_TMPDIR/trace"
+  decrypted | yq eval -r ".keys.bot.slots.\"$today\".private" - | sed -n 2p >"$BATS_TEST_TMPDIR/line"
+  [ -s "$BATS_TEST_TMPDIR/line" ]
+  run ! grep -qF -f "$BATS_TEST_TMPDIR/line" "$BATS_TEST_TMPDIR/trace"
+}
+
+@test "traced, a private piped to --public is refused and never reaches the trace" {
+  host_public >/dev/null
+  (cd "$repo" && bash -x "$BATS_TEST_TMPDIR/ssh-keys-renew" --create host-bioskop-nixos --public - --usage ssh-host --apply) \
+    <"$BATS_TEST_TMPDIR/machine-ed25519" >/dev/null 2>"$BATS_TEST_TMPDIR/trace" || true
+  grep -qF 'secret window: stdin is read' "$BATS_TEST_TMPDIR/trace"
+  run ! grep -qF -f <(sed -n 2p "$BATS_TEST_TMPDIR/machine-ed25519") "$BATS_TEST_TMPDIR/trace"
+}
+
 @test "the profiles of a new entry are recorded in order, and none means none" {
   run renew --create host-bot --usage bot-signing --profile system --profile user --apply
   [ "$status" -eq 0 ]

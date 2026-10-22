@@ -79,3 +79,16 @@ leaf_cert() {
   run sign::tls_server leaf 26-10-01 test-tls
   [ "$status" -ne 0 ]
 }
+
+# Batch 1's flip traces every script: signing a leaf is traced, and both windows (the authority's private, the leaf
+# born and recorded) keep every private out of the trace.
+@test "traced, a TLS leaf's signing carries the run and no private" {
+  two_generation_fixture
+  (set -x; sign::tls_server leaf 26-10-01 test-tls >"${BATS_TEST_TMPDIR}/leaf.crt") 2>"${BATS_TEST_TMPDIR}/trace"
+  step certificate verify "${BATS_TEST_TMPDIR}/leaf.crt" --roots "${BATS_TEST_TMPDIR}/old-root.crt"
+  grep -qF 'secret window: the leaf' "${BATS_TEST_TMPDIR}/trace"
+  grep -qF 'secret window: the authority' "${BATS_TEST_TMPDIR}/trace"
+  run ! grep -qF -f <(sed -n 2p "${BATS_TEST_TMPDIR}/old-ca") "${BATS_TEST_TMPDIR}/trace"
+  run ! grep -qF -f <(sed -n 2p "${tmpdir}/leaf@26-10-01") "${BATS_TEST_TMPDIR}/trace"
+  run ! grep -q 'PRIVATE KEY' "${BATS_TEST_TMPDIR}/trace"
+}
