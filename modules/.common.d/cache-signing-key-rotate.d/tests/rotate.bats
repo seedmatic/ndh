@@ -103,8 +103,8 @@ decrypted() { sops --input-type yaml --output-type yaml -d "$file"; }
 }
 
 # The REAL wrapper traces its command on request (NDH_LOGGER_XTRACE=1), and a trace writes every
-# expanded value — the new private included — into the log sink: the guard must cancel the request.
-@test "under the real logger wrapper, even with a trace requested, the sink never carries the new private" {
+# expanded value into the log sink: the trace is there, and the windows keep the new private out of it.
+@test "under the real logger wrapper, with a trace requested, the sink is traced and never carries the new private" {
   sink="$BATS_TEST_TMPDIR/sink"
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_DIRNAME/../../shell.d/nix-bash-trampoline.sh#" \
     -e 's#@loggerTag@#test#' -e "s#@nix@#$(command -v nix)#" \
@@ -117,5 +117,6 @@ decrypted() { sops --input-type yaml --output-type yaml -d "$file"; }
   decrypted | yq eval -r '.caches.cachix."new-fleet-1".private' - >"$BATS_TEST_TMPDIR/private"
   [ -s "$BATS_TEST_TMPDIR/private" ]
   run ! grep -qF -f "$BATS_TEST_TMPDIR/private" "$sink"
-  run ! grep -q '^\[test\] +' "$sink"
+  grep -q '^\[test\] +' "$sink"
+  grep -qF 'secret window: the new private is written into the decrypted copy' "$sink"
 }

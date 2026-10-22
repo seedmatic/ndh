@@ -228,6 +228,16 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [[ "$output" == *"decrypted: fabric@26-02-02"* ]]
 }
 
+# Batch 1's flip traces every script: the trace carries the run, and the windows keep every private out of it.
+@test "traced, --apply's trace carries the run and no private" {
+  (cd "$repo" && PATH="$BATS_TEST_TMPDIR/bin:$PATH" SOPS_STUB=apply bash -x "$BATS_TEST_TMPDIR/ssh-keys-certify" --apply) \
+    >/dev/null 2>"$BATS_TEST_TMPDIR/trace"
+  grep -q '^+* certify::one ' "$BATS_TEST_TMPDIR/trace"
+  for n in ca-old ca-new host alpha alphan rdp; do
+    run ! grep -qF -f <(sed -n 2p "$BATS_TEST_TMPDIR/$n") "$BATS_TEST_TMPDIR/trace"
+  done
+}
+
 @test "a failing decryption says only that sops failed, never what it printed, and changes nothing" {
   export SOPS_STUB_FAIL=decrypt
   cp "$keys" before

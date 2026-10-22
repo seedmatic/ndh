@@ -1,12 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
-# caller's set -x): this script handles private keys, and a trace prints every value it expands.
-case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
-export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
-unset BASH_XTRACEFD 2>/dev/null || true
-unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # ssh-keys-certify — sign, ON THE OPERATOR SEAT, every SSH certificate keys.yaml declares, and record it
 # in keys.yaml next to the generation it certifies.
 #
@@ -389,7 +382,7 @@ authority::load() { # <authority> <authority slot>
 }
 
 certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
-	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5" serial="$6" principals identity replaced cert value
+	local key="$1" slot="$2" authority="$3" authSlot="$4" usage="$5" serial="$6" principals keyId replaced cert value
 	if [[ ! -v "loaded[${authority}@${authSlot}]" ]]; then
 		authority::load "$authority" "$authSlot" || return 1
 	fi
@@ -397,11 +390,11 @@ certify::one() { # <key> <slot> <authority> <authority slot> <usage> <serial>
 	printf '%s %s %s\n' "$(yq::get ".keys.\"${key}\".type")" "$(yq::get ".keys.\"${key}\".slots.\"${slot}\".public")" \
 		"$(yq::get ".keys.\"${key}\".comment // \"${key}\"")" >"${stem}.pub"
 	principals="$(cert::principals_for "$key" "$usage")"
-	if ! identity="$(cert::identity "$key" "$usage" "$principals" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" || [[ -z "$identity" ]]; then
+	if ! keyId="$(cert::identity "$key" "$usage" "$principals" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")" || [[ -z "$keyId" ]]; then
 		log::error "cannot compose the key id of ${key}@${slot} ${usage}"
 		return 1
 	fi
-	local -a args=(-q -U -s "${tmpdir}/authority-${authority}@${authSlot}.pub" -I "$identity" -z "$serial" -n "$principals")
+	local -a args=(-q -U -s "${tmpdir}/authority-${authority}@${authSlot}.pub" -I "$keyId" -z "$serial" -n "$principals")
 	[[ "$usage" == ssh-host ]] && args+=(-h)
 	# The certificate this one replaces keeps its id and serial wherever it was installed: logged, so
 	# the revocation that cuts it can name it exactly.

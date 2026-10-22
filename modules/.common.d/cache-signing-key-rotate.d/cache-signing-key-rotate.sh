@@ -1,12 +1,5 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
-# ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a
-# caller's set -x): this script handles private keys, and a trace prints every value it expands.
-case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
-export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
-unset BASH_XTRACEFD 2>/dev/null || true
-unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # cache-signing-key-rotate — replace the fleet's nix signing key, ON THE OPERATOR SEAT.
 #
 # catalog/cache-trust.yaml holds ONE fleet signing key under caches.cachix.<name>.private (the bare
@@ -71,18 +64,25 @@ rotate::apply() {
 		return 1
 	fi
 	public="$(<"${gen}/public")"
+	# The returns sit outside the windows: a window is closed on every path, then the outcome is judged.
+	local shaped=0 wrote=0
+	ndh::secret:begin "the new private is written into the decrypted copy"
 	bare="$(<"${gen}/secret")"
 	bare="${bare#"${newName}:"}"
-	if [[ "$public" != "${newName}:"* || -z "$bare" || "$bare" == *:* ]]; then
+	if [[ "$public" == "${newName}:"* && -n "$bare" && "$bare" != *:* ]]; then
+		shaped=1
+		OLD="$oldName" NEW="$newName" BARE="$bare" yq eval -i '
+			del(.caches.cachix[strenv(OLD)]) |
+			.caches.cachix[strenv(NEW)].private = strenv(BARE) |
+			(.caches.cachix[strenv(NEW)].private | key) headComment = "sops:encrypted"
+		' "$decrypted" && wrote=1
+	fi
+	ndh::secret:end
+	if ((shaped == 0)); then
 		log::error "the generated pair does not have the <name>:<base64> shape; ${fileRel} left untouched"
 		return 1
 	fi
-
-	if ! OLD="$oldName" NEW="$newName" BARE="$bare" yq eval -i '
-		del(.caches.cachix[strenv(OLD)]) |
-		.caches.cachix[strenv(NEW)].private = strenv(BARE) |
-		(.caches.cachix[strenv(NEW)].private | key) headComment = "sops:encrypted"
-	' "$decrypted"; then
+	if ((wrote == 0)); then
 		log::error "cannot write the new entry; ${fileRel} left untouched"
 		return 1
 	fi
@@ -98,7 +98,12 @@ rotate::apply() {
 		log::error "the new private is NOT encrypted in the re-encrypted file; ${fileRel} left untouched"
 		return 1
 	fi
-	if grep -qF -f <(printf '%s\n' "$bare") "$reencrypted"; then
+	local inClear=0
+	ndh::secret:begin "the re-encrypted file is searched for the new private"
+	grep -qF -f <(printf '%s\n' "$bare") "$reencrypted" && inClear=1
+	bare=""
+	ndh::secret:end
+	if ((inClear == 1)); then
 		log::error "the new private appears in clear in the re-encrypted file; ${fileRel} left untouched"
 		return 1
 	fi
@@ -109,10 +114,15 @@ rotate::apply() {
 	fi
 	# Nothing but the replaced entry moves: the re-encrypted document, decrypted again, equals the
 	# committed one everywhere outside caches.cachix.
-	local before after
-	before="$(sops --input-type yaml --output-type yaml -d "$file" | yq eval 'del(.caches.cachix)' -)" || return 1
-	after="$(sops --input-type yaml --output-type yaml -d "$reencrypted" | yq eval 'del(.caches.cachix)' -)" || return 1
-	if [[ "$before" != "$after" ]]; then
+	local before after decrypts=1 same=0
+	ndh::secret:begin "the committed and the re-encrypted documents are compared outside caches.cachix"
+	before="$(sops --input-type yaml --output-type yaml -d "$file" | yq eval 'del(.caches.cachix)' -)" || decrypts=0
+	after="$(sops --input-type yaml --output-type yaml -d "$reencrypted" | yq eval 'del(.caches.cachix)' -)" || decrypts=0
+	[[ "$before" == "$after" ]] && same=1
+	before="" after=""
+	ndh::secret:end
+	((decrypts == 1)) || return 1
+	if ((same == 0)); then
 		log::error "something outside caches.cachix changed; ${fileRel} left untouched"
 		return 1
 	fi
