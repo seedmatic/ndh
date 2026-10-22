@@ -1211,6 +1211,44 @@
           # there was a silent no-op). The link is to a HOST store path, so that path must be in the NixOS
           # guest's own closure, or it dangles. That deliver sets every declared profile is proven by
           # incus-nixos-container-bats; the mutant drops the declaration and must fail.
+          # ndh-incus-container runs under the trampoline, which puts the bringup profile FIRST on PATH (measured): the
+          # incus it calls is the profile's, and it must be the daemon's own, never a client built apart that could
+          # drift from it (❄️, 2026-10-22). On every host with an Incus container, the profile's incus is the
+          # system's file. The guests are aarch64-linux; on darwin the check is the host list alone.
+          incus-container-cli-incus-is-the-systems =
+            let
+              lib = nixpkgs.lib;
+              hosts = lib.filterAttrs (
+                _: c: (c.config.ndh.incusNixosContainers.instances or { }) != { }
+              ) self.nixosConfigurations;
+              line =
+                name: c:
+                "${name} ${c.config.ndh.bringupRuntime.runtimePackage} ${c.config.virtualisation.incus.package}";
+            in
+            assert lib.assertMsg (
+              hosts != { }
+            ) "incus-container-cli-incus-is-the-systems: no host declares an Incus container";
+            if system != "aarch64-linux" then
+              pkgs.runCommand "incus-container-cli-incus-is-the-systems" { } "touch $out"
+            else
+              pkgs.runCommand "incus-container-cli-incus-is-the-systems"
+                {
+                  passAsFile = [ "hosts" ];
+                  hosts = lib.concatLines (lib.mapAttrsToList line hosts);
+                }
+                ''
+                  rc=0
+                  while read -r name profile incus; do
+                    if [ "$(readlink -f "$profile/bin/incus")" != "$(readlink -f "$incus/bin/incus")" ]; then
+                      echo "$name: the bringup profile's incus $(readlink -f "$profile/bin/incus") is not the system's $(readlink -f "$incus/bin/incus")" >&2
+                      rc=1
+                      continue
+                    fi
+                    echo "$name: ndh-incus-container's incus is the system's"
+                  done <"$hostsPath"
+                  [ "$rc" = 0 ] && touch $out
+                  exit "$rc"
+                '';
           attic-container-bringup-profile =
             let
               lib = nixpkgs.lib;
@@ -2639,6 +2677,7 @@
           # ndh-incus-container: no incus call waits on an open stdin, as over `ssh host sudo …`.
           incus-nixos-container-bats = import ./modules/nixos/incus-nixos-container.d/tests/package.nix {
             inherit pkgs;
+            trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
           content-guard-bats = import ./modules/.common.d/content-guard.d/tests/package.nix { inherit pkgs; };
           # Built here so its shellcheck runs.

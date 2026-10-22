@@ -126,15 +126,41 @@ EOF
   chmod +x "$t/bin/"*
   touch "$t/x-attic" "$t/x-attic-old" "$t/x-runtime"
   printf '{"upperRoot":"%s/rw","lowerdirs":["/nix/.erofs/0"]}' "$t" >"$t/layers.json"
+  # The CLI as replaceVars renders it (each value shell-quoted, as the module passes it; the trampoline raw), sourcing
+  # the REAL trampoline and logger. NDH_TRAMPOLINE comes from the flake check.
+  : "${NDH_TRAMPOLINE:?the ndh bash trampoline}"
+  local -A vars=(
+    [instances]='{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"stateDatasets":["tank/nerd/attic"],"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
+    [project]=ndh [pool]=default [prestartHook]=/run/current-system/sw/bin/ndh-incus-container-prestart
+    [layerContract]="$t/layers.json" [guestLower]=/nix/.lower [guestUpper]=/nix/.upper
+    [stackDescription]="$t/stack.json" [storeDegraded]="$t/degraded" [gcroots]="$t/gcroots" [healthTimeout]=20
+    [guestSystemctl]=/run/current-system/sw/bin/systemctl [nixConfig]="extra-experimental-features = nix-command"
+    [logTag]=ndh.test.incusContainer
+  )
+  local text k
+  text=$(cat "$BATS_TEST_DIRNAME/../cli.sh")
+  text=${text//@nixBashTrampoline@/$NDH_TRAMPOLINE}
+  for k in "${!vars[@]}"; do text=${text//@$k@/$(printf '%q' "${vars[$k]}")}; done
   cli=$t/ndh-incus-container
-  {
-    printf 'set -euo pipefail\nexport PATH=%q:$PATH\n' "$t/bin"
-    printf 'INSTANCES=%q PROJECT=ndh POOL=default PRESTART_HOOK=/run/current-system/sw/bin/ndh-incus-container-prestart\n' \
-      '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"stateDatasets":["tank/nerd/attic"],"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
-    printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q HEALTH_TIMEOUT=20 GUEST_SYSTEMCTL=/run/current-system/sw/bin/systemctl\n' \
-      "$t/layers.json" "$t/stack.json" "$t/degraded" "$t/gcroots"
-    cat "$BATS_TEST_DIRNAME/../cli.sh"
-  } >"$cli"
+  printf '%s\n' "$text" >"$cli"
+  run grep -c '@[a-zA-Z]*@' "$cli"
+  [ "$output" = 0 ]
+  # Run as the guest's unit runs it: by the store bash, through the trampoline, under the PATH it then has and nothing
+  # of the sandbox's. The trampoline puts the bringup profile FIRST, then the system's sw (measured): so the test's
+  # profile is the fixture's tools with this suite's stubs over them, and the system is coreutils, findutils and
+  # util-linux. No bash of the caller's anywhere.
+  mkdir -p "$t/profile/bin"
+  for c in "$NDH_BOOTSTRAP_PROFILE_DIR"/bin/*; do ln -s "$c" "$t/profile/bin/"; done
+  for c in "$t"/bin/*; do ln -sfn "$c" "$t/profile/bin/"; done
+  # The logger's sink is the test's stderr (the guest's is the journal): the logger itself still tags every line.
+  printf '#!%s\nexec cat >&2\n' "$BASH" >"$t/logger"
+  chmod +x "$t/logger"
+  cat >"$t/run" <<EOF
+#!$BASH
+exec env -i HOME="$t" NDH_BOOTSTRAP_PROFILE_DIR="$t/profile" LOGGER_CMD="$t/logger" \\
+  PATH="$NDH_TEST_SYSTEM_SW/bin" "$BASH" "\$@"
+EOF
+  chmod +x "$t/run"
   # A pipe held open by a writer that never writes: what stdin is under `ssh host sudo …`.
   mkfifo "$t/stdin"
   sleep 60 >"$t/stdin" &
@@ -144,7 +170,7 @@ EOF
 teardown() { kill "$holder" 2>/dev/null || true; }
 
 @test "create, stdin an open pipe as over ssh: no incus call waits on it" {
-  run --separate-stderr bash "$cli" create attic <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" create attic <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr != *"waited on stdin"* ]]
   grep -q '^incus project create ndh$' "$t/calls"
@@ -154,7 +180,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 @test "deliver makes the store devices' mount points before the start, and waits on no stdin" {
   touch "$t/exists"
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
-  run --separate-stderr bash "$cli" deliver attic <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr != *"waited on stdin"* && $stderr != *EPERM* ]]
   grep -q '^incus start --project ndh attic$' "$t/calls"
@@ -164,7 +190,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
   touch "$t/exists"
   mkdir -p "$t/attic/root/nix" "$t/elsewhere"
   ln -s "$t/elsewhere" "$t/attic/root/nix/.lower"
-  run --separate-stderr bash "$cli" deliver attic <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"root/nix/.lower is not root's own directory"* ]]
   [ -z "$(ls -A "$t/elsewhere")" ]
@@ -176,7 +202,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
   touch "$t/exists"
   mkdir -p "$t/attic/root/nix"
   echo "$t/attic/root/nix" >"$t/foreign"
-  run --separate-stderr bash "$cli" deliver attic <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"root/nix is not root's own directory"* ]]
   [ ! -e "$t/attic/root/nix/.lower" ]
@@ -185,7 +211,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 }
 
 @test "usage names the verbs" {
-  run --separate-stderr bash "$cli"
+  run --separate-stderr "$t/run" "$cli"
   [ "$status" -eq 2 ]
   [[ $stderr == *"ndh-incus-container create"* && $stderr == *"ndh-incus-container deliver"* ]]
   [[ $stderr == *"ndh-incus-container converge"* ]]
@@ -206,7 +232,7 @@ delivered_before() {
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic holds its declared system and profiles"* ]]
   run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
@@ -216,7 +242,7 @@ delivered_before() {
 @test "converge delivers a changed system, sets its profiles host side, and keeps it when healthy" {
   delivered_before
   echo "nginx.service inactive no" >"$t/units"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic ← $t/x-attic, healthy"* ]]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic" ]
@@ -230,7 +256,7 @@ delivered_before() {
 @test "converge rolls back an unhealthy system exactly, fails loudly, and does not retry it" {
   delivered_before
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"atticd.service is failed"* && $stderr == *"back on its previous system"* ]]
   # Back on the previous system, its upper and its stamp.
@@ -238,10 +264,10 @@ delivered_before() {
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   grep -q '^zfs destroy tank/x@ndh-incus-attic-20261018T000000Z$' "$t/calls"
-  [ "$(head -1 "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
+  [ "$(sed -n 2p "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
   # Once per toplevel: the next converge does not deliver it again.
   : >"$t/calls"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"already failed on $t/x-attic"* ]]
   run grep -E '^(zfs snapshot|incus start)' "$t/calls"
@@ -249,7 +275,7 @@ delivered_before() {
 }
 
 @test "converge on a declared but never created container fails loudly, and touches nothing" {
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"attic is declared but not created"* ]]
   run grep -E '^(zfs|incus (start|stop|init))' "$t/calls"
@@ -263,7 +289,7 @@ delivered_before() {
   # restarted by the rollback, does not migrate.
   printf '#!%s\n[ -e %q ] || { echo schema-2 >%q; touch %q; }\n' "$BASH" "$t/migrated" "$t/zfs/tank/nerd/attic/db" "$t/migrated" >"$t/on-start"
   chmod +x "$t/on-start"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
   grep -q '^zfs snapshot -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
@@ -276,7 +302,7 @@ delivered_before() {
   delivered_before
   printf '#!%s\necho schema-2 >%q\n' "$BASH" "$t/zfs/tank/nerd/attic/db" >"$t/on-start"
   chmod +x "$t/on-start"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
   grep -q '^zfs destroy -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
@@ -286,7 +312,7 @@ delivered_before() {
 @test "the state snapshot is taken with the container stopped, before anything is delivered" {
   delivered_before
   touch "$t/running"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   stop=$(grep -n '^incus stop --project ndh attic$' "$t/calls" | cut -d: -f1)
   snap=$(grep -n '^zfs snapshot -r tank/nerd/attic@' "$t/calls" | cut -d: -f1)
@@ -305,7 +331,7 @@ delivered_before() {
   [ ! -e "$t/attic/root/nix/var/nix/profiles/per-user" ]
   # A strict umask in the caller: the mode below is the CLI's doing.
   umask 077
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [ -d "$t/attic/root/nix/var/nix/profiles/per-user/root" ]
   [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user")" = 755 ]
@@ -317,7 +343,7 @@ delivered_before() {
   delivered_before
   grep -q '^    (umask 022 && mkdir -p "\$dir/root/\$parent")$' "$cli"
   sed '/^    (umask 022 && mkdir -p "\$dir\/root\/\$parent")$/d' "$cli" >"$t/mutant"
-  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"cannot read directory"* ]]
   [[ $output != *healthy* ]]
@@ -327,7 +353,7 @@ delivered_before() {
 @test "a nix-env failure on a profile fails the delivery, rolls back, and is not retried" {
   delivered_before
   echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"could not be delivered"* && $stderr == *"back on its previous system"* ]]
   [[ $output != *healthy* ]]
@@ -335,26 +361,26 @@ delivered_before() {
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
-  [ "$(head -1 "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
+  [ "$(sed -n 2p "$t/attic/converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
 }
 
 @test "mutant: the delivery steps in the caller's process lose the nix-env failure" {
   delivered_before
   echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  grep -q 'bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"' "$cli"
+  grep -q '"\$BASH" "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"' "$cli"
   # The postcondition goes too, so only the process boundary stands between the failure and "healthy".
-  sed -e 's/bash "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/deliver_steps "$1"/' \
+  sed -e 's/"\$BASH" "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/deliver_steps "$1"/' \
     -e '/^  declared_ok "\$1" >&2 || die/d' "$cli" >"$t/mutant"
   run grep -q 'declared_ok "\$1" >&2' "$t/mutant"
   [ "$status" -eq 1 ]
-  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
 
 @test "a yq failure reading the profiles fails converge loudly, and delivers nothing" {
   delivered_before
   touch "$t/yq-profiles-fails"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"declared profiles could not be read"* ]]
   [[ $output != *healthy* ]]
@@ -369,7 +395,7 @@ delivered_before() {
   grep -q '^  profiles=\$(yq .*<<<"\$1") || return 1$' "$cli"
   sed 's/^\(  profiles=\$(yq .*<<<"\$1")\) || return 1$/\1 || true/' "$cli" >"$t/mutant"
   grep -q '<<<"\$1") || true$' "$t/mutant"
-  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
 
@@ -379,7 +405,7 @@ delivered_before() {
   printf '#!%s\nprintf "nix-env %%s\\n" "$*" >>%q\ncase "$4" in */per-user/*) ln -sfn %q "$4" ;; *) ln -sfn "$6" "$4" ;; esac\n' \
     "$BASH" "$t/calls" "$t/x-attic-old" >"$t/bin/nix-env"
   chmod +x "$t/bin/nix-env"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
   [[ $stderr == *"does not hold its declared profiles after delivery"* ]]
@@ -392,13 +418,13 @@ delivered_before() {
   chmod +x "$t/bin/nix-env"
   grep -q '^  declared_ok "\$1" >&2 || die' "$cli"
   sed '/^  declared_ok "\$1" >&2 || die/d' "$cli" >"$t/mutant"
-  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   [[ $output == *healthy* ]]
 }
 
 @test "the health probes call the guest's systemctl by its path" {
   delivered_before
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   grep -q -- '-- /run/current-system/sw/bin/systemctl is-active atticd.service$' "$t/calls"
   run grep -E -- '-- systemctl ' "$t/calls"
@@ -409,7 +435,7 @@ delivered_before() {
   delivered_before
   echo "atticd.service failed" >"$t/units"
   touch "$t/zfs-rollback-fails"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"zfs rollback: failing"* ]]
   [[ $stderr == *"rollback FAILED: it needs a hand"* ]]
@@ -429,7 +455,7 @@ refused_untouched() {
   for snapshot in ../x a@b "" ndh-incus-other-20261018T000000Z ndh-incus-attic-20261018T000000Z/../../x \
     ndh-incus-attic-2026101T000000Z ndh-incus-attic-20261018T000000Z@x; do
     : >"$t/calls"
-    run --separate-stderr bash "$cli" _rollback attic "$snapshot" <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" _rollback attic "$snapshot" <"$t/stdin"
     [ "$status" -ne 0 ]
     refused_untouched
   done
@@ -441,16 +467,16 @@ refused_untouched() {
   mkdir -p "$t/attic/.previous-a@b"
   grep -q 'is not a delivery snapshot of' "$cli"
   sed '/is not a delivery snapshot of/d' "$cli" >"$t/mutant"
-  run --separate-stderr bash "$t/mutant" _rollback attic a@b <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" _rollback attic a@b <"$t/stdin"
   grep -qE '^(zfs (rollback|destroy)|incus stop)' "$t/calls"
 }
 
 @test "an instance name outside an Incus name's shape is refused before any use" {
   for name in ../attic 'att.c' 'attic;x' '' ATTIC; do
     : >"$t/calls"
-    run --separate-stderr bash "$cli" _deliver-steps "$name" <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" _deliver-steps "$name" <"$t/stdin"
     [ "$status" -ne 0 ]
-    run --separate-stderr bash "$cli" _rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" _rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
     [ "$status" -ne 0 ]
     [ ! -s "$t/calls" ]
   done
@@ -461,11 +487,11 @@ refused_untouched() {
   # att.c declared as a copy of attic, right after the wrapper's INSTANCES line.
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.["att.c"] = .attic'"'"' <<<"$INSTANCES")' "$cli" >"$t/declared"
   [ "$(grep -c '"att.c"' "$t/declared")" = 1 ]
-  run --separate-stderr bash "$t/declared" _deliver-steps 'att.c' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/declared" _deliver-steps 'att.c' <"$t/stdin"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not an instance name"* ]]
   sed '/is not an instance name/d' "$t/declared" >"$t/mutant"
-  run --separate-stderr bash "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
   [[ $stderr != *"is not an instance name"* && $stderr != *"no instance 'att.c' is declared"* ]]
 }
 
@@ -483,7 +509,7 @@ system_current() {
 
 @test "the system matches but a declared profile is missing: converge delivers, and it then holds" {
   system_current
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
   holds_declared
@@ -493,7 +519,7 @@ system_current() {
   system_current
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   holds_declared
 }
@@ -503,7 +529,7 @@ system_current() {
   # Its shape before this fix: the system's profile only.
   grep -q 'if wrong=\$(declared_ok "\$name"); then' "$cli"
   sed 's|if wrong=\$(declared_ok "\$name"); then|if [ "$(readlink -f "$dir/root/nix/var/nix/profiles/system")" = "$(readlink -f "$toplevel")" ]; then|' "$cli" >"$t/mutant"
-  run --separate-stderr bash "$t/mutant" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   run holds_declared
   [ "$status" -ne 0 ]
 }
@@ -511,18 +537,60 @@ system_current() {
 @test "a profile changed alone, the system the same, is a new attempt after a failed one" {
   system_current
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 1 ]
   # The same declared state: not retried.
   : >"$t/calls"
-  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [[ $stderr == *"already failed"* ]]
   # A new runtime declared, the system unchanged: a new attempt.
   touch "$t/x-runtime-2"
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.profiles[] += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
   [ "$(grep -c 'x-runtime-2\|+= "-2"' "$t/cli-2")" = 1 ]
   : >"$t/units"
-  run --separate-stderr bash "$t/cli-2" converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-2" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$(readlink -f "$t/x-runtime-2")" ]
+}
+
+@test "under the trampoline the CLI resolves its tools from the profile, then the system, never the sandbox's" {
+  # Measured inside the trampolined script: its first PATH entry is the profile, then the system's sw, and nothing
+  # else (the live order). bash is the profile's, which the trampoline requires; the stubbed tools are the stand-ins.
+  # `type -P`: the CLI wraps incus in a function of its own.
+  sed 's/^ndh::logger:command:run .*/printf "%s\\n" "$PATH" "$(type -P bash)" "$(type -P incus)"/' "$cli" >"$t/probe"
+  run --separate-stderr "$t/run" "$t/probe"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]%%:*}" = "$t/profile/bin" ]
+  [[ ${lines[0]} == *":$NDH_TEST_SYSTEM_SW/bin"* ]]
+  [ "${lines[1]}" = "$t/profile/bin/bash" ]
+  [ "${lines[2]}" = "$t/profile/bin/incus" ]
+}
+
+@test "a failure on the delivering tool is retried by the tool's next revision, the declared state the same" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  : >"$t/calls"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [[ $stderr == *"already failed"* ]]
+  # The same script at another path: a new revision of the tool, the containers' declared state unchanged.
+  cp "$cli" "$t/ndh-incus-container-next"
+  : >"$t/units"
+  run --separate-stderr "$t/run" "$t/ndh-incus-container-next" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $stderr != *"already failed"* ]]
+  [[ $output == *healthy* ]]
+}
+
+@test "mutant: converge.failed without the tool keeps the next revision from retrying" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  grep -q "declared=\$(printf 'tool" "$cli"
+  sed "/declared=\$(printf 'tool/d" "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  cp "$t/mutant" "$t/mutant-next"
+  : >"$t/units"
+  run --separate-stderr "$t/run" "$t/mutant-next" converge <"$t/stdin"
+  [[ $stderr == *"already failed"* ]]
 }
