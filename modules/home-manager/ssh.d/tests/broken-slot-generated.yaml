@@ -1,0 +1,10 @@
+# Must FAIL the schema, for ONE reason only: a slot rests in `generated`, a state K4 removed (keys-reconcile writes
+# pending → recorded at once). Everything else here is valid.
+authorities: {}
+keys:
+  host-fixture:
+    type: ssh-ed25519
+    usage: [ssh-host]
+    profiles: []
+    slots:
+      26-10-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAIOneFixtureBlobOneFixtureBlobOneFixtureBlob, state: generated, origin: host }

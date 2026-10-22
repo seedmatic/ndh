@@ -4,9 +4,12 @@
 # declaration and retires with the next migration (design §d).
 #
 # Per machine key, the step it waits for, read from slots.nix's roles (K3):
-#   a pending slot                                   → generate (M2: switch the machine, its activation generates)
-#   current `generated`                              → window   (M3: record + certify + re-key; K4)
+#   a pending slot                                   → generate (M2: switch the machine, its activation generates and
+#                                                      publishes), then the window (M3: keys-reconcile apply, K4)
 #   current `recorded`, origin host                  → serve    (M5: switch the machine, it serves the new slot)
+# A slot never rests between generate and the window: keys.yaml cannot learn that a machine generated (the machine
+# commits nothing), so the batch stays at `generate` until keys-reconcile plan measures every machine's publication
+# (F1-verified), and the window's « oui » takes the slots from pending to recorded at once (K4, design §k).
 # An entry is { step, key, machine, slot, checked, unchecked, does }: `checked` = the preconditions K2 reads in the
 # declaration and found unmet (empty: met), `unchecked` = those it cannot measure, shown as « non vérifié ».
 {
@@ -60,17 +63,11 @@ let
         inherit (k) key machine;
         slot = r.pendingName;
         checked = [ ];
-        unchecked = [ "${k.machine} joignable" ];
-        does = "basculer ${k.machine} : son activation génère la clé ${k.key}@${r.pendingName} et publie sa publique";
-      }
-    else if (cur.state or "") == "generated" && origin == "host" then
-      {
-        step = "window";
-        inherit (k) key machine;
-        slot = r.currentName;
-        checked = [ "le pas « ouvrir la fenêtre » arrive avec K4 (keys-reconcile)" ];
-        unchecked = [ "la publique de ${k.key}@${r.currentName} publiée par ${k.machine}" ];
-        does = "ouvrir la fenêtre : enregistrer et certifier ${k.key}@${r.currentName}, re-chiffrer ses fichiers";
+        unchecked = [
+          "${k.machine} joignable"
+          "la publique de ${k.key}@${r.pendingName} publiée et vérifiée (keys-reconcile plan)"
+        ];
+        does = "basculer ${k.machine} : son activation génère la clé ${k.key}@${r.pendingName} et publie sa publique ; puis la fenêtre (keys-reconcile)";
       }
     else if (cur.state or "") == "recorded" && origin == "host" then
       {
@@ -94,10 +91,7 @@ let
       (
         r.pendingName == null
         && (r.current.origin or "") == "keyring"
-        && lib.elem (r.current.state or "") [
-          "generated"
-          "recorded"
-        ]
+        && (r.current.state or "") == "recorded"
       )
       {
         inherit (k) key machine;
@@ -106,14 +100,13 @@ let
       }
   ) machineKeys;
 
-  # The steps run one batch at a time: every machine generates before the window, the window closes before any
+  # The steps run one batch at a time: every machine generates (and the window records them all) before any
   # machine serves. So the queue holds the earliest step present, its machines in fleet-switch's order.
   steps = lib.filter (e: e != null) (map entryOf machineKeys);
   rank =
     s:
     lib.lists.findFirstIndex (x: x == s) 99 [
       "generate"
-      "window"
       "serve"
     ];
   first = lib.foldl' (acc: e: lib.min acc (rank e.step)) 99 steps;

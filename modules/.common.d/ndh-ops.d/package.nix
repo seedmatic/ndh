@@ -3,6 +3,7 @@
 { pkgs, tools }:
 let
   inherit (pkgs) lib;
+  inherit (import ./paths.nix) dir;
   verbs = builtins.fromJSON (builtins.readFile ../../darwin/claude-code-managed.d/verbs.json);
   # never_delegated (the root's ceremony): the operator's alone, at a terminal; no armed delegation may run it.
   operatorTools = lib.subtractLists verbs.operator_tools.never_delegated verbs.operator_tools.programs;
@@ -17,7 +18,7 @@ pkgs.writeShellApplication {
     gnused
   ];
   text = ''
-    dir=/var/db/ndh-ops
+    dir=${lib.escapeShellArg dir}
     sudo=/usr/bin/sudo
     max_hours=72
     declare -A tools=(${

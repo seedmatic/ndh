@@ -39,6 +39,8 @@ in
       default = import ../.common.d/ops-queue.d/package.nix {
         inherit pkgs catalog ndh;
         inherit (config.ndh.keysYaml) keys;
+        keysReconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
+        ndhOps = "${cfg.ndhOps}/bin/ndh-ops";
       };
       description = "ops, the operator's entry point to the fabric's pending steps, its queue derived from keys.yaml.";
     };
@@ -73,9 +75,28 @@ in
           incus-cluster-cert-renew = "${config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
           ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
           ndh-identity-push = "${config.ndh.identityPush.package}/bin/ndh-identity-push";
+          keys-reconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
         };
       };
       description = "ndh-ops, on this seat's PATH: runs one of the operator's tools on the delegation they armed.";
+    };
+    keysReconcile = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/keys-reconcile.d/package.nix {
+        inherit pkgs catalog ndh;
+        inherit (config.ndh.keysYaml) keys;
+        # The revision this seat's closure is built from: keys-reconcile works on it alone, and refuses it unpushed.
+        revision = config.system.configurationRevision or "";
+        inherit (cfg.package) machines;
+        inherit (config.ndh.hostKey) publishDir;
+        hostNames = self.fleetHostNamesByMachine;
+        keysJsonTool = "${
+          import ../.common.d/keys-yaml.d/json-tool.nix { inherit pkgs; }
+        }/bin/ndh-keys-json";
+        inherit (import ../.common.d/ndh-ops.d/paths.nix) delegation;
+      };
+      description = "keys-reconcile, the window step: its revision, batch and machines are this closure's.";
     };
   };
 
@@ -85,6 +106,7 @@ in
       cfg.fleetSwitch
       cfg.ops
       cfg.ndhOps
+      cfg.keysReconcile
     ];
   };
 }
