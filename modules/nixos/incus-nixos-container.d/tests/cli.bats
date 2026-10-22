@@ -18,13 +18,27 @@ read -r -t 2 _
 if [ \$? -gt 128 ]; then echo "incus \$* waited on stdin" >&2; exit 99; fi
 case "\$1 \$2" in
   "query /1.0/cluster") echo '{"enabled": false}' ;;
-  "query /1.0/instances/attic/state?project=ndh") echo '{"status": "Stopped"}' ;;
+  "query /1.0/instances/attic/state?project=ndh")
+    if [ -e "$t/running" ]; then echo '{"status": "Running"}'; else echo '{"status": "Stopped"}'; fi ;;
   "project show") exit 1 ;;
   "info --project") [ -e "$t/exists" ] ;;
   "start --project")
     for m in nix/.lower/nix/store nix/.lower/nix/var/nix nix/.upper; do
       [ -d "$t/attic/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
-    done ;;
+    done
+    touch "$t/running" ;;
+  "stop --project" | "stop --force") rm -f "$t/running" ;;
+  # The container's units: "<unit> <state> [ConditionResult]" lines in units; a unit not listed is active.
+  "exec --project")
+    unit="\${@: -1}"
+    line=\$(grep "^\$unit " "$t/units" 2>/dev/null || true)
+    if [ "\$7" = is-active ]; then
+      state=\$(cut -d' ' -f2 <<<"\${line:-x active}")
+      echo "\$state"
+      [ "\$state" = active ]
+    else
+      cut -d' ' -f3 <<<"\$line"
+    fi ;;
 esac
 EOF
   cat >"$t/bin/zfs" <<EOF
@@ -46,18 +60,33 @@ EOF
 #!$BASH
 if grep -qxF "\${@: -1}" "$t/foreign" 2>/dev/null; then echo 1000; else echo 0; fi
 EOF
-  printf '#!%s\necho 20261018T000000Z\n' "$BASH" >"$t/bin/date"
+  # `date +%s` for the health deadline (a fixed clock: the timeout is HEALTH_TIMEOUT polls of sleep's
+  # stub, which advances it), anything else the snapshot's timestamp.
+  cat >"$t/bin/date" <<EOF
+#!$BASH
+if [ "\$1" = +%s ]; then cat "$t/clock" 2>/dev/null || echo 1000; else echo 20261018T000000Z; fi
+EOF
+  cat >"$t/bin/sleep" <<EOF
+#!$BASH
+c=\$(cat "$t/clock" 2>/dev/null || echo 1000); echo \$((c + \${1%.*})) >"$t/clock"
+EOF
   printf '#!%s\nexit 1\n' "$BASH" >"$t/bin/mountpoint"
-  for c in systemctl nix nix-env; do printf '#!%s\nexit 0\n' "$BASH" >"$t/bin/$c"; done
+  # nix-env --store S -p PROFILE --set TARGET: the profile becomes a link to TARGET, as nix makes it.
+  cat >"$t/bin/nix-env" <<EOF
+#!$BASH
+printf 'nix-env %s\n' "\$*" >>"$t/calls"
+mkdir -p "\$(dirname "\$4")"; ln -sfn "\$6" "\$4"
+EOF
+  for c in systemctl nix; do printf '#!%s\nprintf "%s %%s\\n" "$*" >>%q\nexit 0\n' "$BASH" "$c" "$t/calls" >"$t/bin/$c"; done
   chmod +x "$t/bin/"*
-  touch "$t/x-attic"
+  touch "$t/x-attic" "$t/x-attic-old" "$t/x-runtime"
   printf '{"upperRoot":"%s/rw","lowerdirs":["/nix/.erofs/0"]}' "$t" >"$t/layers.json"
   cli=$t/ndh-incus-container
   {
     printf 'set -euo pipefail\nexport PATH=%q:$PATH\n' "$t/bin"
     printf 'INSTANCES=%q PROJECT=ndh POOL=default PRESTART_HOOK=/run/current-system/sw/bin/ndh-incus-container-prestart\n' \
-      '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{}}}'
-    printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q\n' \
+      '{"attic":{"name":"attic","target":null,"privileged":false,"dir":"'"$t"'/attic","dataset":"tank/nerd/ndh-containers/attic","toplevel":"'"$t"'/x-attic","hostStore":"local","devices":{},"profiles":{"/nix/var/nix/profiles/per-user/root/runtime":"'"$t"'/x-runtime"},"health":{"units":[{"unit":"atticd.service"},{"unit":"nginx.service","kind":"conditional"}]}}}'
+    printf 'GUEST_LOWER=/nix/.lower GUEST_UPPER=/nix/.upper LAYER_CONTRACT=%q STACK_DESCRIPTION=%q STORE_DEGRADED=%q GCROOTS=%q HEALTH_TIMEOUT=20\n' \
       "$t/layers.json" "$t/stack.json" "$t/degraded" "$t/gcroots"
     cat "$BATS_TEST_DIRNAME/../cli.sh"
   } >"$cli"
@@ -114,4 +143,67 @@ teardown() { kill "$holder" 2>/dev/null || true; }
   run --separate-stderr bash "$cli"
   [ "$status" -eq 2 ]
   [[ $stderr == *"ndh-incus-container create"* && $stderr == *"ndh-incus-container deliver"* ]]
+  [[ $stderr == *"ndh-incus-container converge"* ]]
+}
+
+# A container already delivered once on x-attic-old: a profile, a previous snapshot's stamp, an upper.
+delivered_before() {
+  touch "$t/exists"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles" "$t/attic/upper" "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
+  ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/system"
+  echo ndh-incus-attic-20261001T000000Z >"$t/attic/lower.snapshot"
+  echo old-upper >"$t/attic/upper/marker"
+}
+
+@test "converge on the declared system does nothing" {
+  delivered_before
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic runs its declared system"* ]]
+  run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "converge delivers a changed system, sets its profiles host side, and keeps it when healthy" {
+  delivered_before
+  echo "nginx.service inactive no" >"$t/units"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic ← $t/x-attic, healthy"* ]]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic" ]
+  # The bringup profile, set host side, not by the container's activation.
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$t/x-runtime" ]
+  # Committed: nothing kept aside, the previous delivery snapshot destroyed.
+  [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
+  [ ! -e "$t/attic/converge.failed" ]
+}
+
+@test "converge rolls back an unhealthy system exactly, fails loudly, and does not retry it" {
+  delivered_before
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"atticd.service is failed"* && $stderr == *"back on its previous system"* ]]
+  # Back on the previous system, its upper and its stamp.
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+  [ "$(cat "$t/attic/upper/marker")" = old-upper ]
+  [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
+  grep -q '^zfs destroy tank/x@ndh-incus-attic-20261018T000000Z$' "$t/calls"
+  [ "$(cat "$t/attic/converge.failed")" = "$t/x-attic" ]
+  # Once per toplevel: the next converge does not deliver it again.
+  : >"$t/calls"
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"already failed on $t/x-attic"* ]]
+  run grep -E '^(zfs snapshot|incus start)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "converge on a declared but never created container fails loudly, and touches nothing" {
+  run --separate-stderr bash "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic is declared but not created"* ]]
+  run grep -E '^(zfs|incus (start|stop|init))' "$t/calls"
+  [ "$status" -eq 1 ]
 }

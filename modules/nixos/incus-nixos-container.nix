@@ -117,6 +117,8 @@ let
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
+    inherit (instance) profiles;
+    health.units = map (u: if lib.isString u then { unit = u; } else u) instance.health.units;
   }) cfg.instances;
 
   storeScript = pkgs.writeShellApplication {
@@ -171,6 +173,7 @@ let
       STACK_DESCRIPTION=/run/ndh/store-stack.json
       STORE_DEGRADED=/run/ndh/store-degraded
       GCROOTS=/nix/var/nix/gcroots/ndh-containers
+      HEALTH_TIMEOUT=${toString cfg.healthTimeout}
       export NIX_CONFIG="extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}"
       ${builtins.readFile ./incus-nixos-container.d/cli.sh}
     '';
@@ -199,6 +202,12 @@ in
       default = "/var/lib/ndh-containers";
       readOnly = true;
       description = "Where each container's directory lives; the store freeze reads the layers each one stacks there.";
+    };
+
+    healthTimeout = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 180;
+      description = "Seconds `converge` gives a delivered container to be RUNNING with its health units active, before it rolls back.";
     };
 
     datasetParent = lib.mkOption {
@@ -249,6 +258,40 @@ in
                 keys. `type` is required: `create` passes it positionally, as Incus wants it.
               '';
             };
+            profiles = lib.mkOption {
+              type = lib.types.attrsOf lib.types.package;
+              default = { };
+              example = lib.literalExpression ''{ "/nix/var/nix/profiles/per-user/root/x" = pkg; }'';
+              description = ''
+                Nix profiles besides the system's, by their path inside the container, set host side at
+                each delivery. Never from the container's own activation: an unprivileged container's root
+                cannot write in the host-owned /nix bind.
+              '';
+            };
+            health.units = lib.mkOption {
+              type = lib.types.listOf (
+                lib.types.either lib.types.str (
+                  lib.types.submodule {
+                    options = {
+                      unit = lib.mkOption { type = lib.types.str; };
+                      kind = lib.mkOption {
+                        type = lib.types.enum [
+                          "active"
+                          "conditional"
+                        ];
+                        default = "active";
+                        description = "`conditional` is also healthy when systemd skipped the unit on its condition.";
+                      };
+                    };
+                  }
+                )
+              );
+              default = [ ];
+              description = ''
+                Units inside the container that `converge` requires active before it keeps a new system;
+                a container declaring none is healthy once RUNNING.
+              '';
+            };
           };
         }
       );
@@ -283,6 +326,36 @@ in
       operatorCli
       prestartHook
     ];
+
+    # The switch alone moves a container to its declared system, and so does a boot.
+    systemd.services.ndh-incus-container-converge = {
+      description = "Converge ndh's NixOS containers to their declared systems";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "incus.service"
+        "incus-startup.service"
+      ];
+      requires = [ "incus.service" ];
+      # Never restarted by the switch itself, which would then wait on every container's restart and health.
+      restartIfChanged = false;
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe operatorCli} converge";
+      };
+    };
+    # What the switch restarts instead: changed whenever a declared system changes (the CLI carries them), and
+    # restarted AFTER the switch's daemon-reload, so it queues the converge on the NEW definitions. An activation
+    # script would run before that reload and queue the old ones. It only queues, so the switch never waits.
+    systemd.services.ndh-incus-container-converge-trigger = {
+      description = "Queue the convergence of ndh's NixOS containers after a switch";
+      wantedBy = [ "multi-user.target" ];
+      restartTriggers = [ operatorCli ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${config.systemd.package}/bin/systemctl --no-block start ndh-incus-container-converge.service";
+      };
+    };
 
     systemd.services = lib.mapAttrs' (
       name: info:
