@@ -3,6 +3,12 @@ bats_require_minimum_version 1.5.0
 # The BUILT `ops`, on queues derived from fixtures (tests/package.nix), and the script on mutated queue files it must
 # refuse. Nothing here reaches a machine: `ops` reads only its frozen queue.
 
+setup() {
+  : "where the keys-reconcile and ndh-ops stubs record what ops asked them (tests/package.nix)"
+  export OPS_CALLS="$BATS_TEST_TMPDIR/calls"
+  : >"$OPS_CALLS"
+}
+
 # The built `ops` runs through `bash`: its `#!/usr/bin/env -S bash` line has no /usr/bin/env in the build sandbox.
 ops() { # $1 = the built ops, then its arguments
   bash "$@"
@@ -43,16 +49,34 @@ ops_on() { # $1 = a queue.json
   [ "$g1" -lt "$mac" ] && [ "$mac" -lt "$seat" ]
 }
 
+@test "generate: ops next measures (plan), and opens the window only when every machine is ready" {
+  KR_PLAN_RC=0 run --separate-stderr ops "$OPS_GENERATE" next
+  [ "$status" -eq 0 ]
+  [ "$(cat "$OPS_CALLS")" = $'keys-reconcile plan\nndh-ops keys-reconcile window' ]
+  : >"$OPS_CALLS"
+  KR_PLAN_RC=4 run --separate-stderr ops "$OPS_GENERATE" next
+  [ "$status" -eq 0 ]
+  [ "$(cat "$OPS_CALLS")" = "keys-reconcile plan" ]
+  [[ $output == *"la fenêtre attend"* ]]
+}
+
+@test "serve and an unmet condition run nothing" {
+  run --separate-stderr ops "$OPS_SERVE" next
+  [[ $output == *"à faire par 🎛️"* ]]
+  [ ! -s "$OPS_CALLS" ]
+}
+
 @test "generate: reachability is « non vérifié », never shown as met" {
   run --separate-stderr ops "$OPS_GENERATE" next
   [[ $output == *"? non vérifié : g1 joignable"* ]]
   [[ $output != *"✗ non remplie"* ]]
 }
 
-@test "a step that cannot run yet is refused, the unmet condition named" {
-  run --separate-stderr ops "$OPS_WINDOW" next
+@test "a head whose condition is unmet is refused, the condition named" {
+  echo '{"head": [{"step": "serve", "key": "host-g1", "machine": "g1", "slot": "26-11-01", "checked": ["une condition"], "unchecked": [], "does": "servir"}], "blocked": [], "waiting": []}' >"$BATS_TEST_TMPDIR/q.json"
+  run --separate-stderr ops_on "$BATS_TEST_TMPDIR/q.json" next
   [ "$status" -eq 0 ]
-  [[ $output == *"✗ non remplie : le pas « ouvrir la fenêtre » arrive avec K4 (keys-reconcile)"* ]]
+  [[ $output == *"✗ non remplie : une condition"* ]]
   [[ $output == *"refusé : une condition n'est pas remplie"* ]]
 }
 
@@ -75,8 +99,9 @@ ops_on() { # $1 = a queue.json
 @test "ops never writes: the same output twice, and nothing created under an empty HOME" {
   export HOME="$BATS_TEST_TMPDIR/home" XDG_CACHE_HOME="$BATS_TEST_TMPDIR/home/.cache"
   mkdir -p "$HOME"
-  a=$(ops "$OPS_GENERATE" next 2>/dev/null)
-  b=$(ops "$OPS_GENERATE" next 2>/dev/null)
+  : "a plan that is not ready: ops measures and stops, so it writes nothing of its own"
+  a=$(KR_PLAN_RC=4 ops "$OPS_GENERATE" next 2>/dev/null)
+  b=$(KR_PLAN_RC=4 ops "$OPS_GENERATE" next 2>/dev/null)
   [ "$a" = "$b" ]
   [ -z "$(find "$HOME" -mindepth 1 2>/dev/null)" ]
 }

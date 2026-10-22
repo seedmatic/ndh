@@ -269,12 +269,13 @@ $defs:
             checks.<system>.keys-slot-age holds it to .sops.yaml. A machine's sops identity is ssh-to-age of its
             host key once it serves it; a recipient in some rules only is refused.
 
-  # A machine's key generation, from the fabric-delivery frame (roles × keys K1): pending (declared, no key) →
-  # generated (on the host, unused) → recorded (public and certificate here) → serving (its machine uses it) →
-  # retired. Each step is one transition; nothing reads the state yet but the checks.
+  # A machine's key generation, from the fabric-delivery frame (roles × keys K1, K4): pending (declared; its machine
+  # generates the key and publishes the public) → recorded (public, age and certificate here, written by
+  # keys-reconcile apply from a measured, F1-verified publication) → serving (its machine uses it) → retired. No state
+  # says "generated": keys.yaml cannot learn it, and no public exists here without its verified statement.
   slotState:
     type: string
-    enum: [pending, generated, recorded, serving, retired]
+    enum: [pending, recorded, serving, retired]
 
   # Where the private was born: on its machine at activation, or in the operator's keyring (pass) and pushed.
   slotOrigin:

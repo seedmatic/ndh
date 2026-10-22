@@ -4,6 +4,9 @@
   ndh,
   catalog,
   keys,
+  # keys-reconcile (its plan and window) and ndh-ops (the delegation the window runs under), by store path.
+  keysReconcile,
+  ndhOps,
 }:
 let
   queue = import ./queue.nix {
@@ -20,6 +23,7 @@ in
       pkgs.yq-go
     ];
     queue = pkgs.writeText "ops-queue.json" (builtins.toJSON queue);
+    inherit keysReconcile ndhOps;
   }
 ))
 // {

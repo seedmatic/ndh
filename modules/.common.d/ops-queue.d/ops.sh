@@ -7,6 +7,8 @@ source @nixBashTrampoline@
 # Read-only in K2: it changes nothing, runs nothing and asks nothing. K4 and K6 add the steps that act.
 PATH="@toolPath@:/usr/bin:/bin"
 queue="@queue@"
+keysReconcile="@keysReconcile@"
+ndhOps="@ndhOps@"
 
 usage() {
   echo "usage: ops next | ops queue" >&2
@@ -33,11 +35,25 @@ next() {
   echo "prochain pas : $step, dans l'ordre de fleet-switch :"
   show '.head'
   : "a precondition read in the declaration and unmet refuses the step; an unmeasured one is shown, never met"
-  if [[ $(yq -p json -o json '[.head[].checked[]] | length' "$queue") == 0 ]]; then
-    echo "conditions lues dans la déclaration : remplies ; ops ne lance rien encore (K2)."
-  else
-    echo "refusé : une condition n'est pas remplie (✗ ci-dessus) ; ops ne lance rien encore (K2)."
+  if [[ $(yq -p json -o json '[.head[].checked[]] | length' "$queue") != 0 ]]; then
+    echo "refusé : une condition n'est pas remplie (✗ ci-dessus)."
+    return 0
   fi
+  case $step in
+    generate)
+      : "the machines generate at their switch (🎛️); the window opens once keys-reconcile plan measures every one"
+      echo "mesure des publications (keys-reconcile plan, lecture seule) :"
+      if ! "$keysReconcile" plan; then
+        echo "la fenêtre attend : basculer les machines non prêtes (🎛️), puis relancer ops next."
+        return 0
+      fi
+      : "ready: the window, through the operator's armed delegation; it measures again and asks the one « oui »"
+      "$ndhOps" keys-reconcile window
+      ;;
+    serve)
+      echo "à faire par 🎛️ : basculer ces machines (fleet-switch), dans cet ordre ; ops ne bascule rien."
+      ;;
+  esac
 }
 
 list() {

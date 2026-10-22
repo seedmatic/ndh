@@ -31,6 +31,19 @@ let
     ];
   };
   slot = state: origin: { inherit state origin; };
+  # keys-reconcile and ndh-ops as ops calls them: each records its arguments, plan answers « prêt » or not as
+  # KR_PLAN_RC says, and the window says it ran. ops itself never measures, arms or writes.
+  stub =
+    name:
+    pkgs.writeShellScript name ''
+      printf '%s %s\n' ${name} "$*" >>"''${OPS_CALLS:?}"
+      case ${name}:''${1:-} in
+        keys-reconcile:plan) echo "plan (stub)"; exit "''${KR_PLAN_RC:-0}" ;;
+        ndh-ops:keys-reconcile) echo "window (stub)" ;;
+      esac
+    '';
+  keysReconcile = stub "keys-reconcile";
+  ndhOps = stub "ndh-ops";
   keysOf = slots: lib.mapAttrs (_: s: { inherit (s) slots; }) slots;
   derive =
     keys:
@@ -41,7 +54,13 @@ let
   build =
     name: keys:
     import ../package.nix {
-      inherit pkgs ndh keys;
+      inherit
+        pkgs
+        ndh
+        keys
+        keysReconcile
+        ndhOps
+        ;
       catalog = machines;
     };
   serving = slot "serving" "keyring";
@@ -69,17 +88,11 @@ let
     mixed = keysOf {
       host-g1.slots = {
         "26-10-17" = serving;
-        "26-11-01" = slot "generated" "host";
+        "26-11-01" = slot "recorded" "host";
       };
       host-g2.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "pending" "host";
-      };
-    };
-    window = keysOf {
-      host-g1.slots = {
-        "26-10-17" = serving;
-        "26-11-01" = slot "generated" "host";
       };
     };
     serve = keysOf {
@@ -115,17 +128,20 @@ let
         "generate:mac"
         "generate:seat"
       ];
-    assert expect "generate shows the reachability as unchecked, never met" (lib.all (
-      e: e.unchecked == [ "${e.machine} joignable" ]
-    ) q.generate.head) true;
+    assert expect "generate shows the reachability and the measured publication as unchecked, never met"
+      (lib.all (
+        e:
+        e.unchecked == [
+          "${e.machine} joignable"
+          "la publique de host-${e.machine}@26-11-01 publiée et vérifiée (keys-reconcile plan)"
+        ]
+      ) q.generate.head)
+      true;
     assert expect "the earliest step is the head; the later one is blocked" (steps q.mixed.head) [
       "generate:g2"
     ];
     assert expect "the later step names why" (map (e: lib.last e.checked) q.mixed.blocked) [
       "le pas précédent n'est pas fini sur toute la flotte"
-    ];
-    assert expect "window: refused until K4, by name" (map (e: e.checked) q.window.head) [
-      [ "le pas « ouvrir la fenêtre » arrive avec K4 (keys-reconcile)" ]
     ];
     assert expect "serve: host keys and sshfs keys alike, in order" (steps q.serve.head) [
       "serve:g2"
@@ -156,7 +172,6 @@ pkgs.runCommand "ops-queue-checks"
     OPS_KEYRING = "${ops.keyring-only}/bin/ops";
     OPS_GENERATE = "${ops.generate}/bin/ops";
     OPS_MIXED = "${ops.mixed}/bin/ops";
-    OPS_WINDOW = "${ops.window}/bin/ops";
     OPS_SERVE = "${ops.serve}/bin/ops";
     # The script as the package substitutes it, with its queue left to set: the mutants point it at other files.
     OPS_SH = pkgs.replaceVars ../ops.sh {
@@ -167,6 +182,7 @@ pkgs.runCommand "ops-queue-checks"
         pkgs.yq-go
       ];
       queue = "/the-mutant-queue";
+      inherit keysReconcile ndhOps;
     };
   }
   ''
