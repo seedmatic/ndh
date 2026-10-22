@@ -2311,10 +2311,44 @@
                   path = builtins.head (builtins.match ".*(/nix/store/[a-z0-9]+-claude-code-backend\\.json).*" data);
                 in
                 builtins.appendContext path (builtins.getContext data);
-              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value.
+              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value. It is
+              # read as the exec target of nix-darwin's wait4path wrapper, so an agent that loses the wrapper has no
+              # script to check and is refused, rather than checked as nothing. The match drops the context; it is put back.
+              script =
+                c:
+                let
+                  args = c.launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments or [ ];
+                  m =
+                    if pkgs.lib.length args == 3 then
+                      builtins.match "/bin/wait4path /nix/store && exec (/nix/store/[^ ]+)" (pkgs.lib.elemAt args 2)
+                    else
+                      null;
+                in
+                if m == null then
+                  null
+                else
+                  builtins.appendContext (builtins.head m) (builtins.getContext (pkgs.lib.elemAt args 2));
               agent =
                 h:
-                builtins.head (darwin h).launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments;
+                let
+                  s = script (darwin h);
+                in
+                assert pkgs.lib.assertMsg (
+                  s != null
+                ) "${h}: claude-code-backend-env does not run its script behind the wait4path wrapper";
+                s;
+              mutant =
+                script
+                  (self.darwinConfigurations.bioskop.extendModules {
+                    modules = [
+                      {
+                        launchd.user.agents.claude-code-backend-env = {
+                          command = pkgs.lib.mkForce "";
+                          serviceConfig.ProgramArguments = [ "/nix/store/x-mutant-claude-code-backend-env" ];
+                        };
+                      }
+                    ];
+                  }).config;
               missing =
                 h:
                 pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
@@ -2327,6 +2361,9 @@
                 + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
               ) hosts;
             in
+            assert pkgs.lib.assertMsg (
+              mutant == null
+            ) "claude-code-backend-seats: an agent without the wrapper was not refused";
             pkgs.runCommand "claude-code-backend-seats"
               {
                 inherit report;
