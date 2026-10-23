@@ -13,7 +13,7 @@ setup() {
   render "$(cut -d' ' -f1,2 "$t/old.pub")"
 }
 
-render() { # <recorded old public>
+render() { # <recorded old public> [bootstrap]
   # Rendered as replaceVars does (each value shell-quoted, as ndh.hostKey.generateVars holds them), through the real
   # ndh trampoline and logger, and run whole: its last line is the dispatch the activation runs. NDH_TRAMPOLINE comes
   # from the flake check (the sandbox cannot search the store).
@@ -22,7 +22,7 @@ render() { # <recorded old public>
     [nixBashTrampoline]="$NDH_TRAMPOLINE"
     [machine]=m [slot]=26-11-01 [base]="$t/var" [slotDir]="$t/var/slots" [owner]="$(id -u)"
     [keyFile]="$t/var/slots/26-11-01/ssh_host_ed25519_key" [publishDir]="$t/var/published"
-    [oldKey]="$t/old" [oldPublic]="$1"
+    [oldKey]="$t/old" [oldPublic]="$1" [bootstrap]="${2:-}" [console]="$t/console"
   )
   local text k
   text="$(cat "$BATS_TEST_DIRNAME/../generate.sh")"
@@ -154,4 +154,35 @@ verify() { # the statement against the OLD key's public, as the seat will
   [ "$status" -eq 0 ]
   [[ $output$stderr != *"PRIVATE KEY"* ]]
   [[ $output$stderr != *"$(sed -n 2p "$(key)")"* ]]
+}
+
+@test "a console bootstrap publishes its public alone, reads no old key, and shows its fingerprint at the console" {
+  render "" console
+  rm -f "$t/old"
+  run --separate-stderr bash "$t/generate"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$(pub public)")" = "$(ssh-keygen -y -f "$(key)" | cut -d' ' -f1,2)" ]
+  [ ! -e "$(pub statement)" ]
+  [ ! -e "$(pub statement.sig)" ]
+  fp="$(ssh-keygen -lf "$(pub public)" | cut -d' ' -f2)"
+  grep -qF "tape-la à keys-reconcile window: $fp" "$t/console"
+  [[ $output$stderr != *"PRIVATE KEY"* ]]
+}
+
+@test "a console bootstrap's second run regenerates nothing and shows the same fingerprint" {
+  render "" console
+  bash "$t/generate"
+  before="$(sha256sum "$(key)")"
+  bash "$t/generate"
+  [ "$(sha256sum "$(key)")" = "$before" ]
+  [ "$(grep -c "tape-la à keys-reconcile window" "$t/console")" = 2 ]
+  [ "$(sort -u <(grep -o 'SHA256:[^ ]*' "$t/console") | wc -l)" = 1 ]
+}
+
+@test "a console that cannot be written changes nothing" {
+  render "" console
+  mkdir "$t/console"
+  run --separate-stderr bash "$t/generate"
+  [ "$status" -eq 0 ]
+  [ -s "$(pub public)" ]
 }

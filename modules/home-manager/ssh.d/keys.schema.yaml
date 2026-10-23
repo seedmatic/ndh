@@ -262,6 +262,12 @@ $defs:
           $ref: "#/$defs/slotOrigin"
         age:
           $ref: "#/$defs/ageRecipient"
+        bootstrap:
+          description: >
+            `console`: the machine serves no key of its own that could vouch for this one (it serves a shared key),
+            so the new key's binding is its fingerprint, compared by the operator with the machine's console, once
+            (the fabric-delivery frame's one exception, roles × keys §o). Only on a pending slot born on its machine.
+          const: console
         recipient:
           type: boolean
           description: >
@@ -293,6 +299,14 @@ $defs:
   machineSlots:
     additionalProperties:
       required: [state, origin]
+      if:
+        required: [bootstrap]
+      then:
+        properties:
+          state:
+            const: pending
+          origin:
+            const: host
 
   nixSigningPublic:
     description: >

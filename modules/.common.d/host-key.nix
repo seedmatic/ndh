@@ -141,6 +141,9 @@ in
           inherit (cfg) publishDir;
           oldKey = cfg.servedKeyFile;
           oldPublic = "${entry.type or "ssh-ed25519"} ${roles.current.public or ""}";
+          bootstrap = entry.slots.${pendingName}.bootstrap or "";
+          # The machine's console: what the operator reads at its screen (a NixOS guest's tty, a darwin host's).
+          console = "/dev/console";
         }
       );
       # The ndh bash trampoline and logger, like every activation script; ssh-keygen and coreutils by store path.
