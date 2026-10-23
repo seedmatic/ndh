@@ -262,7 +262,9 @@ in
                 ZFS datasets holding the service's data (its disk devices' sources). `converge` snapshots
                 each, recursively, before it delivers a new system, and a rollback restores them with the
                 previous system, so data a new version migrated on start comes back too. A commit destroys
-                the snapshots. A rollback also discards whatever the service wrote meanwhile.
+                the snapshots. A rollback also discards whatever the service wrote meanwhile, and, being
+                `zfs rollback -r`, destroys every snapshot of these datasets taken since the delivery (an
+                auto-snapshot, a backup's): they hold the rejected system's data.
               '';
             };
             health.units = lib.mkOption {
