@@ -91,7 +91,7 @@ main() {
     rm -rf "$work"
     trap - EXIT
     local line
-    line=$(printf '[ndh-host-key-generate] host-%s@%s born; compare at ops next: %s' "$machine" "$slot" \
+    line=$(printf '[ndh-host-key-generate] host-%s@%s born; tape-la à keys-reconcile window: %s' "$machine" "$slot" \
       "$(ssh-keygen -lf "${publishDir}/host-${machine}@${slot}.public" | cut -d' ' -f2)")
     printf '%s\n' "$line" >&2
     : "the console line is a convenience for the operator's eyes; a console that refuses it changes nothing"

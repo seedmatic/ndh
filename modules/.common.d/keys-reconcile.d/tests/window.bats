@@ -300,9 +300,9 @@ prefix() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://' | cu
   console_batch
   run --separate-stderr window "$(prefix)" oui
   [ "$status" -eq 0 ]
-  [[ $output == *"À COMPARER à la console de seat"* ]]
+  [[ $output == *"empreinte : à lire à la console de seat"* ]]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = recorded ]
-  grep -q "tape les 8 premiers caractères" "$t/prompt"
+  grep -q "lis l empreinte à la console de seat" "$t/prompt"
 }
 
 @test "a console bootstrap: a wrong typed fingerprint writes nothing, even with « oui » after" {
@@ -335,4 +335,26 @@ prefix() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://' | cu
   run --separate-stderr window oui
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
+}
+
+@test "a console bootstrap shows no part of its fingerprint, neither in the window's output nor in its prompt (🛡️)" {
+  console_batch
+  run --separate-stderr window "$(prefix)" oui
+  [ "$status" -eq 0 ]
+  printf '%s\n%s\n' "$output" "$stderr" >"$t/out"
+  fp="$(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://')"
+  : "no 8-character window of the fingerprint, anywhere the operator's screen shows"
+  for ((k = 0; k + 8 <= ${#fp}; k++)); do
+    run grep -F -- "${fp:k:8}" "$t/out" "$t/prompt"
+    [ "$status" -eq 1 ]
+  done
+}
+
+@test "plan shows no part of a console bootstrap's fingerprint either" {
+  console_batch
+  HOME="$t/home" XDG_CACHE_HOME="$t/cache" run --separate-stderr bash "$t/keys-reconcile" plan
+  [ "$status" -eq 0 ]
+  fp="$(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://')"
+  [[ $output$stderr != *"${fp:0:8}"* ]]
+  [[ $output == *"à lire à la console de seat"* ]]
 }

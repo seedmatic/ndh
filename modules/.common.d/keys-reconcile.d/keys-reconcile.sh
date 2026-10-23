@@ -116,8 +116,12 @@ reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify 
   files=$(yq -r -p json -o json ".[$i].files | join(\", \")" "$batch")
   reconcile::host-key::collect "$i" "$work"
   if public=$(reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" "$bootstrap" 2>"$work/why"); then
-    printf '  ✓ %s — %s@%s %s%s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)" \
-      "$([[ $bootstrap == console ]] && printf ' — À COMPARER à la console de %s' "$machine")"
+    : "a console bootstrap's fingerprint is never shown here: the operator must read it at the machine's console (🛡️)"
+    if [[ $bootstrap == console ]]; then
+      printf '  ✓ %s — %s@%s empreinte : à lire à la console de %s\n' "$machine" "$keyName" "$slot" "$machine"
+    else
+      printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
+    fi
     printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
       "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
     known+=$'\n'"${public#ssh-ed25519 }"
@@ -188,7 +192,7 @@ window() {
     [[ $(yq -r -p json -o json ".[$i].bootstrap // \"\"" "$batch") == console ]] || continue
     shown=$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)
     shown=${shown#SHA256:}
-    printf '%s@%s : tape les 8 premiers caractères de l empreinte affichée à la console de %s (après SHA256:) : ' \
+    printf '%s@%s : lis l empreinte à la console de %s et tapes-en les 8 premiers caractères (après SHA256:) : ' \
       "$keyName" "$slot" "$(yq -r -p json -o json ".[$i].machine" "$batch")" >>"$ttyOut"
     read -r typed <&7 || typed=""
     [[ ${#typed} -ge 8 && $shown == "$typed"* ]] ||
