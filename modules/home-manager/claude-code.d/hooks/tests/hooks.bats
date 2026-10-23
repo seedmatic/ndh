@@ -303,24 +303,6 @@ chantier() { # a chantier page that claims the test conversation
   [[ "$(printf '%s' "$output" | yq -p=json -o=json -r '.hookSpecificOutput.sessionTitle // "none"')" == none ]]
 }
 
-# --- leak-guard ---
-# One case per line of leak-guard-cases.tsv: the verdict, a tab, the command as a session would type it.
-@test "leak-guard: every case gets its verdict" {
-  local want cmd got bad=""
-  while IFS=$'\t' read -r want cmd; do
-    got="$(C="$cmd" yq -n -o=json -I0 '{"tool_input": {"command": strenv(C)}}' | bash "$H/leak-guard.sh" |
-      yq -p=json -o=json -r '.hookSpecificOutput.permissionDecision // "allow"')"
-    got="${got:-allow}"
-    [[ "$got" == "${want,,}" ]] || bad+="  want $want, got $got: $cmd"$'\n'
-  done <"$BATS_TEST_DIRNAME/leak-guard-cases.tsv"
-  [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
-}
-@test "leak-guard: a refusal says a variable is opaque and gives the literal form" {
-  out="$(C='nix build "$R#checks.x"' yq -n -o=json -I0 '{"tool_input": {"command": strenv(C)}}' | bash "$H/leak-guard.sh" |
-    yq -p=json -o=json -r .hookSpecificOutput.permissionDecisionReason)"
-  [[ "$out" == *"A shell variable is opaque to this hook"* && "$out" == *'?rev=$(git rev-parse HEAD) form out literally'* ]]
-}
-
 # --- sops-git-env ---
 
 # The sops drivers come from an INCLUDED file, as the real git-sops-diff is; their commands

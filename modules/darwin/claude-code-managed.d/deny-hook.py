@@ -363,6 +363,46 @@ def simple_commands(text):
     return commands
 
 
+def shell_stdin_literals(text):
+    """The text a shell reads on stdin when the command line spells it out: `sh <<<'…'`, or `echo|printf '…' | sh`.
+    Like a heredoc fed to a shell, it is code. A stdin the text does not hold (a file, a pipe from any other program)
+    stays unseen."""
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return []
+    found, start = [], 0
+    for i, tok in enumerate(tokens + [";"]):
+        if tok not in SEPARATORS or tok == "|":
+            continue
+        pipeline = tokens[start:i]
+        start = i + 1
+        stages, cur = [], []
+        for t in pipeline:
+            if t == "|":
+                stages.append(cur)
+                cur = []
+            else:
+                cur.append(t)
+        stages.append(cur)
+        for k, stage in enumerate(stages):
+            words = [w for w in stage if not ASSIGNMENT.match(w)]
+            if not words or os.path.basename(words[0]) not in SHELLS:
+                continue
+            if "<<<" in words and words.index("<<<") + 1 < len(words):
+                found.append(words[words.index("<<<") + 1])
+            if k > 0:
+                src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
+                if src and os.path.basename(src[0]) in ("echo", "printf"):
+                    lit = [w for w in src[1:] if not w.startswith("-")]
+                    if lit:
+                        found.append(lit[0].replace("\\n", "\n") if src[0].endswith("printf") else " ".join(lit))
+    return found
+
+
 def positionals(args, value_opts, arity=None):
     arity = arity or {}
     out, i = [], 0
@@ -430,6 +470,7 @@ class Analyzer:
         if depth > MAX_DEPTH:
             raise Refused("wrapping nested deeper than the hook follows")
         outer, bodies = extract_substitutions(text)
+        bodies = bodies + shell_stdin_literals(outer)
         # A substitution runs a command of its own: never beside an owned removal.
         self.other_commands += len(bodies)
         for body in bodies:
@@ -474,6 +515,7 @@ class Analyzer:
             if prog in self.NDH_VERBS and "/" in argv[0] and not argv[0].startswith(self.NDH_SWITCH_HOMES):
                 self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
+            self.check_nix_leak(prog, rest, argv)
             nxt = self.peel(prog, rest, depth)
             if nxt is not None:
                 # A launcher (bash -c, sudo, env, ssh, nix run…) is not a plain removal either.
@@ -749,6 +791,97 @@ class Analyzer:
     NIX_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
     NIX_VALUE = {"-I", "--inputs-from", "--profile", "--expr", "-f", "--file", "--override-input",
                  "--option", "--arg", "--argstr", "--store", "--eval-store", "--include"}
+
+    # The 2026-10-10 leak: the global git sops smudge decrypts the secrets on disk, and an evaluation that names a working
+    # tree (`.`, a path, `path:`, a `git+file:` without a revision, or nothing, which means `.`) copies it, plaintext
+    # included, into the store, from where a cache publishes it. A revision is read from the object database, where the
+    # secrets are encrypted.
+    LEAK_WHY = ("this nix command evaluates a working tree, and a decrypted checkout copies its secrets into the store "
+                "in clear (the 2026-10-10 leak). Name a revision instead: nix <cmd> "
+                "\"git+file://$PWD?rev=$(git rev-parse HEAD)#<attr>\", or a pushed github: ref. A shell variable is "
+                "opaque to this hook: \"$R#attr\" is refused even when it holds a revision, so write the "
+                "git+file://…?rev=$(git rev-parse HEAD) form out literally, and a store path as itself")
+    LEAK_SUBCOMMANDS = {"build", "run", "develop", "shell", "eval", "fmt", "bundle", "print-dev-env", "path-info",
+                        "why-depends", "search", "edit", "repl", "copy"}
+    LEAK_FLAKE_SUBCOMMANDS = {"check", "show", "metadata", "info", "lock", "update", "archive", "prefetch"}
+    # Mostly given store paths: only a flake-looking positional matters, and none means none.
+    LEAK_STORE_SUBCOMMANDS = {"copy", "path-info", "why-depends", "search"}
+    LEAK_VALUE = {"--arg", "--argstr", "--option", "--override-input", "--inputs-from", "--profile", "-o",
+                  "--out-link", "--apply", "--system", "--max-jobs", "-j", "--to", "--from", "--store", "--eval-store",
+                  "--cores", "--keep-failed-in", "--log-format", "--builders", "--reference-lock-file",
+                  "--output-lock-file", "--update-input", "-I", "--include", "--flake"}
+    LEAK_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
+    REBUILDERS = ("nixos-rebuild", "darwin-rebuild", "home-manager")
+
+    @staticmethod
+    def unsafe_ref(ref):
+        """Whether a flake reference resolves to a directory on disk without naming a revision."""
+        ref = ref.split("#", 1)[0].split("^", 1)[0]
+        scheme = ref.split(":", 1)[0].lower() if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", ref) else ""
+        query = ref.split("?", 1)[1] if "?" in ref else ""
+        # `rev=$(git rev-parse HEAD)` reaches here as the substitution's placeholder; the substitution itself is
+        # analysed as a command of its own.
+        pinned = any(re.fullmatch(r"rev=(?:[0-9a-fA-F]+| __subst__ )", p) for p in query.split("&"))
+        # A revision pins a git ref only: to `path:`, a bare path or another vcs, it means nothing.
+        if scheme in ("git+file", "git+https", "git+ssh", "git") and pinned:
+            return False
+        if ref.startswith("/nix/store/") or (scheme == "path" and ref[5:].startswith("/nix/store/")):
+            return False
+        if scheme in ("path", "file", "git+file") or scheme.endswith("+file"):
+            return True
+        # `{}` is find's path, filled in at run time.
+        return ref in ("", ".", "..", "{}") or ref.startswith(("./", "../", "/", "~", "$"))
+
+    def check_nix_leak(self, prog, rest, argv):
+        """Refuse a nix or rebuild command that would evaluate a working tree. Judged before peel(), which replaces
+        `nix run X -- cmd` and `nix shell X --command cmd` with the command they launch."""
+        if prog in self.REBUILDERS:
+            for i, tok in enumerate(rest):
+                ref = rest[i + 1] if tok == "--flake" and i + 1 < len(rest) else (
+                    tok.split("=", 1)[1] if tok.startswith("--flake=") else None)
+                if ref is not None and self.unsafe_ref(ref):
+                    self.deny(f"{self.LEAK_WHY}. Offending reference: --flake {ref}", argv)
+            return
+        if prog != "nix":
+            return
+        words = rest
+        for flag in ("-c", "--command", "--"):
+            if flag in words:
+                words = words[:words.index(flag)]
+        if any(w in ("--expr", "-f", "--file", "--impure-expr") for w in words):
+            return
+        for i, tok in enumerate(words):
+            if tok == "--override-input" and i + 2 < len(words) and self.unsafe_ref(words[i + 2]):
+                self.deny(f"{self.LEAK_WHY}. Offending reference: --override-input {words[i + 1]} {words[i + 2]}", argv)
+                return
+            if tok in ("--inputs-from", "--reference-lock-file") and i + 1 < len(words) \
+                    and self.unsafe_ref(words[i + 1]):
+                self.deny(f"{self.LEAK_WHY}. Offending reference: {tok} {words[i + 1]}", argv)
+                return
+        pos = positionals(words, self.LEAK_VALUE, self.LEAK_ARITY)
+        if not pos:
+            return
+        sub, args = pos[0], pos[1:]
+        if sub == "flake":
+            if not args or args[0] not in self.LEAK_FLAKE_SUBCOMMANDS:
+                return
+            sub, args = f"flake {args[0]}", args[1:]
+            flake_ref = next((rest[i + 1] for i, t in enumerate(rest) if t == "--flake" and i + 1 < len(rest)), None)
+            if flake_ref is not None:
+                args = args + [flake_ref]
+        elif sub not in self.LEAK_SUBCOMMANDS:
+            return
+        if not args:
+            if sub in self.LEAK_STORE_SUBCOMMANDS:
+                return
+            self.deny(f"{self.LEAK_WHY}. Offending reference: none (nix {sub} defaults to the current directory)", argv)
+            return
+        if sub in ("run", "eval", "fmt"):
+            args = args[:1]
+        for ref in args:
+            if self.unsafe_ref(ref):
+                self.deny(f"{self.LEAK_WHY}. Offending reference: {ref}", argv)
+                return
 
     def peel_nix(self, rest):
         if not rest or rest[0] not in ("run", "shell", "develop"):
