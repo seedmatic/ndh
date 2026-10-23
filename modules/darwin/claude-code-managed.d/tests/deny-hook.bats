@@ -94,8 +94,8 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 # --- D: Pulumi through the Automation API ---
 @test "D nix run .#grow -- stack up"        { run hook 'nix run .#grow -- dev up'; denied; }
 @test "D rke2lab-grow stack up"             { run hook 'rke2lab-grow dev up --target x'; denied; }
-@test "D grow preview stays allowed"        { run hook 'nix run .#grow -- dev preview'; allowed; }
-@test "D grow default (preview) allowed"    { run hook 'nix run .#grow -- dev'; allowed; }
+@test "D grow preview stays allowed"        { run hook 'nix run "git+file:///tmp/w?rev=0123abcd#grow" -- dev preview'; allowed; }
+@test "D grow default (preview) allowed"    { run hook 'nix run "git+file:///tmp/w?rev=0123abcd#grow" -- dev'; allowed; }
 @test "D java seed-outcluster Main → ask"   { run hook 'java -cp app.jar io.seedmatic.rke2lab.controlplane.Main seed'; asked; }
 @test "D mvnw exec:java seed-outcluster → ask" { run hook 'flox activate -- ./mvnw -pl :seed-outcluster -am exec:java'; asked; }
 # Known limits, asserted so that a change in behaviour is noticed — a textual hook cannot see these:
@@ -115,8 +115,8 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "ok pulumi stack output upstream"     { run hook 'pulumi stack output upstream-url'; allowed; }
 @test "ok incus list"                       { run hook 'incus list --format csv'; allowed; }
 @test "ok incus info of shell-box"          { run hook 'incus info shell-box'; allowed; }
-@test "ok nixos-rebuild build"              { run hook 'nixos-rebuild build --flake .#bioskop'; allowed; }
-@test "ok darwin-rebuild build flake attr"  { run hook 'darwin-rebuild build --flake .#switch'; allowed; }
+@test "ok nixos-rebuild build"              { run hook 'nixos-rebuild build --flake github:seedmatic/ndh/abc#bioskop'; allowed; }
+@test "ok darwin-rebuild build flake attr"  { run hook 'darwin-rebuild build --flake github:seedmatic/ndh/abc#switch'; allowed; }
 @test "ok rm -r without force"              { run hook 'rm -r target/tmp'; allowed; }
 @test "ok rm -f a file"                     { run hook 'rm -f /tmp/x.json'; allowed; }
 @test "ok mv elsewhere"                     { run hook 'mv a.txt b.txt'; allowed; }
@@ -252,8 +252,8 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "pub: nix copy --to file://"              { run hook 'nix copy --to file:///tmp/cache ./result'; denied; }
 @test "pub: nix copy --to a bare path"          { run hook 'nix copy --to /tmp/cache ./result'; denied; }
 @test "pub: nix copy -L --to http:// via flox"  { run hook 'flox activate -- nix copy -L --to http://cache:8080 ./result'; denied; }
-@test "ok nix copy --to ssh-ng:// a guest"      { run hook 'nix copy --to ssh-ng://bioskop-nixos ./result'; allowed; }
-@test "ok nix copy --to=ssh://"                 { run hook 'nix copy --to=ssh://nikopol-nixos ./result'; allowed; }
+@test "ok nix copy --to ssh-ng:// a guest"      { run hook 'nix copy --to ssh-ng://bioskop-nixos /nix/store/abc-x'; allowed; }
+@test "ok nix copy --to=ssh://"                 { run hook 'nix copy --to=ssh://nikopol-nixos /nix/store/abc-x'; allowed; }
 @test "ok nix copy --from"                      { run hook 'nix copy --from https://cache.nixos.org /nix/store/x'; allowed; }
 @test "ok cachix use"                           { run hook 'cachix use seedmatic'; allowed; }
 @test "keychain: find-generic-password -w"      { run hook 'security find-generic-password -s seedmatic -w'; denied; }
@@ -555,7 +555,13 @@ corpus() {
 }
 @test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
 @test "namespaces: every corpus case gets its verdict" { corpus nsenter-cases.tsv; }
+@test "leak: every corpus case gets its verdict" { corpus leak-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
 @test "ok a shell on stdin after a sudo, in its own command" { run hook 'sudo -v; bash < /tmp/x.sh'; allowed; }
+@test "leak: a refusal says a variable is opaque and gives the literal form" {
+  run hook 'nix build "$R#checks.x"'
+  denied
+  [[ "$output" == *"A shell variable is opaque to this hook"* && "$output" == *'?rev=$(git rev-parse HEAD) form out literally'* ]]
+}
