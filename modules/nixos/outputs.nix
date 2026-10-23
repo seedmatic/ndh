@@ -204,10 +204,8 @@ let
 
       # The shared middle of the stack.  Same value for every host by
       # construction — see mkFleetRuntimeConfig.
-      fleetRuntimeSystemPath =
-        (mkFleetRuntimeConfig {
-          inherit catalog inventory;
-        }).config.system.build.toplevel;
+      fleetRuntimeConfig = mkFleetRuntimeConfig { inherit catalog inventory; };
+      fleetRuntimeSystemPath = fleetRuntimeConfig.config.system.build.toplevel;
 
       # Minimal bringup system — ZFS + network + SSH only.  This closure
       # is bit-identical for every host on the fleet (no hostProfile-derived
@@ -508,6 +506,8 @@ let
           builderMemSizeMiB ? diskImageVmMemSizeMiB,
           builderVmCpuCores ? diskImageVmCpuCores,
           builderDiskoConfiguration ? diskoConfiguration,
+          # The same for every host by construction; only the secret canary passes its own (a fixed revision).
+          middleSystemPath ? fleetRuntimeSystemPath,
         }:
         import ./bringup-zfs-disk-image.nix {
           lib = nixpkgs.lib;
@@ -517,9 +517,7 @@ let
           # Use the bringup configuration closure for the bootstrap stage.
           installSystemPath = nixosSystem.config.system.build.toplevel;
           inherit runtimeSystemPath;
-          # Not a per-call knob: the middle layer is the same for every host, so
-          # it comes from the enclosing scope rather than from the caller.
-          inherit fleetRuntimeSystemPath;
+          fleetRuntimeSystemPath = middleSystemPath;
           inherit pauseAfterInstall;
           inherit enableBuildObserve;
           inherit buildObserveInterval;
@@ -605,11 +603,21 @@ let
       # system generates a private key in the target root at install — born there, never in the store,
       # so the store layers pass their own guard and only the in-guest guard can refuse it. Nothing
       # deploys it: its build must FAIL.
+      canaryRevision = {
+        system.configurationRevision = nixpkgs.lib.mkForce "secret-canary";
+      };
       bringupSecretCanaryBuild =
         (mkBringupZfsDiskImages (
           bringupZfsDiskImagesArgs
           // {
             name = "nerd-bringup-zfs-disk-images-raw-secret-canary";
+            # Its two runtime layers at a FIXED revision: the real ones move nixos-version, hence every layer (3 ×
+            # ~4.6 G), with the revision alone, and each checked revision left a new set on the linux builder until
+            # its store filled (2026-10-23).
+            runtimeSystemPath =
+              (selectedRuntime.extendModules { modules = [ canaryRevision ]; }).config.system.build.toplevel;
+            middleSystemPath =
+              (fleetRuntimeConfig.extendModules { modules = [ canaryRevision ]; }).config.system.build.toplevel;
             nixosSystem = selectedBringupSystemdZfs.extendModules {
               modules = [
                 (
