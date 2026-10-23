@@ -1,0 +1,85 @@
+# The leak rule's cases: what a session's Bash command must get from the hooks. The threat is the 2026-10-10 leak:
+# a nix command that evaluates a working tree copies a decrypted checkout into the store in clear.
+# Columns, tab-separated: want (DENY|ALLOW), today (what b0a7832d's hooks give, measured), cwd (- for /tmp/work), cmd.
+# A case is removed or loosened only with 🛡️'s review.
+
+# A nix command that names no revision evaluates the working tree.
+DENY	DENY	-	nix build .#foo
+DENY	DENY	-	nix build
+DENY	DENY	-	nix flake check
+DENY	DENY	-	cd x && nix run .#lock-flox-envs
+DENY	DENY	-	flox activate -- nix build ./pkgs
+DENY	DENY	-	sudo darwin-rebuild switch --flake .#bioskop
+DENY	DENY	-	nix build git+file:///Volumes/x
+DENY	DENY	-	nix build github:seedmatic/ndh#x --override-input rke2lab path:../rke2lab
+DENY	DENY	-	nix fmt
+DENY	DENY	-	nix flake update --flake "$W"
+DENY	DENY	-	NIX_CONFIG=x nix develop
+# A rev= on a ref that is not a git ref still reads the working tree.
+DENY	DENY	-	nix build "path:/tmp/w?rev=0123abcd#x"
+DENY	DENY	-	nix build "/tmp/w?rev=0123abcd#x"
+DENY	DENY	-	nix eval --raw "path:$PWD?rev=0123abcd#a"
+DENY	DENY	-	nix build "./?rev=0123abcd#x"
+DENY	DENY	-	nix build "file:///tmp/w?rev=0123abcd#x"
+
+# A revision of a git ref, a registry ref, a store path or an expression reads no working tree.
+ALLOW	ALLOW	-	nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#lock-flox-envs"
+ALLOW	ALLOW	-	nix eval --raw nixpkgs#treefmt.version
+ALLOW	ALLOW	-	nix shell nixpkgs#bats --command bats tests/hooks.bats
+ALLOW	ALLOW	-	darwin-rebuild build --flake github:seedmatic/ndh/abc#bioskop
+ALLOW	ALLOW	-	nix copy --to ssh-ng://nix-store.bioskop /nix/store/abc-foo
+ALLOW	ALLOW	-	nix eval --expr "1+1"
+ALLOW	ALLOW	-	nix-store --verify-path /nix/store/x
+ALLOW	ALLOW	-	nix build "git+file:///tmp/w?rev=0123abcd#x"
+ALLOW	ALLOW	-	nix build "git+file://$PWD?rev=$(git rev-parse HEAD)#x"
+
+# Shell reentry: the command reaches a shell as a string, so the rule judges the string as a command.
+DENY	ALLOW	-	sh -c 'nix build .#foo'
+DENY	ALLOW	-	bash -c "nix build"
+DENY	ALLOW	-	zsh -c 'nix eval .#x'
+DENY	DENY	-	bash -lc 'cd x && nix flake check'
+DENY	ALLOW	-	eval 'nix build .#x'
+DENY	ALLOW	-	echo .#foo | xargs nix build
+DENY	ALLOW	-	echo 'nix build' | sh
+DENY	ALLOW	-	echo "nix build ." | bash
+DENY	ALLOW	-	printf 'nix build .#x\n' | zsh
+DENY	ALLOW	-	bash <<<'nix build .#x'
+DENY	ALLOW	-	nice nix build .#foo
+DENY	DENY	-	nohup nix build .#foo
+DENY	ALLOW	-	timeout 60 nix build .#foo
+DENY	ALLOW	-	caffeinate -i nix build .#foo
+DENY	ALLOW	-	find . -maxdepth 0 -exec nix build {} \;
+DENY	ALLOW	-	watch -n 5 nix flake check
+# Already refused by a launcher the rule knows; kept so a rewrite keeps them.
+DENY	DENY	-	echo $(nix build .#foo)
+DENY	DENY	-	echo `nix build .#foo`
+DENY	DENY	-	cat <(nix build .#foo --print-out-paths)
+DENY	DENY	-	env nix build .#foo
+DENY	DENY	-	command nix build .#foo
+DENY	DENY	-	time nix build .#foo
+DENY	DENY	-	exec nix build .#foo
+DENY	DENY	-	true; nix build .#foo
+DENY	DENY	-	true && nix build .#foo
+DENY	DENY	-	false || nix build .#foo
+DENY	DENY	-	/run/current-system/sw/bin/nix build .#foo
+
+# A working tree whatever the query: every <vcs>+file: but git+file: (residual d).
+DENY	ALLOW	-	nix build "hg+file:///tmp/w?rev=0123abcd#x"
+DENY	ALLOW	-	nix build "hg+file:///tmp/w#x"
+# rev= is a query parameter with a hex value, nothing less (residuals a, b).
+DENY	ALLOW	-	nix build "git+file:///tmp/w?prev=0123abcd#x"
+DENY	ALLOW	-	nix build "git+file:///tmp/w?rev=#x"
+DENY	ALLOW	-	nix build "git+file:///tmp/w?ref=main&xrev=0123abcd#x"
+ALLOW	ALLOW	-	nix build "git+file:///tmp/w?ref=main&rev=0123abcd#x"
+# Schemes are case-insensitive to nix; to the rule too (residual c).
+DENY	ALLOW	-	nix build "PATH:/tmp/w?rev=0123abcd#x"
+DENY	ALLOW	-	nix build "File:///tmp/w?rev=0123abcd#x"
+
+# The frictions: text that only MENTIONS a nix command is not one.
+ALLOW	ALLOW	-	git commit -m "use nix run .#publish-plan"
+ALLOW	ALLOW	-	ps aux | grep "nix build"
+ALLOW	DENY	-	pgrep -fl 'x|nix build'
+ALLOW	DENY	-	grep -E "nix build|nix eval" /private/tmp/x.txt
+ALLOW	ALLOW	-	rg -n 'nix flake check' docs
+# The redirect of a by-revision build to a log is still by revision (residual e).
+ALLOW	DENY	-	nix build "git+file:///tmp/w?rev=0123abcd#x" > /private/tmp/x.log
