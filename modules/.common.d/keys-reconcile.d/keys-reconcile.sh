@@ -83,28 +83,45 @@ class_of() { # <batch index> → its class, or fails
 }
 
 : "row one, the host key (K4): a pending slot's public, its F1 statement and signature"
-reconcile::host-key::collect() { # <batch index> <into dir>
+# The files a slot publishes: its public, and its F1 statement and signature unless it is a console bootstrap (§o).
+reconcile::host-key::files() { # <batch index> → one file name per line
   local keyName slot
   keyName=$(yq -r -p json -o json ".[$1].key" "$batch")
   slot=$(yq -r -p json -o json ".[$1].slot" "$batch")
-  fetch "$(yq -r -p json -o json ".[$1].machine" "$batch")" "$publishDir" "$2" "${keyName}@${slot}".{public,statement,statement.sig}
+  if [[ $(yq -r -p json -o json ".[$1].bootstrap // \"\"" "$batch") == console ]]; then
+    printf '%s\n' "${keyName}@${slot}.public"
+  else
+    printf '%s\n' "${keyName}@${slot}".{public,statement,statement.sig}
+  fi
+}
+
+reconcile::host-key::collect() { # <batch index> <into dir>
+  local -a files
+  mapfile -t files < <(reconcile::host-key::files "$1")
+  fetch "$(yq -r -p json -o json ".[$1].machine" "$batch")" "$publishDir" "$2" "${files[@]}"
+}
+
+reconcile::host-key::hash() { # <batch index> <dir>: the sha256 of the slot's published files, in order
+  local f
+  while IFS= read -r f; do cat "$2/$f" 2>/dev/null; done < <(reconcile::host-key::files "$1") | sha256sum | cut -d' ' -f1
 }
 
 reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify one slot, print its plan lines, record it
-  local i="$1" work="$2" machine keyName slot oldPublic public files
+  local i="$1" work="$2" machine keyName slot oldPublic public files bootstrap
   machine=$(yq -r -p json -o json ".[$i].machine" "$batch")
+  bootstrap=$(yq -r -p json -o json ".[$i].bootstrap // \"\"" "$batch")
   keyName=$(yq -r -p json -o json ".[$i].key" "$batch")
   slot=$(yq -r -p json -o json ".[$i].slot" "$batch")
   oldPublic=$(yq -r -p json -o json ".[$i].oldPublic" "$batch")
   files=$(yq -r -p json -o json ".[$i].files | join(\", \")" "$batch")
   reconcile::host-key::collect "$i" "$work"
-  if public=$(reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" 2>"$work/why"); then
-    printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
+  if public=$(reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" "$bootstrap" 2>"$work/why"); then
+    printf '  ✓ %s — %s@%s %s%s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)" \
+      "$([[ $bootstrap == console ]] && printf ' — À COMPARER à la console de %s' "$machine")"
     printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
       "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
     known+=$'\n'"${public#ssh-ed25519 }"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$i" "$keyName" "$slot" "$public" \
-      "$(cat "$work/${keyName}@${slot}".{public,statement,statement.sig} | sha256sum | cut -d' ' -f1)" >>"$work/measured"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$i" "$keyName" "$slot" "$public" "$(reconcile::host-key::hash "$i" "$work")" >>"$work/measured"
   else
     printf '  ✗ %s — %s@%s : %s\n' "$machine" "$keyName" "$slot" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
     return 1
@@ -115,7 +132,7 @@ reconcile::host-key::recheck() { # <work dir> <again dir>: the measured slots, r
   local i keyName slot public hash
   while IFS=$'\t' read -r i keyName slot public hash; do
     reconcile::host-key::collect "$i" "$2"
-    [[ "$(cat "$2/${keyName}@${slot}".{public,statement,statement.sig} 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$hash" ]] ||
+    [[ "$(reconcile::host-key::hash "$i" "$2")" == "$hash" ]] ||
       die "${keyName}@${slot}: its publication changed since it was measured: nothing written"
   done <"$1/measured"
 }
@@ -163,10 +180,24 @@ window() {
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   measure "$work" || return $?
+  : "the operator's terminal, opened once for every answer of this window"
+  exec 7<"$ttyIn"
+  : "a console bootstrap's binding is the operator's eyes: they type the start of the fingerprint read at its console"
+  local answer i keyName slot public hash typed shown
+  while IFS=$'\t' read -r i keyName slot public hash; do
+    [[ $(yq -r -p json -o json ".[$i].bootstrap // \"\"" "$batch") == console ]] || continue
+    shown=$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)
+    shown=${shown#SHA256:}
+    printf '%s@%s : tape les 8 premiers caractères de l empreinte affichée à la console de %s (après SHA256:) : ' \
+      "$keyName" "$slot" "$(yq -r -p json -o json ".[$i].machine" "$batch")" >>"$ttyOut"
+    read -r typed <&7 || typed=""
+    [[ ${#typed} -ge 8 && $shown == "$typed"* ]] ||
+      { echo "rien écrit : ${keyName}@${slot}, l'empreinte tapée ne commence pas comme celle mesurée"; return 6; }
+  done <"$work/measured"
   : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
-  local answer
-  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >"$ttyOut"
-  read -r answer <"$ttyIn" || answer=""
+  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >>"$ttyOut"
+  read -r answer <&7 || answer=""
+  exec 7<&-
   [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
 
   : "the same measure, re-collected and re-verified seconds later: a publication changed since is refused"

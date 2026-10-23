@@ -44,7 +44,15 @@ let
           hostNames.${machine} or (throw "keys-reconcile: no host names for ${machine}")
         );
         slot = r.pendingName;
-        oldPublic = if r.current ? public then "${entry.type or "ssh-ed25519"} ${r.current.public}" else "";
+        # A console bootstrap (§o) has no old key to verify against: its binding is the operator's comparison.
+        bootstrap = entry.slots.${r.pendingName}.bootstrap or "";
+        oldPublic =
+          if (entry.slots.${r.pendingName}.bootstrap or "") == "console" then
+            ""
+          else if r.current ? public then
+            "${entry.type or "ssh-ed25519"} ${r.current.public}"
+          else
+            "";
       }
     ) queue.order
     ++ lib.concatMap (

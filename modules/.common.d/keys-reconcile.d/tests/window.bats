@@ -98,8 +98,8 @@ render() {
   chmod +x "$t/keys-json"
 }
 
-window() { # <answer>: runs the window with <answer> typed on its terminal (a file standing for the tty)
-  printf '%s\n' "$1" >"$t/tty"
+window() { # <answer>...: runs the window with each <answer> typed on its terminal, in order (a file standing for the tty)
+  printf '%s\n' "$@" >"$t/tty"
   GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" window
 }
 
@@ -288,4 +288,51 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   [[ $output$stderr != *"PRIVATE KEY"* ]]
   [[ $output$stderr != *"$(sed -n 2p "$t/ca")"* ]]
   [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
+}
+
+console_batch() { # the slot as a console bootstrap: no old public, no statement published
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "", "bootstrap": "console", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' >"$t/batch.json"
+  rm -f "$t/published/host-seat@26-11-01".statement{,.sig}
+}
+prefix() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://' | cut -c1-8; }
+
+@test "a console bootstrap: the right typed fingerprint then « oui » records the key, with no statement" {
+  console_batch
+  run --separate-stderr window "$(prefix)" oui
+  [ "$status" -eq 0 ]
+  [[ $output == *"À COMPARER à la console de seat"* ]]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = recorded ]
+  grep -q "tape les 8 premiers caractères" "$t/prompt"
+}
+
+@test "a console bootstrap: a wrong typed fingerprint writes nothing, even with « oui » after" {
+  console_batch
+  run --separate-stderr window "ZZZZZZZZ" oui
+  [ "$status" -eq 6 ]
+  [[ $output == *"l'empreinte tapée ne commence pas comme celle mesurée"* ]]
+  [ ! -e "$(tree)" ]
+}
+
+@test "a console bootstrap: « oui » in place of the fingerprint, or a prefix too short, writes nothing" {
+  console_batch
+  run --separate-stderr window oui oui
+  [ "$status" -eq 6 ]
+  run --separate-stderr window "$(prefix | cut -c1-4)" oui
+  [ "$status" -eq 6 ]
+  [ ! -e "$(tree)" ]
+}
+
+@test "a console bootstrap still refuses a reused public (F2)" {
+  console_batch
+  cut -d' ' -f1,2 "$t/old.pub" >"$t/published/host-seat@26-11-01.public"
+  run --separate-stderr window "$(prefix)" oui
+  [ "$status" -eq 4 ]
+  [[ $output == *"already in keys.yaml"* ]]
+}
+
+@test "a normal slot never takes the console path: its statement stays required" {
+  rm -f "$t/published/host-seat@26-11-01.statement.sig"
+  run --separate-stderr window oui
+  [ "$status" -eq 4 ]
+  [[ $output == *"statement.sig was not published"* ]]
 }

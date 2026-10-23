@@ -18,6 +18,9 @@ source @nixBashTrampoline@
 
 readonly machine=@machine@ slot=@slot@ base=@base@ slotDir=@slotDir@ owner=@owner@
 readonly keyFile=@keyFile@ publishDir=@publishDir@ oldKey=@oldKey@ oldPublic=@oldPublic@
+# `console` when the machine serves no key of its own to vouch for the new one (§o): the public goes out alone, and its
+# fingerprint to the console, for the operator to compare with what `ops next` shows. Empty otherwise.
+readonly bootstrap=@bootstrap@ console=@console@
 
 die() {
   printf '[ndh-host-key-generate] ERROR: %s\n' "$*" >&2
@@ -76,6 +79,25 @@ main() {
 
   public="$(public_of "$keyFile")" || die "${keyFile} is not a readable ed25519 private"
   [[ $public == ssh-ed25519\ * ]] || die "${keyFile} is not an ed25519 key"
+
+  if [[ $bootstrap == console ]]; then
+    : "a console bootstrap: no old key vouches; the public alone, and its fingerprint shown at the console"
+    work="$(mktemp -d "${publishDir}/.publish.XXXXXX")"
+    trap 'rm -rf "$work"' EXIT
+    printf '%s\n' "$public" >"$work/public"
+    chmod 0644 "$work/public"
+    mv -f "$work/public" "${publishDir}/host-${machine}@${slot}.public"
+    rm -f "${publishDir}/host-${machine}@${slot}".statement{,.sig}
+    rm -rf "$work"
+    trap - EXIT
+    local line
+    line=$(printf '[ndh-host-key-generate] host-%s@%s born; compare at ops next: %s' "$machine" "$slot" \
+      "$(ssh-keygen -lf "${publishDir}/host-${machine}@${slot}.public" | cut -d' ' -f2)")
+    printf '%s\n' "$line" >&2
+    : "the console line is a convenience for the operator's eyes; a console that refuses it changes nothing"
+    { printf '%s\n' "$line" >>"$console"; } 2>/dev/null || true
+    return 0
+  fi
 
   : "F1: the key sshd serves, the one keys.yaml records, vouches for the new public"
   [[ -s $oldKey ]] || die "no old host key at ${oldKey} to sign the new public with"
