@@ -1110,6 +1110,27 @@
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
       );
 
+      # The canary's derivation last proven green on aarch64-linux, one store path, written by whoever ran
+      # onDemandChecks.bringup-in-guest-secret-guard to success (`ndh-canary-proven record`). Empty: never proven.
+      canaryProvenRecord = nixpkgs.lib.trim (
+        builtins.readFile ./modules/nixos/secret-material-guard.d/canary-proven
+      );
+      canaryProven = canaryProvenWith canaryProvenRecord;
+      canaryProvenWith =
+        record: image:
+        let
+          current = builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath;
+        in
+        if record == current then
+          image
+        else
+          throw ''
+            a bringup image ships only on a guard proven at its current derivation, and this one is not:
+              canary now:    ${current}
+              last proven:   ${if record == "" then "(never)" else record}
+            prove it, then record it: nix build <flake>#onDemandChecks.bringup-in-guest-secret-guard (on linux, ~13 min),
+            and on success write that derivation into modules/nixos/secret-material-guard.d/canary-proven.'';
+
       # Checks never in the default set (nix flake check, a sweep): each builds what a default build must not, built
       # by name only, `nix build <flake>#onDemandChecks.<name>`, when its subject changes (operator, 2026-10-24: the
       # erofs store images are built on demand only, after the linux builder's pool filled twice).
@@ -3335,6 +3356,25 @@
           bringup-in-guest-secret-guard-evaluates = pkgs.writeText "bringup-in-guest-secret-guard-evaluates" (
             builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath
           );
+          # The image gate holds without building an image: with a record that is not the canary's derivation the
+          # image refuses, with the canary's own it evaluates (its drvPath only). The record in the repo may lag:
+          # that refuses the next image build, never a check.
+          canary-proven-gate =
+            let
+              refused = builtins.tryEval (
+                canaryProvenWith "/nix/store/0000000000000000000000000000000-stale.drv" "image"
+              );
+              accepted = builtins.tryEval (
+                canaryProvenWith (builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath) "image"
+              );
+            in
+            assert nixpkgs.lib.assertMsg (
+              !refused.success
+            ) "canary-proven-gate: a stale record did not refuse the image";
+            assert nixpkgs.lib.assertMsg (
+              accepted.success && accepted.value == "image"
+            ) "canary-proven-gate: the proven record refused the image";
+            pkgs.writeText "canary-proven-gate" "stale record refused; proven record accepted\n";
         }
         # The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
         # store layers it guards are packed, through the remote builder, like the images themselves.
@@ -4245,7 +4285,11 @@
           nixosConfiguration = nixosOutputs.nixosConfigurations."${mainName}-bringup";
           nixosDiskImage = nixosOutputs.diskImageFull;
           nixosDiskImageBringupSystemd = nixosOutputs.diskImageBringupSystemdBoot;
-          nixosDiskImageBringupSystemdZfs = nixosOutputs.diskImageBringupZfsSystemdBoot;
+          # A bringup image ships only on a guard proven at its current derivation (🛡️, 2026-10-24): the in-guest canary
+          # left the default checks, so its last green run is recorded, and an image whose canary moved since refuses
+          # to evaluate, naming the run that proves it again. Every image route (packages, nixosDiskImages, the tart
+          # deploy and materialize bundles) goes through this one binding.
+          nixosDiskImageBringupSystemdZfs = canaryProven nixosOutputs.diskImageBringupZfsSystemdBoot;
           nixosBringupSecretCanaryBuild = nixosOutputs.bringupSecretCanaryBuild;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;
