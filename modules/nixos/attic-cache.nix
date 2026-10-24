@@ -293,6 +293,20 @@ in
       description = "The one private cache this attic serves.";
     };
 
+    instanceName = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = "attic-${
+        if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn
+      }";
+      defaultText = lib.literalExpression ''"attic-''${metalspace}"'';
+      description = ''
+        The cache container's Incus instance name. Per metalspace, because the guests share one Incus cluster and an
+        instance name is unique in its project across the cluster: two guests declaring `attic` would make one
+        converge stop the other's. The fabric name (attic.<metalspace>) does not change with it.
+      '';
+    };
+
     allowedSources = lib.mkOption {
       type = lib.types.nonEmptyListOf lib.types.str;
       # Measured 2026-10-16: the NixOS guests SNAT what the tunnel forwards into the fabric (tailscale
@@ -369,7 +383,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    ndh.incusNixosContainers.instances.attic = {
+    ndh.incusNixosContainers.instances.${cfg.instanceName} = {
       inherit (cfg) target;
       # atticd and nginx face the fabric: a compromise must not be the NixOS guest's root.
       privileged = false;
@@ -439,7 +453,7 @@ in
           }
           CACHE_NAME=${lib.escapeShellArg cfg.cacheName}
           PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
-          INSTANCE=attic
+          INSTANCE=${lib.escapeShellArg cfg.instanceName}
           TARGETS=${
             lib.escapeShellArg (
               lib.concatMapStringsSep "\n" (t: "${t.machine} ${t.metalspace} ${t.publicKey}") cfg.tokenTargets
