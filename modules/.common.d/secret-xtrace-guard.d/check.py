@@ -19,6 +19,8 @@ Classes (one finding per line):
   guard-before-flip   a whole-script guard under the trampoline: safe while the logger traces only
                       on request, not after batch 1's flip; local windows instead            (strict)
   guard-without-bash-env  a whole-script guard that leaves BASH_ENV, so a child bash is traced (strict)
+  guard-traced   a whole-script guard that does not export NDH_LOGGER_XTRACE=0: the logger traces
+                 by default, so a logged run of the script, or a logged child, is traced          (strict)
   masked         a value built by replacing every occurrence of a secret: for review           (report)
   reviewed-hop   a tracked value passed to a function a reviewer followed and found safe (the
                  manifest's "reviewed" list, one reason each)                                  (report)
@@ -31,7 +33,7 @@ import json
 import re
 import sys
 
-STRICT = {"unwindowed", "unbalanced", "xtrace-in-window", "undecidable", "guard-without-bash-env", "guard-before-flip"}
+STRICT = {"unwindowed", "unbalanced", "xtrace-in-window", "undecidable", "guard-without-bash-env", "guard-before-flip", "guard-traced"}
 
 # A command substitution reads a secret when its first command is one of these (with the operands that matter).
 SECRET_READERS = [
@@ -547,12 +549,30 @@ def secret_handling(ast):
 def whole_script_guard(ch, ast):
     """The whole-script guard, when it opens the script: `set +x` under `case $- in *x*)` and
     `export -n SHELLOPTS`, both among the first top-level statements and before any secret is read. Returns
-    "ok", "no-bash-env" (BASH_ENV is not unset with it) or None."""
+    None, or the set of what it leaves out: "bash-env" (BASH_ENV not unset), "opt-out" (no
+    `export NDH_LOGGER_XTRACE=0`)."""
     head = (ast.get("Stmts") or [])[:8]
     text = json.dumps(head)
     if '"+x"' not in text or '"SHELLOPTS"' not in text or '"-n"' not in text:
         return None
-    return "ok" if '"BASH_ENV"' in text else "no-bash-env"
+    missing = set()
+    if '"BASH_ENV"' not in text:
+        missing.add("bash-env")
+    if not any(opts_out(st) for st in head):
+        missing.add("opt-out")
+    return missing
+
+
+def opts_out(st):
+    """`export NDH_LOGGER_XTRACE=0`, the literal 0: the one form the logger reads as « do not trace »."""
+    cmd = st.get("Cmd") or {}
+    if cmd.get("Type") != "DeclClause" or (cmd.get("Variant") or {}).get("Value") != "export":
+        return False
+    for a in cmd.get("Args") or []:
+        if (a.get("Name") or {}).get("Value") == "NDH_LOGGER_XTRACE":
+            parts = (a.get("Value") or {}).get("Parts") or []
+            return len(parts) == 1 and parts[0].get("Type") == "Lit" and parts[0].get("Value") == "0"
+    return False
 
 
 def main(manifest):
@@ -569,23 +589,25 @@ def main(manifest):
             continue
         ch.secret_handling = secret_handling(ast)
         guarded = whole_script_guard(ch, ast)
-        if guarded:
+        if guarded is not None:
             # The whole script is one window (the guard of the scripts that handle privates throughout, until
             # batch 1 turns them into local windows).
             ch.window = ch.base = 1
-            if guarded == "no-bash-env":
+            if "bash-env" in guarded:
                 ch.find("guard-without-bash-env", 0, "whole-script guard leaves BASH_ENV: a child bash can be traced")
+            if "opt-out" in guarded:
+                ch.find("guard-traced", 0, "whole-script guard without export NDH_LOGGER_XTRACE=0: the logger traces it")
             if entry.get("trampoline"):
-                # It holds because it unsets NDH_LOGGER_XTRACE, so the logger never turns xtrace on: once batch 1
-                # makes xtrace the logger's default, the guard no longer reaches the logged command.
+                # The trampoline's logger traces the command it runs, whatever the script's own shell does: a guard
+                # cannot reach it from inside, so the script carries local windows instead.
                 ch.find("guard-before-flip", 0, "whole-script guard under the trampoline: local windows before batch 1's flip")
         # Functions are declared before they are called, wherever they sit: collect their names first.
         for st in ast.get("Stmts") or []:
             if (st.get("Cmd") or {}).get("Type") == "FuncDecl":
                 ch.functions.add(st["Cmd"]["Name"]["Value"])
         ch.stmts(ast.get("Stmts"))
-        if ch.window != (1 if guarded else 0):
-            ch.find("unbalanced", 0, f"the script ends inside {ch.window - (1 if guarded else 0)} secret window(s)")
+        if ch.window != (1 if guarded is not None else 0):
+            ch.find("unbalanced", 0, f"the script ends inside {ch.window - (1 if guarded is not None else 0)} secret window(s)")
         if ch.tracked and not entry.get("trampoline"):
             ch.find("trampoline-pending", 0, "handles a secret and is not on the trampoline yet (batch 2)")
         findings += ch.findings

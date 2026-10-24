@@ -180,6 +180,18 @@ hostile() { # <cmd>... — runs <cmd> under it
   run ! grep -qE '^\[test\.incus-cluster-cert\] \+' "$t/sink"
 }
 
+# The logger traces by default: the script re-runs itself inside it, and its guard's NDH_LOGGER_XTRACE=0 is what
+# keeps that run untraced, end to end, with no request either way.
+@test "by default, no trace reaches the sink: the guard opts the logged re-run out" {
+  mkdir -p "$t/tmp"
+  unset NDH_LOGGER_XTRACE
+  SOPS_AGE_KEY_FILE="$t/AGE-KEY-MARKER" TMPDIR="$t/tmp" run_renew
+  [ "$status" -eq 0 ]
+  [ -s "$t/sink" ]
+  run ! grep -q 'PRIVATE KEY' "$t/sink"
+  run ! grep -qE '^\[test\.incus-cluster-cert\] \+' "$t/sink"
+}
+
 @test "a failed decryption reports sops' exit status only, never its stderr" {
   mkdir -p "$t/tmp"
   STUB_SOPS_FAIL=1 TMPDIR="$t/tmp" run_renew

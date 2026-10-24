@@ -6,10 +6,11 @@
 #
 #   reconcile::host-key::verify <dir> <key> <slot> <recorded old public> <every public keys.json holds, one per line>
 #                               [console: the slot is a console bootstrap, from the frozen batch]
-# prints the verified public on stdout, or refuses on stderr with the reason, and returns non-zero.
+# prints the verified public on stdout, or writes the reason to the file NDH_RECONCILE_WHY names (stderr when it names
+# none) and returns non-zero. A file, not stderr: the logger traces the run, so stderr also carries the trace.
 
 reconcile::refuse() {
-  printf '[keys-reconcile] refused: %s\n' "$*" >&2
+  printf '[keys-reconcile] refused: %s\n' "$*" >>"${NDH_RECONCILE_WHY:-/dev/stderr}"
   return 1
 }
 

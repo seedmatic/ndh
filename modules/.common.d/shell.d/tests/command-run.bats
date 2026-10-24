@@ -85,3 +85,20 @@ wrapped() { # $1 header ('set -e' or ''), then the lines of main's body
   out=$(bash "$script" 2>/dev/null)
   [ "$out" = payload-line ]
 }
+
+# The operator's rule (2026-10-21): the system log tells the story, xtrace included. Traced unless the run opts out
+# with NDH_LOGGER_XTRACE=0, the whole-script guard's form; any other value, or none, is traced.
+@test "the command is traced into the sink by default, and untraced only with NDH_LOGGER_XTRACE=0" {
+  wrapped 'set -e' 'echo marker-$((40 + 2))'
+  local v
+  for v in unset 1 yes; do
+    : >"$sink"
+    if [ "$v" = unset ]; then env -u NDH_LOGGER_XTRACE bash "$script" >/dev/null; else NDH_LOGGER_XTRACE=$v bash "$script" >/dev/null; fi
+    sink_has 'completed successfully'
+    grep -qF '+ echo marker-42' "$sink" || { echo "NDH_LOGGER_XTRACE=$v: not traced" >&2; return 1; }
+  done
+  : >"$sink"
+  NDH_LOGGER_XTRACE=0 bash "$script" >/dev/null
+  sink_has 'completed successfully'
+  refute grep -qF '+ echo' "$sink"
+}
