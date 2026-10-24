@@ -49,8 +49,14 @@ die() {
 
 # instance {name}: the declared instance, as JSON. The name goes into paths, unit names and patterns: an
 # Incus instance name's shape only, checked before anything uses it.
-instance() {
+# instance_name {name}: refuses anything but an Incus instance name's shape. A name goes into paths, unit names,
+# dataset names and patterns, so every name that reaches one is checked here first, declared or not (🛡️).
+instance_name() {
   [[ $1 =~ ^[a-z][a-z0-9-]{0,62}$ ]] || die "'$1' is not an instance name"
+}
+
+instance() {
+  instance_name "$1"
   NAME="$1" yq -p json -o json -I0 -e '.[strenv(NAME)]' <<<"$INSTANCES" 2>/dev/null ||
     die "no instance '$1' is declared on this member"
 }
@@ -372,6 +378,8 @@ unrename() { "$BASH" "${BASH_SOURCE[0]}" _unrename "$1" "$2"; }
 
 rename_steps() {
   local info dir dataset old_dir old_dataset upper_root rw db snap state src device
+  instance_name "$2"
+  [ "$1" != "$2" ] || die "$1 cannot be renamed from itself"
   info=$(instance "$1")
   dir=$(field "$info" dir)
   dataset=$(field "$info" dataset)
@@ -415,6 +423,8 @@ rename_steps() {
 # rename that stopped half-way; then {old} restarts on the system it ran.
 unrename_steps() {
   local info dir dataset old_dir old_dataset upper_root rw db snap src device
+  instance_name "$2"
+  [ "$1" != "$2" ] || die "$1 cannot be renamed from itself"
   info=$(instance "$1")
   dir=$(field "$info" dir)
   dataset=$(field "$info" dataset)
@@ -458,6 +468,32 @@ delivery_snapshots_of() {
   state_snapshots "$4" "$1"
 }
 
+# uncreate {name}: removes an instance converge created this run and could not deliver healthy: the instance, its store
+# unit stopped, its container dataset and its delivery snapshots. The module's state datasets are never its to remove.
+# Only on converge.created: an instance someone else made is never removed. In its own process: converge runs it under `if`.
+create_proc() { "$BASH" "${BASH_SOURCE[0]}" create "$1"; }
+uncreate() { "$BASH" "${BASH_SOURCE[0]}" _uncreate "$1"; }
+
+uncreate_steps() {
+  local info dir dataset upper_root rw db snap
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  dataset=$(field "$info" dataset)
+  [ -e "$dir/converge.created" ] || die "$1 was not created by converge: nothing removed"
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  if [ "$(where_is "$1")" != absent ]; then
+    incus stop --force --project "$PROJECT" "$1" || true
+    incus delete --force --project "$PROJECT" "$1"
+  fi
+  systemctl stop "ndh-incus-container-store-$1.service" || true
+  for snap in $(delivery_snapshots_of "$1" "$rw" "$db" "$info"); do snapshot_destroy -r "$snap"; done
+  if zfs list -H "$dataset" >/dev/null 2>&1; then zfs destroy -r "$dataset"; fi
+  rm -rf --one-file-system "${dir:?}"
+  echo "ndh-incus-container: $1 removed" >&2
+}
+
 # leftovers {name}: what a delivery leaves until its commit, one per line: every delivery snapshot of the instance but
 # the one its store runs on (lower.snapshot), every state snapshot, every `.previous-*`. Empty once committed.
 leftovers() {
@@ -467,10 +503,14 @@ leftovers() {
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT") || return 1
   rw=$(findmnt -no SOURCE "$upper_root") || return 1
   db=$(findmnt -no SOURCE /nix/var/nix/db) || return 1
-  current=$(cat "$dir/lower.snapshot") || return 1
-  delivery_snapshot "$1" "$current"
+  # Never delivered (created, by hand or by converge), no delivery pair is the current one; the rest is listed as ever.
+  current=
+  if [ -e "$dir/lower.snapshot" ]; then
+    current=$(cat "$dir/lower.snapshot") || return 1
+    delivery_snapshot "$1" "$current"
+  fi
   zfs list -H -t snapshot -o name "$rw" "$db" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" |
-    grep -vxF -e "$rw@$current" -e "$db@$current" || true
+    grep -vxF -e "$rw@${current:-}" -e "$db@${current:-}" || true
   state_snapshots "$info" "$1"
   local aside
   for aside in "$dir"/.previous-*; do [ ! -e "$aside" ] || echo "$aside"; done
@@ -650,10 +690,18 @@ converge() {
       echo "ndh-incus-container: $old renamed $name, healthy"
       where=$(where_is "$name")
     fi
+    # Declared and absent from the whole cluster: converge creates it on its own member, then delivers it as any
+    # other (the operator's decision, 2026-10-24). converge.created marks it converge's: a delivery that fails or is
+    # unhealthy then removes it, there being no previous system to go back to.
     if [ "$where" = absent ]; then
-      echo "ndh-incus-container: $name is declared but not created: run ndh-incus-container create $name" >&2
-      failed=1
-      continue
+      # create removes its own half-made instance (its ERR trap); an empty dataset it left is reused by the next try.
+      if ! create_proc "$name"; then
+        echo "ndh-incus-container: $name could not be created: the next converge tries again" >&2
+        failed=1
+        continue
+      fi
+      touch "$dir/converge.created"
+      echo "ndh-incus-container: $name created on ${target:-this standalone member}"
     fi
     # Every declared profile, the system's and the others, resolved on both sides (a profile is a chain of
     # links: system → system-N-link → the store path). One that is not means a delivery: the container's scripts
@@ -718,6 +766,11 @@ converge() {
     fi
     if ! snapshot=$(deliver_keep "$name"); then
       echo "ndh-incus-container: $name could not be delivered" >&2
+      if [ -e "$dir/converge.created" ]; then
+        uncreate "$name" || echo "ndh-incus-container: $name could not be removed: it needs a hand" >&2
+        failed=1
+        continue
+      fi
       echo "$declared" >"$dir/converge.failed"
       # Stopped past its snapshot, the delivery has moved the previous system aside: put it back.
       for aside in "$dir"/.previous-*; do
@@ -734,12 +787,16 @@ converge() {
     if healthy "$name"; then
       # Healthy is the verdict: the system is kept whatever its cleanup does. An unfinished commit is resumed by the
       # next converge, and marks no failed attempt.
-      rm -f "$dir/converge.failed"
+      rm -f "$dir/converge.failed" "$dir/converge.created"
       echo "ndh-incus-container: $name ← $toplevel, healthy, on snapshot $snapshot"
       if ! commit "$name" "$snapshot"; then
         echo "ndh-incus-container: $name's commit is unfinished; the next converge resumes it" >&2
         failed=1
       fi
+    elif [ -e "$dir/converge.created" ]; then
+      uncreate "$name" || echo "ndh-incus-container: $name could not be removed: it needs a hand" >&2
+      echo "ndh-incus-container: $name was unhealthy on its first system and is removed" >&2
+      failed=1
     else
       echo "$declared" >"$dir/converge.failed"
       rollback "$name" "$snapshot" || echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
@@ -778,6 +835,10 @@ main() {
   _unrename)
     [ -n "${3:-}" ] || usage
     unrename_steps "$2" "$3"
+    ;;
+  _uncreate)
+    [ -n "${2:-}" ] || usage
+    uncreate_steps "$2"
     ;;
   *) usage ;;
   esac

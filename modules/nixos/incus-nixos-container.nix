@@ -255,7 +255,8 @@ in
               '';
             };
             renamedFrom = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
+              # An instance name's shape, as the CLI checks it: it goes into dataset paths, unit names and patterns.
+              type = lib.types.nullOr (lib.types.strMatching "[a-z][a-z0-9-]{0,62}");
               default = null;
               example = "attic";
               description = ''

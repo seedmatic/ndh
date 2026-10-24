@@ -21,8 +21,16 @@ printf 'incus %s\n' "\$*" >>"$t/calls"
 read -r -t 2 _
 if [ \$? -gt 128 ]; then echo "incus \$* waited on stdin" >&2; exit 99; fi
 i=$t/inst
-# The instance an argument list names: the first non-option after the verb.
-name() { local a; for a in "\$@"; do case "\$a" in --*|ndh) ;; *) echo "\$a"; return ;; esac; done; }
+# The instance an argument list names: the first word that is neither an option nor an option's value.
+name() {
+  while [ \$# -gt 0 ]; do
+    case "\$1" in
+      --project|--storage|--target|-c) shift 2 ;;
+      --*) shift ;;
+      *) echo "\$1"; return ;;
+    esac
+  done
+}
 case "\$1 \$2" in
   "query /1.0/cluster") if [ -e "$t/clustered" ]; then echo '{"enabled": true}'; else echo '{"enabled": false}'; fi ;;
   "query /1.0/instances/"*)
@@ -34,16 +42,23 @@ case "\$1 \$2" in
       printf '{"location": "%s"}\n' "\$(cat "\$i/\$n")"
     fi ;;
   "project show") exit 1 ;;
-  "info --project") [ -e "\$i/\$(name "\${@:3}")" ] ;;
+  "info --project") [ -e "\$i/\$(name "\${@:2}")" ] ;;
   "start --project")
-    n=\$(name "\${@:3}")
+    n=\$(name "\${@:2}")
     for m in nix/.lower/nix/store nix/.lower/nix/var/nix nix/.upper; do
       [ -d "$t/\$n/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
     done
     touch "\$i/\$n.running"
     # A test's stand-in for what the new system does on its first start (a data migration).
     [ ! -x "$t/on-start" ] || "$t/on-start" ;;
-  "stop --project" | "stop --force") rm -f "\$i/\$(name "\${@:3}").running" ;;
+  "stop --project" | "stop --force") rm -f "\$i/\$(name "\${@:2}").running" ;;
+  # init: the instance on its --target (none on a standalone Incus); delete removes it.
+  "init --empty")
+    n=\$(name "\${@:2}") m=none
+    for ((k = 1; k <= \$#; k++)); do [ "\${!k}" != --target ] || { k=\$((k + 1)); m=\${!k}; }; done
+    [ ! -e "\$i/\$n" ] || { echo "incus init: \$n already exists" >&2; exit 1; }
+    echo "\$m" >"\$i/\$n" ;;
+  "delete --force") n=\$(name "\${@:2}"); rm -f "\$i/\$n" "\$i/\$n.running" ;;
   "rename --project")
     [ ! -e "$t/incus-rename-fails" ] || { echo "incus rename: failing" >&2; exit 1; }
     o=\$4 n=\$5
@@ -102,6 +117,12 @@ case "\$1" in
       for n in \$newer; do rm -rf "\$z/\$n"; done
     fi
     rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
+  # create -p -o mountpoint=<dir> … <ds>: the dataset, mounted at its dir.
+  create)
+    ds=\${args[-1]} mp=
+    for a in "\${args[@]}"; do [[ \$a != mountpoint=* ]] || mp=\${a#mountpoint=}; done
+    mkdir -p "\$z/\$ds"
+    [ -z "\$mp" ] || { mkdir -p "\$mp"; echo "\$mp" >"\$z/\$ds.mountpoint"; } ;;
   # A dataset rename moves its directory and its snapshots; a snapshot rename stays on its dataset, as ZFS has it.
   rename)
     [ ! -e "$t/zfs-rename-fails" ] || { echo "zfs rename: failing" >&2; exit 1; }
@@ -128,7 +149,9 @@ case "\$1" in
     fi ;;
   destroy)
     a=\${args[-1]}
-    [[ \$a == *@* ]] || exit 0
+    if [[ \$a != *@* ]]; then
+      rm -rf "\$z/\$a" "\$z/\$a.mountpoint" "\$z/\$a"@*; exit 0
+    fi
     if grep -q "/.zfs/snapshot/\${a#*@}\$" "$t/mounts"; then
       echo "cannot destroy snapshot \$a: dataset is busy" >&2; exit 1
     fi
@@ -353,12 +376,13 @@ delivered_before() {
   [ "$status" -eq 1 ]
 }
 
-@test "converge on a declared but never created container fails loudly, and touches nothing" {
+@test "converge creates a declared container this standalone Incus does not have, then delivers it" {
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
   run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
-  [ "$status" -eq 1 ]
-  [[ $stderr == *"attic is declared but not created"* ]]
-  run grep -E '^(zfs|incus (start|stop|init))' "$t/calls"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic created on this standalone member"* && $output == *"healthy"* ]]
+  [ "$(cat "$t/inst/attic")" = none ]
+  grep -q '^incus init --empty --project ndh --storage default attic ' "$t/calls"
 }
 
 @test "converge rolls the state dataset back too: a migration the new system made is undone" {
@@ -1090,14 +1114,123 @@ as_before() {
   as_before
 }
 
-@test "another member's attic is no rename of this guest's attic-bioskop" {
+@test "another member's attic is no rename of this guest's attic-bioskop: it is created beside it, attic untouched" {
   per_metalspace_cli
   echo nikopol >"$t/inst/attic"
   touch "$t/inst/attic.running"
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
   run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
-  [ "$status" -eq 1 ]
-  [[ $stderr == *"attic-bioskop is declared but not created"* ]]
+  [ "$status" -eq 0 ]
+  [ "$(cat "$t/inst/attic-bioskop")" = bioskop ]
+  [ "$(cat "$t/inst/attic")" = nikopol ]
   [ -e "$t/inst/attic.running" ]
-  run grep -E '^(incus (stop|rename)|zfs rename)' "$t/calls"
+  run grep -E '^(incus (stop|rename) --project ndh attic$|incus rename|zfs rename)' "$t/calls"
   [ "$status" -eq 1 ]
 }
+
+@test "_rename and _unrename refuse an old name outside an instance name's shape, or the same name, and touch nothing" {
+  running_attic_before_rename
+  for old in 'a.b' '../attic' 'attic/x' '' 'ATTIC' 'attic;x' 'attic-bioskop'; do
+    for verb in _rename _unrename; do
+      : >"$t/calls"
+      run --separate-stderr "$t/run" "$t/cli-ms" "$verb" attic-bioskop "$old" <"$t/stdin"
+      [ "$status" -ne 0 ]
+      run grep -E '^(incus (stop|start|rename|config)|zfs (rename|set)|systemctl (stop|start))' "$t/calls"
+      [ "$status" -eq 1 ]
+    done
+  done
+  as_before
+}
+
+@test "mutant: a rename without the old name's check takes a dotted name into a dataset path" {
+  running_attic_before_rename
+  # `a.b` names no instance, so a later check refuses it too: the mutant shows the shape check is what refuses FIRST.
+  awk '/^rename_steps\(\) \{/{r=1} r && /^  instance_name "\$2"$/{r=0; next} {print}' "$t/cli-ms" >"$t/mutant"
+  [ "$(grep -c '^  instance_name "\$2"$' "$t/mutant")" = 1 ]
+  run --separate-stderr "$t/run" "$t/mutant" _rename attic-bioskop 'a.b' <"$t/stdin"
+  [[ $stderr != *"'a.b' is not an instance name"* ]]
+  run --separate-stderr "$t/run" "$t/cli-ms" _rename attic-bioskop 'a.b' <"$t/stdin"
+  [[ $stderr == *"'a.b' is not an instance name"* ]]
+}
+
+# A declared container no member has: converge creates it, then delivers it.
+absent_everywhere() {
+  per_metalspace_cli
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
+}
+
+@test "converge creates a declared container no member has, on its target, and keeps it healthy" {
+  absent_everywhere
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic-bioskop created on bioskop"* && $output == *"healthy"* ]]
+  [ "$(cat "$t/inst/attic-bioskop")" = bioskop ]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+  [ ! -e "$t/attic-bioskop/converge.created" ]
+  grep -q '^incus init --empty --project ndh --storage default --target bioskop attic-bioskop ' "$t/calls"
+}
+
+@test "a container converge created and could not deliver healthy is removed, its state dataset untouched" {
+  absent_everywhere
+  echo schema-1 >"$t/zfs/tank/nerd/attic/db"
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic-bioskop was unhealthy on its first system and is removed"* ]]
+  [ ! -e "$t/inst/attic-bioskop" ]
+  [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+  [ ! -e "$t/attic-bioskop" ]
+  [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-"* 2>/dev/null)" ]
+  # The service's data is the module's, never converge's to remove.
+  [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
+}
+
+@test "mutant: a created container left in place when unhealthy" {
+  absent_everywhere
+  echo "atticd.service failed" >"$t/units"
+  grep -q '    elif \[ -e "\$dir/converge.created" \]; then' "$t/cli-ms"
+  sed 's/    elif \[ -e "\$dir\/converge.created" \]; then/    elif false; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ -e "$t/inst/attic-bioskop" ]
+}
+
+@test "a container converge created whose delivery fails is removed" {
+  absent_everywhere
+  echo "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic-bioskop could not be delivered"* && $stderr == *"attic-bioskop removed"* ]]
+  [ ! -e "$t/inst/attic-bioskop" ]
+  [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+}
+
+@test "mutant: a created container whose delivery fails is rolled back to nothing instead of removed" {
+  absent_everywhere
+  echo "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
+  grep -q '      if \[ -e "\$dir/converge.created" \]; then' "$t/cli-ms"
+  sed 's/      if \[ -e "\$dir\/converge.created" \]; then/      if false; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ -e "$t/inst/attic-bioskop" ]
+}
+
+@test "converge never creates a container whose name another member runs" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic-bioskop"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  run grep -E '^(incus init|zfs create)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "_uncreate refuses a container converge did not create, and removes nothing" {
+  running_attic_before_rename
+  echo bioskop >"$t/inst/attic-bioskop"
+  mkdir -p "$t/attic-bioskop" "$t/zfs/tank/nerd/ndh-containers/attic-bioskop"
+  run --separate-stderr "$t/run" "$t/cli-ms" _uncreate attic-bioskop <"$t/stdin"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"was not created by converge: nothing removed"* ]]
+  [ -e "$t/inst/attic-bioskop" ]
+  [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+}
+
