@@ -385,6 +385,9 @@ in
   config = lib.mkIf cfg.enable {
     ndh.incusNixosContainers.instances.${cfg.instanceName} = {
       inherit (cfg) target;
+      # Its name before it was per metalspace. Only bioskop's ran: converge renames it in place, data and all. Another
+      # member's `attic` is no rename of this one (converge refuses to take an instance off another member).
+      renamedFrom = "attic";
       # atticd and nginx face the fabric: a compromise must not be the NixOS guest's root.
       privileged = false;
       modules = [ guest ];

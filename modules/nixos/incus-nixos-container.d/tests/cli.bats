@@ -10,27 +10,45 @@ bats_require_minimum_version 1.5.0
 setup() {
   t=$BATS_TEST_TMPDIR
   mkdir -p "$t/bin"
+  # Instances: $t/inst/<name> holds its member (`none` on a standalone Incus), <name>.running that it runs; the cluster
+  # is enabled when $t/clustered exists. Instance names are unique across the cluster, so another member's instance is
+  # one of these files too.
+  mkdir -p "$t/inst"
   cat >"$t/bin/incus" <<EOF
 #!$BASH
 printf 'incus %s\n' "\$*" >>"$t/calls"
 # A read that times out (status > 128) means stdin was left open: the real incus would hang there.
 read -r -t 2 _
 if [ \$? -gt 128 ]; then echo "incus \$* waited on stdin" >&2; exit 99; fi
+i=$t/inst
+# The instance an argument list names: the first non-option after the verb.
+name() { local a; for a in "\$@"; do case "\$a" in --*|ndh) ;; *) echo "\$a"; return ;; esac; done; }
 case "\$1 \$2" in
-  "query /1.0/cluster") echo '{"enabled": false}' ;;
-  "query /1.0/instances/attic/state?project=ndh")
-    if [ -e "$t/running" ]; then echo '{"status": "Running"}'; else echo '{"status": "Stopped"}'; fi ;;
+  "query /1.0/cluster") if [ -e "$t/clustered" ]; then echo '{"enabled": true}'; else echo '{"enabled": false}'; fi ;;
+  "query /1.0/instances/"*)
+    n=\${2#/1.0/instances/}; n=\${n%%\?*}; n=\${n%/state}
+    [ -e "\$i/\$n" ] || { echo "Error: Instance not found" >&2; exit 1; }
+    if [[ \$2 == */state\?* ]]; then
+      if [ -e "\$i/\$n.running" ]; then echo '{"status": "Running"}'; else echo '{"status": "Stopped"}'; fi
+    else
+      printf '{"location": "%s"}\n' "\$(cat "\$i/\$n")"
+    fi ;;
   "project show") exit 1 ;;
-  "info --project") [ -e "$t/exists" ] ;;
+  "info --project") [ -e "\$i/\$(name "\${@:3}")" ] ;;
   "start --project")
+    n=\$(name "\${@:3}")
     for m in nix/.lower/nix/store nix/.lower/nix/var/nix nix/.upper; do
-      [ -d "$t/attic/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
+      [ -d "$t/\$n/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
     done
-    touch "$t/running"
+    touch "\$i/\$n.running"
     # A test's stand-in for what the new system does on its first start (a data migration).
     [ ! -x "$t/on-start" ] || "$t/on-start" ;;
-  "stop --project" | "stop --force") rm -f "$t/running" ;;
-  # The container's units: "<unit> <state> [ConditionResult]" lines in units; a unit not listed is active.
+  "stop --project" | "stop --force") rm -f "\$i/\$(name "\${@:3}").running" ;;
+  "rename --project")
+    [ ! -e "$t/incus-rename-fails" ] || { echo "incus rename: failing" >&2; exit 1; }
+    o=\$4 n=\$5
+    [ -e "\$i/\$o" ] && [ ! -e "\$i/\$n" ] || { echo "incus rename: \$o → \$n refused" >&2; exit 1; }
+    mv "\$i/\$o" "\$i/\$n"; [ ! -e "\$i/\$o.running" ] || mv "\$i/\$o.running" "\$i/\$n.running" ;;
   "exec --project")
     # Before activation the guest has no systemctl: no-systemctl holds how many probes it still lasts.
     if [ "\$7" = --version ]; then
@@ -84,6 +102,30 @@ case "\$1" in
       for n in \$newer; do rm -rf "\$z/\$n"; done
     fi
     rm -rf "\$z/\$ds"; $realcp -a "\$z/\$ds@\$snap" "\$z/\$ds" ;;
+  # A dataset rename moves its directory and its snapshots; a snapshot rename stays on its dataset, as ZFS has it.
+  rename)
+    [ ! -e "$t/zfs-rename-fails" ] || { echo "zfs rename: failing" >&2; exit 1; }
+    o=\${args[1]} n=\${args[2]}
+    [ -d "\$z/\$o" ] && [ ! -e "\$z/\$n" ] || { echo "cannot rename \$o to \$n" >&2; exit 1; }
+    if [[ \$o == *@* ]]; then
+      [ "\${o%@*}" = "\${n%@*}" ] || { echo "cannot rename \$o: snapshots stay on their dataset" >&2; exit 1; }
+      mv "\$z/\$o" "\$z/\$n"
+    else
+      mv "\$z/\$o" "\$z/\$n"
+      [ ! -e "\$z/\$o.mountpoint" ] || mv "\$z/\$o.mountpoint" "\$z/\$n.mountpoint"
+      for s in "\$z/\$o"@*; do [ ! -d "\$s" ] || mv "\$s" "\$z/\$n@\${s##*@}"; done
+    fi ;;
+  # A dataset whose mountpoint is set moves its mounted tree there, as ZFS remounts it: <ds>.mountpoint holds where.
+  set)
+    # zfs-set-fails holds how many sets still fail.
+    f=\$(cat "$t/zfs-set-fails" 2>/dev/null || echo 0)
+    if [ "\$f" -gt 0 ]; then echo \$((f - 1)) >"$t/zfs-set-fails"; echo "zfs set: failing" >&2; exit 1; fi
+    v=\${args[1]#mountpoint=} ds=\${args[2]}
+    if [ "\${args[1]}" != "\$v" ] && [ -e "\$z/\$ds.mountpoint" ]; then
+      cur=\$(cat "\$z/\$ds.mountpoint")
+      [ "\$cur" = "\$v" ] || { [ ! -e "\$cur" ] || mv "\$cur" "\$v"; }
+      echo "\$v" >"\$z/\$ds.mountpoint"
+    fi ;;
   destroy)
     a=\${args[-1]}
     [[ \$a == *@* ]] || exit 0
@@ -215,7 +257,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 }
 
 @test "deliver makes the store devices' mount points before the start, and waits on no stdin" {
-  touch "$t/exists"
+  echo none >"$t/inst/attic"
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
   run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
   [ "$status" -eq 0 ]
@@ -224,7 +266,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 }
 
 @test "deliver refuses a symlink on a mount point's path: nothing snapshotted, nothing created" {
-  touch "$t/exists"
+  echo none >"$t/inst/attic"
   mkdir -p "$t/attic/root/nix" "$t/elsewhere"
   ln -s "$t/elsewhere" "$t/attic/root/nix/.lower"
   run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
@@ -236,7 +278,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 }
 
 @test "deliver refuses a component another uid owns: nothing snapshotted, nothing created" {
-  touch "$t/exists"
+  echo none >"$t/inst/attic"
   mkdir -p "$t/attic/root/nix"
   echo "$t/attic/root/nix" >"$t/foreign"
   run --separate-stderr "$t/run" "$cli" deliver attic <"$t/stdin"
@@ -256,7 +298,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 
 # A container already delivered once on x-attic-old: a profile, a previous snapshot's stamp, an upper.
 delivered_before() {
-  touch "$t/exists"
+  echo none >"$t/inst/attic"
   mkdir -p "$t/attic/root/nix/var/nix/profiles" "$t/attic/upper" "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
   ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/system"
   echo ndh-incus-attic-20261001T000000Z >"$t/attic/lower.snapshot"
@@ -348,7 +390,7 @@ delivered_before() {
 
 @test "the state snapshot is taken with the container stopped, before anything is delivered" {
   delivered_before
-  touch "$t/running"
+  touch "$t/inst/attic.running"
   run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
   [ "$status" -eq 0 ]
   stop=$(grep -n '^incus stop --project ndh attic$' "$t/calls" | cut -d: -f1)
@@ -638,7 +680,8 @@ system_current() {
 # and the commit died on a busy snapshot, so the previous delivery's pair (145633Z), the aside and the state snapshot of
 # 184302Z are still there, and so is a converge.failed from before.
 left_by_a_dead_commit() {
-  touch "$t/exists" "$t/running"
+  echo none >"$t/inst/attic"
+  touch "$t/inst/attic.running"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root" "$t/attic/.previous-ndh-incus-attic-20261022T184302Z"
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
@@ -862,4 +905,199 @@ foreign_snapshot_on_start() {
   run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
   [[ $stderr == *"more recent snapshots exist"* ]]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
+}
+
+# The cluster's two guests: this one is bioskop's, and its cache container is now declared attic-bioskop, renamed from
+# attic. Derived from the suite's CLI by its declaration alone.
+per_metalspace_cli() {
+  touch "$t/clustered"
+  sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'with_entries(.key = "attic-bioskop" | .value.name = "attic-bioskop" | .value.target = "bioskop" | .value.renamedFrom = "attic" | .value.dir |= sub("/attic$"; "/attic-bioskop") | .value.dataset |= sub("/attic$"; "/attic-bioskop"))'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-ms"
+  [ "$(grep -c 'attic-bioskop' "$t/cli-ms")" = 1 ]
+}
+
+# bioskop's attic as it ran on 2026-10-24: on member bioskop, healthy, delivered on 184302Z, its container dataset and
+# that delivery's snapshots (store upper, DB, state) all named attic.
+running_attic_before_rename() {
+  per_metalspace_cli
+  echo bioskop >"$t/inst/attic"
+  touch "$t/inst/attic.running"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root" "$t/attic/root/nix/.lower/nix/store" \
+    "$t/attic/root/nix/.lower/nix/var/nix" "$t/attic/root/nix/.upper" "$t/attic/upper"
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  echo ndh-incus-attic-20261024T184302Z >"$t/attic/lower.snapshot"
+  echo the-cache >"$t/attic/upper/marker"
+  # The container dataset, its contents being the dir above: the stub's rename moves the one, the test reads the other.
+  mkdir -p "$t/zfs/tank/nerd/ndh-containers/attic"
+  echo "$t/attic" >"$t/zfs/tank/nerd/ndh-containers/attic.mountpoint"
+  for ds in tank/x tank/db tank/nerd/attic; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261024T184302Z"; done
+}
+
+# Everything a rename moves, named after attic-bioskop, and nothing left named after attic.
+renamed() {
+  [ -e "$t/inst/attic-bioskop" ] && [ -e "$t/inst/attic-bioskop.running" ]
+  [ ! -e "$t/inst/attic" ]
+  [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+  [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic" ]
+  for ds in tank/x tank/db; do
+    [ -d "$t/zfs/$ds@ndh-incus-attic-bioskop-20261024T184302Z" ]
+    [ ! -e "$t/zfs/$ds@ndh-incus-attic-20261024T184302Z" ]
+  done
+  # The state snapshot was only a way back: the same converge commits it, under its new name.
+  [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
+}
+
+# As it ran before: attic on bioskop, running, its dataset and snapshots named attic.
+as_before() {
+  [ -e "$t/inst/attic" ] && [ -e "$t/inst/attic.running" ]
+  [ "$(cat "$t/inst/attic")" = bioskop ]
+  [ ! -e "$t/inst/attic-bioskop" ]
+  [ "$(cat "$t/attic/upper/marker")" = the-cache ]
+  [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261024T184302Z ]
+  [ ! -e "$t/attic-bioskop" ]
+  [ -d "$t/zfs/tank/nerd/ndh-containers/attic" ]
+  [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+  for ds in tank/x tank/db tank/nerd/attic; do
+    [ -d "$t/zfs/$ds@ndh-incus-attic-20261024T184302Z" ]
+    [ ! -e "$t/zfs/$ds@ndh-incus-attic-bioskop-20261024T184302Z" ]
+  done
+}
+
+@test "converge refuses an instance of its name running on another member, and touches nothing" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic-bioskop"
+  touch "$t/inst/attic-bioskop.running"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic-bioskop runs on member nikopol, not on its target bioskop"* ]]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  run grep -E '^(incus (stop|start|rename|config)|zfs (snapshot|destroy|rename)|systemctl stop)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "mutant: without the member check, converge stops the other guest's container" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic-bioskop"
+  touch "$t/inst/attic-bioskop.running"
+  # A delivered container as the other guest has it, so the member check is the only thing in the way.
+  mkdir -p "$t/attic-bioskop/root/nix/var/nix/profiles" "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
+  echo ndh-incus-attic-bioskop-20261001T000000Z >"$t/attic-bioskop/lower.snapshot"
+  grep -q '    if \[ "\$where" != absent \] && ! placed "\$where" "\$target"; then' "$t/cli-ms"
+  sed 's/    if \[ "\$where" != absent \] \&\& ! placed "\$where" "\$target"; then/    if false; then/' "$t/cli-ms" |
+    sed 's/  placed "\$where" "\$target" || die "\$1 runs on member/  true || die "$1 runs on member/' >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  grep -q '^incus stop --project ndh attic-bioskop$' "$t/calls"
+}
+
+@test "deliver refuses an instance running on another member than its target" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic-bioskop"
+  run --separate-stderr "$t/run" "$t/cli-ms" deliver attic-bioskop <"$t/stdin"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"runs on member nikopol, not on its target bioskop"* ]]
+  run grep -E '^(incus stop|zfs snapshot)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "create refuses a name another member already runs" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic-bioskop"
+  run --separate-stderr "$t/run" "$t/cli-ms" create attic-bioskop <"$t/stdin"
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"already exists on member nikopol"* ]]
+  run grep -E '^incus init' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "converge renames bioskop's running attic to attic-bioskop, data and delivery snapshots with it, healthy" {
+  running_attic_before_rename
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic renamed attic-bioskop, healthy"* ]]
+  renamed
+  # The container's own data came along: the dataset is mounted at its dir, and moved with it.
+  [ "$(cat "$t/attic-bioskop/upper/marker")" = the-cache ]
+  [ ! -e "$t/attic" ]
+  [ "$(cat "$t/attic-bioskop/lower.snapshot")" = ndh-incus-attic-bioskop-20261024T184302Z ]
+  # raw.lxc and the four store devices point into the new dir.
+  # raw.lxc is two lines (init, then the pre-start hook naming the dir), so the call spans two lines of calls.
+  grep -A1 '^incus config set --project ndh attic-bioskop raw.lxc=' "$t/calls" | grep -q "pre-start = .* $t/attic-bioskop$"
+  for d in nix nix-lower-store nix-lower-db nix-upper; do
+    grep -q "^incus config device set --project ndh attic-bioskop $d source=$t/attic-bioskop/" "$t/calls"
+  done
+  grep -q '^systemctl stop ndh-incus-container-store-attic.service$' "$t/calls"
+  grep -q '^systemctl start ndh-incus-container-store-attic-bioskop.service$' "$t/calls"
+}
+
+@test "mutant: a rename that leaves the delivery snapshots named after attic pins them past every commit" {
+  running_attic_before_rename
+  grep -q '    zfs rename "\$snap" "\${snap%@\*}@ndh-incus-\$1-' "$t/cli-ms"
+  sed '/^    zfs rename "\$snap" "\${snap%@\*}@ndh-incus-\$1-/d' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  run renamed
+  [ "$status" -ne 0 ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-20261024T184302Z" ]
+}
+
+@test "a renamed container unhealthy on the same system is put back exactly, and the failure is loud" {
+  running_attic_before_rename
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic-bioskop is unhealthy after its rename: putting attic back"* ]]
+  as_before
+  grep -q '^systemctl start ndh-incus-container-store-attic.service$' "$t/calls"
+}
+
+@test "mutant: without the undo, an unhealthy rename is left half-renamed" {
+  running_attic_before_rename
+  echo "atticd.service failed" >"$t/units"
+  grep -q 'unrename "\$name" "\$old" ||' "$t/cli-ms"
+  sed 's/unrename "\$name" "\$old" ||/true ||/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  run as_before
+  [ "$status" -ne 0 ]
+}
+
+# Each step of the rename, failing in turn: what was done before it is undone, and attic runs as before.
+@test "a rename failing at the dataset is undone, attic as before" {
+  running_attic_before_rename
+  touch "$t/zfs-rename-fails"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic could not be renamed attic-bioskop: putting it back"* ]]
+  rm "$t/zfs-rename-fails"
+  as_before
+}
+
+@test "a rename failing at the mountpoint is undone, attic as before" {
+  running_attic_before_rename
+  # The rename's own mountpoint set fails; the undo's set (back to attic's dir) goes through.
+  echo 1 >"$t/zfs-set-fails"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"could not be renamed"* ]]
+  as_before
+}
+
+@test "a rename failing at the instance is undone, the snapshots and the dataset named attic again" {
+  running_attic_before_rename
+  touch "$t/incus-rename-fails"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"could not be renamed"* ]]
+  rm "$t/incus-rename-fails"
+  as_before
+}
+
+@test "another member's attic is no rename of this guest's attic-bioskop" {
+  per_metalspace_cli
+  echo nikopol >"$t/inst/attic"
+  touch "$t/inst/attic.running"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"attic-bioskop is declared but not created"* ]]
+  [ -e "$t/inst/attic.running" ]
+  run grep -E '^(incus (stop|rename)|zfs rename)' "$t/calls"
+  [ "$status" -eq 1 ]
 }

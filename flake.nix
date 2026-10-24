@@ -1323,6 +1323,57 @@
               (lib.filter (c: c.config.ndh.atticCache.enable) guests)
             ) "incus-instance-names-cluster-unique: an attic container is not named after its metalspace";
             pkgs.runCommand "incus-instance-names-cluster-unique" { } "touch $out";
+          # A store unit that leaves the configuration (an instance renamed or removed) would be stopped by the switch
+          # (switch-to-configuration-ng's X-StopOnRemoval, default true), its ExecStop unmounting the store of a
+          # container still running. On every guest, every instance's store unit says it is not to be.
+          incus-container-store-survives-removal =
+            let
+              lib = nixpkgs.lib;
+              guests = lib.filterAttrs (
+                _: c: (c.config.ndh.incusNixosContainers.instances or { }) != { }
+              ) self.nixosConfigurations;
+              stopped =
+                configs:
+                lib.concatLists (
+                  lib.mapAttrsToList (
+                    host: c:
+                    map (n: "${host}/${n}") (
+                      lib.filter (
+                        n:
+                        (c.config.systemd.services."ndh-incus-container-store-${n}".unitConfig."X-StopOnRemoval" or true)
+                        != false
+                      ) (lib.attrNames c.config.ndh.incusNixosContainers.instances)
+                    )
+                  ) configs
+                );
+              mutant = lib.mapAttrs (
+                _: c:
+                c.extendModules {
+                  modules = [
+                    (
+                      { lib, config, ... }:
+                      {
+                        systemd.services = lib.mapAttrs' (
+                          n: _:
+                          lib.nameValuePair "ndh-incus-container-store-${n}" {
+                            unitConfig."X-StopOnRemoval" = lib.mkForce true;
+                          }
+                        ) config.ndh.incusNixosContainers.instances;
+                      }
+                    )
+                  ];
+                }
+              ) guests;
+            in
+            assert lib.assertMsg (
+              guests != { }
+            ) "incus-container-store-survives-removal: no guest declares a container";
+            assert lib.assertMsg (stopped guests == [ ])
+              "incus-container-store-survives-removal: stopped by the switch on removal: ${toString (stopped guests)}";
+            assert lib.assertMsg (
+              stopped mutant != [ ]
+            ) "incus-container-store-survives-removal: the mutant stopped on removal was not caught";
+            pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
           # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
           # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
           attic-cache-key-name =

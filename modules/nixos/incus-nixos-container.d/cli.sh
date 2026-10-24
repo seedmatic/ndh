@@ -55,6 +55,22 @@ instance() {
     die "no instance '$1' is declared on this member"
 }
 
+# where_is {name}: `absent`, or the member the instance runs on (`none` on a standalone Incus). Instance names are unique
+# per project across the CLUSTER, so an instance can exist on another member than this one.
+where_is() {
+  incus info --project "$PROJECT" "$1" >/dev/null 2>&1 || { echo absent; return 0; }
+  incus query "/1.0/instances/$1?project=$PROJECT" | yq -p json -oy -r '.location'
+}
+
+# store_devices {dir}: the four store disk devices and their sources, "<device> <source>" per line; what create adds
+# and a rename re-points.
+store_devices() {
+  printf '%s %s\n' nix "$1/root/nix" nix-lower-store "$1/view/nix/store" nix-lower-db "$1/view/nix/var/nix" nix-upper "$1/upper"
+}
+
+# placed {where} {target}: whether an instance at {where} is where its declaration puts it.
+placed() { [ -z "$2" ] || [ "$1" = "$2" ]; }
+
 field() { KEY="$2" yq -p json -oy -r '.[strenv(KEY)]' <<<"$1"; }
 
 # raw_lxc {dir}: ONE key, so init and the pre-start hook share its value; a second `raw.lxc=` would
@@ -90,7 +106,11 @@ create() {
   mkdir -p "$dir/root/nix" "$dir/upper" "$dir/view/nix/store" "$dir/view/nix/var/nix"
 
   incus project show "$PROJECT" >/dev/null 2>&1 || incus project create "$PROJECT"
-  if incus info --project "$PROJECT" "$1" >/dev/null 2>&1; then
+  local where
+  where=$(where_is "$1")
+  [ "$where" = absent ] || placed "$where" "$target" ||
+    die "$1 already exists on member $where, not on its target $target: two guests declare the same name"
+  if [ "$where" != absent ]; then
     echo "ndh-incus-container: $1 already exists in project $PROJECT"
     return
   fi
@@ -110,17 +130,20 @@ create() {
   for mountpoint in proc sys dev run tmp; do
     incus file create --project "$PROJECT" --type=directory "$1/$mountpoint"
   done
+  local -A source
+  local device src
+  while read -r device src; do source[$device]=$src; done < <(store_devices "$dir")
   incus config device add --project "$PROJECT" "$1" nix disk \
-    source="$dir/root/nix" path=/nix recursive=true
+    source="${source[nix]}" path=/nix recursive=true
   # The lower view's store is a mount of its own, and the kernel refuses a recursive read-only bind:
   # its two halves go in as two plain read-only binds.
   incus config device add --project "$PROJECT" "$1" nix-lower-store disk \
-    source="$dir/view/nix/store" path="$GUEST_LOWER/nix/store" readonly=true
+    source="${source[nix-lower-store]}" path="$GUEST_LOWER/nix/store" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-lower-db disk \
-    source="$dir/view/nix/var/nix" path="$GUEST_LOWER/nix/var/nix" readonly=true
+    source="${source[nix-lower-db]}" path="$GUEST_LOWER/nix/var/nix" readonly=true
   incus config device add --project "$PROJECT" "$1" nix-upper disk \
-    source="$dir/upper" path="$GUEST_UPPER"
-  local device type keys
+    source="${source[nix-upper]}" path="$GUEST_UPPER"
+  local type keys
   for device in $(yq -p json -oy -r '.devices | keys | .[]' <<<"$info"); do
     # Incus takes the type as a positional argument and refuses `type=` among the keys.
     type=$(DEVICE="$device" yq -p json -oy -r '.devices[strenv(DEVICE)].type' <<<"$info")
@@ -212,7 +235,11 @@ deliver_steps() {
   upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
 
   [ ! -e "$STORE_DEGRADED" ] || die "nerd-nixos's store is degraded — repair it before delivering"
-  incus info --project "$PROJECT" "$1" >/dev/null 2>&1 || die "$1 does not exist — create it first"
+  local where target
+  target=$(yq -p json -oy -r '.target // ""' <<<"$info")
+  where=$(where_is "$1")
+  [ "$where" != absent ] || die "$1 does not exist — create it first"
+  placed "$where" "$target" || die "$1 runs on member $where, not on its target $target — nothing touched"
   [ -e "$toplevel" ] || die "$toplevel is not in nerd-nixos's store — switch nerd-nixos to this generation first"
   [ "$(findmnt -no FSTYPE "$upper_root")" = zfs ] || die "$upper_root is not a ZFS dataset"
   [ "$(findmnt -no FSTYPE /nix/var/nix/db)" = zfs ] || die "/nix/var/nix/db is not a ZFS dataset"
@@ -333,6 +360,102 @@ state_snapshots() {
 # is built from it; matched afterwards as a fixed string, never as a pattern (🛡️: a `.*` kept nothing).
 delivery_snapshot() {
   [[ $2 =~ ^ndh-incus-$1-[0-9]{8}T[0-9]{6}Z$ ]] || die "'$2' is not a delivery snapshot of $1"
+}
+
+# rename {new} {old}: the instance {old}, running on this member, becomes {new}, its declared name. Everything named
+# after the instance moves with it, the container stopped: its store unit, its dataset (mounted at its dir), its delivery
+# snapshots (commit and leftovers match the name: unrenamed, they would never be committed and would pin the store),
+# lower.snapshot, the instance, raw.lxc and the store devices. Its state datasets and data devices do not move. Healthy
+# on the same system, it is kept; not, unrename puts every one back. In its own processes: converge runs them under `if`.
+rename() { "$BASH" "${BASH_SOURCE[0]}" _rename "$1" "$2"; }
+unrename() { "$BASH" "${BASH_SOURCE[0]}" _unrename "$1" "$2"; }
+
+rename_steps() {
+  local info dir dataset old_dir old_dataset upper_root rw db snap state src device
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  dataset=$(field "$info" dataset)
+  old_dir="$(dirname "$dir")/$2"
+  old_dataset="$(dirname "$dataset")/$2"
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  local target where
+  target=$(yq -p json -oy -r '.target // ""' <<<"$info")
+  [ "$(where_is "$1")" = absent ] || die "$1 already exists: nothing renamed"
+  where=$(where_is "$2")
+  [ "$where" != absent ] || die "$2 does not exist: nothing renamed"
+  placed "$where" "$target" || die "$2 runs on member $where, not on $1's target $target: nothing renamed"
+  zfs list -H "$old_dataset" >/dev/null || die "$2 has no dataset $old_dataset: nothing renamed"
+  ! zfs list -H "$dataset" >/dev/null 2>&1 || die "$dataset already exists: nothing renamed"
+
+  if [ "$(incus query "/1.0/instances/$2/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
+    incus stop --project "$PROJECT" "$2"
+  fi
+  systemctl stop "ndh-incus-container-store-$2.service"
+  zfs rename "$old_dataset" "$dataset"
+  zfs set mountpoint="$dir" "$dataset"
+  for snap in $(delivery_snapshots_of "$2" "$rw" "$db" "$info"); do
+    zfs rename "$snap" "${snap%@*}@ndh-incus-$1-${snap##*@ndh-incus-"$2"-}"
+  done
+  if [ -s "$dir/lower.snapshot" ]; then
+    sed -i "s/^ndh-incus-$2-/ndh-incus-$1-/" "$dir/lower.snapshot"
+  fi
+  incus rename --project "$PROJECT" "$2" "$1"
+  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
+  while read -r device src; do
+    incus config device set --project "$PROJECT" "$1" "$device" source="$src"
+  done < <(store_devices "$dir")
+  systemctl start "ndh-incus-container-store-$1.service"
+  incus start --project "$PROJECT" "$1"
+  echo "ndh-incus-container: $2 renamed $1"
+}
+
+# unrename {new} {old}: puts back whatever rename_steps moved, each object by what it now is, so it also finishes a
+# rename that stopped half-way; then {old} restarts on the system it ran.
+unrename_steps() {
+  local info dir dataset old_dir old_dataset upper_root rw db snap src device
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  dataset=$(field "$info" dataset)
+  old_dir="$(dirname "$dir")/$2"
+  old_dataset="$(dirname "$dataset")/$2"
+  upper_root=$(yq -p json -oy -r '.upperRoot' "$LAYER_CONTRACT")
+  rw=$(findmnt -no SOURCE "$upper_root")
+  db=$(findmnt -no SOURCE /nix/var/nix/db)
+  if [ "$(where_is "$1")" != absent ]; then
+    incus stop --force --project "$PROJECT" "$1" || true
+  fi
+  systemctl stop "ndh-incus-container-store-$1.service" || true
+  if [ "$(where_is "$1")" != absent ]; then
+    while read -r device src; do
+      incus config device set --project "$PROJECT" "$1" "$device" source="$src"
+    done < <(store_devices "$old_dir")
+    incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$old_dir")"
+    incus rename --project "$PROJECT" "$1" "$2"
+  fi
+  if zfs list -H "$dataset" >/dev/null 2>&1; then
+    if [ -s "$dir/lower.snapshot" ]; then
+      sed -i "s/^ndh-incus-$1-/ndh-incus-$2-/" "$dir/lower.snapshot"
+    fi
+  fi
+  for snap in $(delivery_snapshots_of "$1" "$rw" "$db" "$info"); do
+    zfs rename "$snap" "${snap%@*}@ndh-incus-$2-${snap##*@ndh-incus-"$1"-}"
+  done
+  if zfs list -H "$dataset" >/dev/null 2>&1; then
+    zfs rename "$dataset" "$old_dataset"
+    zfs set mountpoint="$old_dir" "$old_dataset"
+  fi
+  systemctl start "ndh-incus-container-store-$2.service"
+  incus start --project "$PROJECT" "$2"
+  echo "ndh-incus-container: $1 renamed back $2" >&2
+}
+
+# delivery_snapshots_of {name} {rw} {db} {info}: every delivery snapshot named after {name}, on the store's upper, the
+# DB and the state datasets.
+delivery_snapshots_of() {
+  zfs list -H -t snapshot -o name "$2" "$3" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" || true
+  state_snapshots "$4" "$1"
 }
 
 # leftovers {name}: what a delivery leaves until its commit, one per line: every delivery snapshot of the instance but
@@ -484,12 +607,50 @@ healthy() {
 # not yet created is the operator's (`create`), and is skipped, loudly. The exit status is 1 if any
 # container could not be converged, so the unit fails visibly.
 converge() {
-  local name info dir toplevel declared wrong rest snapshot aside failed=0
+  local name info dir toplevel target where old old_where declared wrong rest snapshot aside failed=0
   for name in $(yq -p json -oy -r 'keys | .[]' <<<"$INSTANCES"); do
     info=$(instance "$name")
     dir=$(field "$info" dir)
     toplevel=$(field "$info" toplevel)
-    if ! incus info --project "$PROJECT" "$name" >/dev/null 2>&1; then
+    target=$(yq -p json -oy -r '.target // ""' <<<"$info")
+    if ! where=$(where_is "$name"); then
+      echo "ndh-incus-container: $name's location could not be read: nothing delivered" >&2
+      failed=1
+      continue
+    fi
+    # Another member's instance of the same name is a declaration error, never this guest's to deliver: stopping it
+    # would stop the other guest's container. Shown, never skipped silently (🧭).
+    if [ "$where" != absent ] && ! placed "$where" "$target"; then
+      echo "ndh-incus-container: $name runs on member $where, not on its target $target: two guests declare the same name — nothing touched" >&2
+      failed=1
+      continue
+    fi
+    # Renamed in the declaration: the old instance, here, becomes this one, rather than an empty container created
+    # beside it. Kept only healthy on the same system; else every step is undone.
+    old=$(yq -p json -oy -r '.renamedFrom // ""' <<<"$info")
+    old_where=absent
+    if [ "$where" = absent ] && [ -n "$old" ] && ! old_where=$(where_is "$old"); then
+      echo "ndh-incus-container: $old's location could not be read: nothing renamed" >&2
+      failed=1
+      continue
+    fi
+    if [ "$where" = absent ] && [ "$old_where" != absent ] && placed "$old_where" "$target"; then
+      if ! rename "$name" "$old"; then
+        echo "ndh-incus-container: $old could not be renamed $name: putting it back" >&2
+        unrename "$name" "$old" || echo "ndh-incus-container: $old's rename could not be undone: it needs a hand" >&2
+        failed=1
+        continue
+      fi
+      if ! healthy "$name"; then
+        echo "ndh-incus-container: $name is unhealthy after its rename: putting $old back" >&2
+        unrename "$name" "$old" || echo "ndh-incus-container: $old's rename could not be undone: it needs a hand" >&2
+        failed=1
+        continue
+      fi
+      echo "ndh-incus-container: $old renamed $name, healthy"
+      where=$(where_is "$name")
+    fi
+    if [ "$where" = absent ]; then
       echo "ndh-incus-container: $name is declared but not created: run ndh-incus-container create $name" >&2
       failed=1
       continue
@@ -609,6 +770,14 @@ main() {
   _commit)
     [ -n "${3:-}" ] || usage
     commit_steps "$2" "$3"
+    ;;
+  _rename)
+    [ -n "${3:-}" ] || usage
+    rename_steps "$2" "$3"
+    ;;
+  _unrename)
+    [ -n "${3:-}" ] || usage
+    unrename_steps "$2" "$3"
     ;;
   *) usage ;;
   esac
