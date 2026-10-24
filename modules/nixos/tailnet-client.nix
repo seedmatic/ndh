@@ -212,12 +212,22 @@ in
       ];
       requires = [ "sops-install-secrets.service" ];
       wantedBy = [ contributedTargetName ];
-      unitConfig = lib.mkIf (effectiveAuthKeyFile != null) {
+      # The `--timeout=45s` below fails fast so that systemd retries; without a restart policy
+      # there was no retry, and a boot where tailscaled was not Running within 45 s left the
+      # node unregistered until a hand restart (measured on nikopol-nixos after a cold start,
+      # 2026-10-23). Bounded: 5 tries in 10 min, then the unit stays failed and says so.
+      unitConfig = {
+        StartLimitIntervalSec = 600;
+        StartLimitBurst = 5;
+      }
+      // lib.optionalAttrs (effectiveAuthKeyFile != null) {
         ConditionPathExists = effectiveAuthKeyFile;
       };
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = 30;
       };
       script = ''
         set -euo pipefail

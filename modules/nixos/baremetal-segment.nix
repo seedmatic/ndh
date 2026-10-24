@@ -289,8 +289,18 @@ lib.mkIf enabled {
         (ndhSystemd.mkServiceName "ssh-keys-enrichment")
         "network-online.target"
       ];
+      # network-online is not the vz-host answering: after a cold start the deploy probed it
+      # before it was up and applied nothing, and with no restart policy it stayed so (measured
+      # on nikopol-nixos, 2026-10-23). The deploy's own bounded probe is the wait; systemd only
+      # repeats it. 6 tries in 15 min, then the unit stays failed and says so.
+      unitConfig = {
+        StartLimitIntervalSec = 900;
+        StartLimitBurst = 6;
+      };
       serviceConfig = {
         Type = "oneshot";
+        Restart = "on-failure";
+        RestartSec = 60;
         # Invoke bash explicitly (as incus.nix's ExecStartPre does): the service's minimal
         # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
         # fails with exit 127 (`env: 'bash': No such file or directory`).
