@@ -118,7 +118,7 @@ let
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
-    inherit (instance) profiles stateDatasets;
+    inherit (instance) profiles stateDatasets renamedFrom;
     health.units = map (u: if lib.isString u then { unit = u; } else u) instance.health.units;
   }) cfg.instances;
 
@@ -254,6 +254,18 @@ in
                 cannot write in the host-owned /nix bind.
               '';
             };
+            renamedFrom = lib.mkOption {
+              # An instance name's shape, as the CLI checks it: it goes into dataset paths, unit names and patterns.
+              type = lib.types.nullOr (lib.types.strMatching "[a-z][a-z0-9-]{0,62}");
+              default = null;
+              example = "attic";
+              description = ''
+                The name this instance had before. Where the instance is absent and that name runs on this member,
+                converge renames it, its dataset, delivery snapshots, devices and store unit with it, rather than create
+                an empty container; the next converge delivers as usual. Undone exactly when the renamed container is
+                not healthy on the same system.
+              '';
+            };
             stateDatasets = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
@@ -343,6 +355,10 @@ in
           ];
           after = [ "zfs-mount.service" ];
           unitConfig = {
+            # A unit that leaves the configuration is stopped by the switch unless it says so (switch-to-configuration-ng,
+            # main.rs): this one's ExecStop would unmount the store of a container still running. A renamed instance's
+            # old unit is stopped by converge, its container stopped first.
+            "X-StopOnRemoval" = false;
             # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
             # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
             # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
