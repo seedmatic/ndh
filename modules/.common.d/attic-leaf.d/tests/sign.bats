@@ -266,6 +266,17 @@ hostile() { # <cmd>... — runs <cmd> under it
   run ! grep -qE '^\[test\.attic-leaf\] \+' "$t/sink"
 }
 
+# The logger traces by default: the script re-runs itself inside it, and its guard's NDH_LOGGER_XTRACE=0 is what
+# keeps that run untraced, end to end, with no request either way.
+@test "by default, no trace reaches the sink: the guard opts the logged re-run out" {
+  unset NDH_LOGGER_XTRACE
+  SOPS_AGE_KEY_FILE="$t/AGE-KEY-MARKER" run_sign
+  [ "$status" -eq 0 ]
+  [ -s "$t/sink" ]
+  run ! grep -q 'PRIVATE KEY' "$t/sink"
+  run ! grep -qE '^\[test\.attic-leaf\] \+' "$t/sink"
+}
+
 @test "a ca_crt that is not cleartext fails closed, before anything" {
   yq -i '.authorities."test-tls".slots."26-10-10".ca_crt = "ENC[AES256_GCM,data:x,type:str]"' "$t/keys.yaml"
   run_sign --check

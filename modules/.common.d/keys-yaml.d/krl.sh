@@ -4,7 +4,7 @@
 # caller's set -x): this script handles private keys, and a trace prints every value it expands.
 case $- in *x*) { set +x; } 2>/dev/null; echo "[xtrace-guard] xtrace disabled: this script handles private keys" >&2 ;; esac
 export -n SHELLOPTS 2>/dev/null || true # readonly in bash, so not unset; un-exported, it stops at this process
-unset NDH_LOGGER_XTRACE # ndh::logger:command:run traces its command only when this is 1
+export NDH_LOGGER_XTRACE=0 # ndh::logger:command:run traces its command unless this is 0
 unset BASH_XTRACEFD 2>/dev/null || true
 unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child bash this script starts
 # The fleet's key revocation list (KRL), built at evaluation from keys.yaml's public fields as

@@ -120,7 +120,8 @@ reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify 
   oldPublic=$(yq -r -p json -o json ".[$i].oldPublic" "$batch")
   files=$(yq -r -p json -o json ".[$i].files | join(\", \")" "$batch")
   reconcile::host-key::collect "$i" "$work"
-  if public=$(reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" "$bootstrap" 2>"$work/why"); then
+  : >"$work/why"
+  if public=$(NDH_RECONCILE_WHY="$work/why" reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" "$bootstrap"); then
     : "a console bootstrap's fingerprint is never shown here: the operator must read it at the machine's console (🛡️)"
     if [[ $bootstrap == console ]]; then
       printf '  ✓ %s — %s@%s empreinte : à lire à la console de %s\n' "$machine" "$keyName" "$slot" "$machine"
@@ -192,15 +193,21 @@ window() {
   : "the operator's terminal, opened once for every answer of this window"
   exec 7<"$ttyIn"
   : "a console bootstrap's binding is the operator's eyes: they type the start of the fingerprint read at its console"
-  local answer i keyName slot public hash typed shown
+  local answer i keyName slot public hash typed shown matched
   while IFS=$'\t' read -r i keyName slot public hash; do
     [[ $(yq -r -p json -o json ".[$i].bootstrap // \"\"" "$batch") == console ]] || continue
-    shown=$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)
-    shown=${shown#SHA256:}
     printf '%s@%s : lis l empreinte à la console de %s et tapes-en les 8 premiers caractères (après SHA256:) : ' \
       "$keyName" "$slot" "$(yq -r -p json -o json ".[$i].machine" "$batch")" >>"$ttyOut"
+    : "the fingerprint, and what the operator typed of it, never reach the trace (🛡️: its console is the only place)"
+    matched=0
+    ndh::secret:begin "a console bootstrap's fingerprint is compared with what the operator typed"
+    shown=$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)
+    shown=${shown#SHA256:}
     read -r typed <&7 || typed=""
-    [[ ${#typed} -ge 8 && $shown == "$typed"* ]] ||
+    [[ ${#typed} -ge 8 && $shown == "$typed"* ]] && matched=1
+    shown="" typed=""
+    ndh::secret:end
+    ((matched == 1)) ||
       { echo "rien écrit : ${keyName}@${slot}, l'empreinte tapée ne commence pas comme celle mesurée"; return 6; }
   done <"$work/measured"
   : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"

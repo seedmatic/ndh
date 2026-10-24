@@ -387,9 +387,10 @@ ndh::logger:command:run() {
 	exec 3>&2
 	ndh::logger:stderr:redirect "$tag"
 
-	# Traced only on request: a trace writes every value the command expands into the log sink,
-	# tokens and privates included. A script that handles privates unsets the request in its guard.
-	if [ "${NDH_LOGGER_XTRACE:-0}" = 1 ]; then set -x; fi
+	# Traced by default (the operator, 2026-10-21): the system log tells the story. A trace writes every value
+	# the command expands, so the lines that hold a secret sit in ndh::secret:begin/end, and a script that holds
+	# them throughout opts out with NDH_LOGGER_XTRACE=0 in its whole-script guard.
+	if [ "${NDH_LOGGER_XTRACE:-1}" != 0 ]; then set -x; fi
 	local rc
 	ndh::logger:command:invoke "$@"
 	rc=$NDH_LOGGER_COMMAND_RC

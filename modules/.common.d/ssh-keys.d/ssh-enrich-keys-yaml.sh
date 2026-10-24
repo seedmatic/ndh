@@ -246,10 +246,9 @@ sign::tls_server() {
 	notAfterDays="$(yq::get ".keys.\"${keyName}\".tls.not_after_days // 365")"
 	notAfterHours=$((notAfterDays * 24))
 
-	# Materialise the signer (authority) and subject (leaf) privates as
-	# tempfiles step-cli can read.  Re-uses the $tmpdir/auth-<name> cache
-	# populated by the SSH signing path when present; otherwise creates
-	# it here so TLS-only enrichment runs don't depend on SSH-cert order.
+	# Materialise the signer (authority) and subject (leaf) privates as tempfiles step-cli can read, once per run:
+	# the authority's $tmpdir/auth-<name> is written by the first TLS leaf it signs and reused by the next. No SSH
+	# path reads a private here (SSH certificates are signed on the operator seat).
 	# The returns sit outside the windows: a window is closed on every path, then the outcome is judged.
 	local authPriv authRead=1 authHeld=1
 	local authFile="${tmpdir}/auth-${authorityName}"

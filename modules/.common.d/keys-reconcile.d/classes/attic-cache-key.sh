@@ -45,8 +45,9 @@ reconcile::attic-cache-key::measure() { # <batch index> <work dir>
   machine=$(yq -r -p json -o json ".[$i].machine" "$batch")
   cache=$(yq -r -p json -o json ".[$i].cache" "$batch")
   reconcile::attic-cache-key::collect "$i" "$work"
-  if public=$(reconcile::attic-cache-key::verify "$work" "$machine" "$cache" \
-    "$(yq -r -p json -o json ".[$i].keyNameRegex" "$batch")" "$(yq -r -p json -o json ".[$i].servingPublic" "$batch")" 2>"$work/why"); then
+  : >"$work/why"
+  if public=$(NDH_RECONCILE_WHY="$work/why" reconcile::attic-cache-key::verify "$work" "$machine" "$cache" \
+    "$(yq -r -p json -o json ".[$i].keyNameRegex" "$batch")" "$(yq -r -p json -o json ".[$i].servingPublic" "$batch")"); then
     printf '  ✓ %s — cache %s : %s\n' "$machine" "$cache" "$public"
     printf '      entrée privateCaches.%s à enregistrer (acceptée par darwin et nixos)\n' "$cache"
     printf '%s\t%s\t%s\t%s\n' "$i" "$cache" "$public" \

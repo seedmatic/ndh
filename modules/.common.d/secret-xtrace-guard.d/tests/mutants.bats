@@ -146,10 +146,28 @@ check() {
 }
 
 @test "the whole-script guard covers the script; under the trampoline it is red (batch 1's flip); without BASH_ENV it is red" {
-  check guard-before-flip $'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\nunset BASH_ENV\nt="$(sops -d f)"'
+  check guard-before-flip $'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\nexport NDH_LOGGER_XTRACE=0\nunset BASH_ENV\nt="$(sops -d f)"'
   [ "$status" -eq 1 ] || { echo "guard-before-flip must be strict, exit $status" >&2; return 1; }
   check guard-without-bash-env $'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\nt="$(sops -d f)"'
   [ "$status" -eq 1 ] || { echo "guard-without-bash-env must be strict, exit $status" >&2; return 1; }
+}
+
+# The logger traces by default: a whole-script guard opts out with the literal export, nothing less.
+guard() { printf 'case $- in *x*) { set +x; } 2>/dev/null ;; esac\nexport -n SHELLOPTS\n%s\nunset BASH_ENV\nt="$(sops -d f)"' "$1"; }
+plain() { # <class|clean> <script>: checked off the trampoline, so guard-before-flip stays out of it
+  printf '%s\n' "$2" >"$T/s.sh"
+  shfmt --to-json <"$T/s.sh" >"$T/s.json"
+  printf '[{"path": "s.sh", "ast": "%s", "trampoline": false}]' "$T/s.json" >"$T/m.json"
+  run python3 -I "$CHECK" "$T/m.json"
+  if [ "$1" = clean ]; then [ "$status" -eq 0 ] && [[ $output != *guard-traced* ]]; else [ "$status" -eq 1 ] && [[ $output == *"$1"$'\t'* ]]; fi
+}
+
+@test "a whole-script guard opts out of the logger's trace with export NDH_LOGGER_XTRACE=0, or it is red" {
+  plain clean "$(guard 'export NDH_LOGGER_XTRACE=0')"
+  plain guard-traced "$(guard 'unset NDH_LOGGER_XTRACE')"
+  plain guard-traced "$(guard 'export NDH_LOGGER_XTRACE=1')"
+  plain guard-traced "$(guard 'NDH_LOGGER_XTRACE=0')"
+  plain guard-traced "$(guard ':')"
 }
 
 @test "what shfmt cannot parse is undecidable, never cleared" {
