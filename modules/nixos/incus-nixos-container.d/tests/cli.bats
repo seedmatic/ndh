@@ -1234,3 +1234,55 @@ absent_everywhere() {
   [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
 }
 
+# A container dataset left from before: an attic-bioskop deleted by hand, its store layer and an old delivery kept.
+dataset_left_from_before() {
+  absent_everywhere
+  mkdir -p "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" "$t/attic-bioskop/upper"
+  echo "$t/attic-bioskop" >"$t/zfs/tank/nerd/ndh-containers/attic-bioskop.mountpoint"
+  echo kept-from-before >"$t/attic-bioskop/upper/old-file"
+  for ds in tank/x tank/db; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-bioskop-20260901T000000Z"; done
+}
+
+@test "a created container over a dataset left from before is removed alone: the dataset, its file and its old snapshots stay" {
+  dataset_left_from_before
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"its dataset tank/nerd/ndh-containers/attic-bioskop, older than it, kept"* ]]
+  [ ! -e "$t/inst/attic-bioskop" ]
+  [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+  [ "$(cat "$t/attic-bioskop/upper/old-file")" = kept-from-before ]
+  [ -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-20260901T000000Z" ]
+  # Its own first delivery's snapshot goes, and the marker with it.
+  [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-2026101"* 2>/dev/null)" ]
+  [ ! -e "$t/attic-bioskop/converge.created" ]
+}
+
+@test "mutant: an uncreate that destroys the dataset whatever made it takes the file left from before" {
+  dataset_left_from_before
+  echo "atticd.service failed" >"$t/units"
+  grep -q '  if \[ "\$(cat "\$dir/converge.created")" = dataset \]; then' "$t/cli-ms"
+  sed 's/  if \[ "\$(cat "\$dir\/converge.created")" = dataset \]; then/  if true; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
+}
+
+@test "mutant: an uncreate that destroys every delivery snapshot of the name takes the old ones too" {
+  dataset_left_from_before
+  echo "atticd.service failed" >"$t/units"
+  # 80e510d4's form: every snapshot named after the instance.
+  grep -q '    for snap in "\$rw@\$2" "\$db@\$2"; do' "$t/cli-ms"
+  sed 's/    for snap in "\$rw@\$2" "\$db@\$2"; do/    for snap in $(delivery_snapshots_of "$1" "$rw" "$db" "$info"); do/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ ! -e "$t/zfs/tank/x@ndh-incus-attic-bioskop-20260901T000000Z" ]
+}
+
+@test "a hand create leaves no converge marker" {
+  per_metalspace_cli
+  run --separate-stderr "$t/run" "$t/cli-ms" create attic-bioskop <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ ! -e "$t/attic-bioskop/converge.created" ]
+  run ls -A "$t/attic-bioskop"
+  [[ $output != *create-made* ]]
+}
+
