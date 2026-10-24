@@ -83,3 +83,54 @@ ALLOW	DENY	-	grep -E "nix build|nix eval" /private/tmp/x.txt
 ALLOW	ALLOW	-	rg -n 'nix flake check' docs
 # The redirect of a by-revision build to a log is still by revision (residual e).
 ALLOW	DENY	-	nix build "git+file:///tmp/w?rev=0123abcd#x" > /private/tmp/x.log
+
+# From here, `today` is 60c63152's deny hook (the leak guard deleted), measured; the old guard's verdict is in the why.
+# A substitution or a variable in a ref cannot be resolved by the hook: opaque, refused, as a variable is. The one
+# exception is a git ref whose rev= is the substitution. The old leak guard refused these two; 60c63152 reopened them.
+DENY	ALLOW	-	nix build "$(pwd)#foo"
+DENY	ALLOW	-	nix build "$(git rev-parse --show-toplevel)#foo"
+DENY	ALLOW	-	nix build "`pwd`#foo"
+DENY	ALLOW	-	nix flake check "$(pwd)"
+ALLOW	ALLOW	-	nix build "git+file://$(pwd)?rev=$(git rev-parse HEAD)#foo"
+# A global option and its value before the subcommand: the subcommand is still found (open in both old hooks).
+DENY	ALLOW	-	nix --extra-experimental-features 'nix-command flakes' build .#foo
+DENY	ALLOW	-	nix --experimental-features 'nix-command flakes' flake check
+DENY	ALLOW	-	nix --extra-substituters https://x build .#foo
+DENY	DENY	-	nix --option sandbox false build .#foo
+ALLOW	ALLOW	-	nix --extra-experimental-features 'nix-command flakes' build "git+file:///tmp/w?rev=0123abcd#x"
+# A file to evaluate is a ref like any other: -f/--file of the working tree reads it (open in both old hooks).
+DENY	ALLOW	-	nix build -f . hello
+DENY	ALLOW	-	nix build --file ./default.nix hello
+DENY	ALLOW	-	nix eval -f . --apply builtins.attrNames
+ALLOW	ALLOW	-	nix build -f /nix/store/abc-src/default.nix hello
+ALLOW	ALLOW	-	nix eval --expr "1+1"
+# Every nix subcommand that takes an installable reads it: the list is the safe ones, not the dangerous ones.
+DENY	ALLOW	-	nix profile install .#foo
+DENY	ALLOW	-	nix profile add .#foo
+DENY	ALLOW	-	nix derivation show .#foo
+DENY	ALLOW	-	nix log .#foo
+DENY	ALLOW	-	nix store add-path .
+DENY	ALLOW	-	nix store add-file ./secret.yaml
+DENY	ALLOW	-	nix store add .
+ALLOW	ALLOW	-	nix profile list
+ALLOW	ALLOW	-	nix log /nix/store/abc-foo.drv
+ALLOW	ALLOW	-	nix store verify /nix/store/abc-foo
+ALLOW	ALLOW	-	nix derivation show "git+file:///tmp/w?rev=0123abcd#x"
+# The legacy CLIs: no argument means ./default.nix or ./shell.nix, a path means the tree (open in both old hooks).
+DENY	ALLOW	-	nix-build
+DENY	ALLOW	-	nix-build .
+DENY	ALLOW	-	nix-shell
+DENY	ALLOW	-	nix-shell ./shell.nix
+DENY	ALLOW	-	nix-instantiate --eval .
+DENY	ALLOW	-	nix-store --add ./secret.yaml
+DENY	ALLOW	-	nix-store --add-fixed sha256 ./secret.yaml
+ALLOW	ALLOW	-	nix-store --verify-path /nix/store/x
+ALLOW	ALLOW	-	nix-shell -p bats --run 'bats --version'
+ALLOW	ALLOW	-	nix-build '<nixpkgs>' -A hello
+# A shell behind a launcher still reads its stdin as code; a printf's format is not its only literal.
+DENY	ALLOW	-	echo 'nix build .#x' | env sh
+DENY	ALLOW	-	echo 'nix build .#x' | sudo bash
+DENY	ALLOW	-	echo 'nix build .#x' | nice bash
+DENY	ALLOW	-	printf '%s\n' 'nix build .#x' | bash
+DENY	DENY	-	echo nix build .#x | bash
+DENY	DENY	-	bash -s <<<'nix build .#x'
