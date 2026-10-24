@@ -387,6 +387,8 @@ unrename() { "$BASH" "${BASH_SOURCE[0]}" _unrename "$1" "$2"; }
 rename_steps() {
   local info dir dataset old_dir old_dataset upper_root rw db snap state src device
   instance_name "$2"
+  # unrename, which must finish a half rename, has no other refusal of it: given one name twice it would restart the
+  # instance it is called on.
   [ "$1" != "$2" ] || die "$1 cannot be renamed from itself"
   info=$(instance "$1")
   dir=$(field "$info" dir)
@@ -432,6 +434,8 @@ rename_steps() {
 unrename_steps() {
   local info dir dataset old_dir old_dataset upper_root rw db snap src device
   instance_name "$2"
+  # unrename, which must finish a half rename, has no other refusal of it: given one name twice it would restart the
+  # instance it is called on.
   [ "$1" != "$2" ] || die "$1 cannot be renamed from itself"
   info=$(instance "$1")
   dir=$(field "$info" dir)

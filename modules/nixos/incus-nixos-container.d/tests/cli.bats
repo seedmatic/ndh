@@ -1286,3 +1286,17 @@ dataset_left_from_before() {
   [[ $output != *create-made* ]]
 }
 
+@test "a container holding its declared profiles but never delivered (no lower.snapshot) is up to date, not an error" {
+  # Its profiles set by other means than deliver: converge reads its leftovers, and none comes from a delivery.
+  echo none >"$t/inst/attic"
+  touch "$t/inst/attic.running"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  [ ! -e "$t/attic/lower.snapshot" ]
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic holds its declared system and profiles"* ]]
+  [[ $stderr != *"leftovers could not be listed"* ]]
+}
+
