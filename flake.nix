@@ -1110,6 +1110,38 @@
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
       );
 
+      # Checks never in the default set (nix flake check, a sweep): each builds what a default build must not, built
+      # by name only, `nix build <flake>#onDemandChecks.<name>`, when its subject changes (operator, 2026-10-24: the
+      # erofs store images are built on demand only, after the linux builder's pool filled twice).
+      onDemandChecks = {
+        # The in-guest secret-material guard, on a real install: a private key born in the target root stops the
+        # raw build, and the refusal names it in the build log. A full VM build (~13 min) with nikopol's three erofs
+        # store layers attached. The guard's own canaries (checks.*.secret-material-guard) stay in the default set.
+        bringup-in-guest-secret-guard =
+          let
+            linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+            # testers.testBuildFailure, by overrideDerivation: a runInLinuxVM derivation has no
+            # overrideAttrs. The same expect-failure.sh, around the original builder and args.
+            refused =
+              linuxPkgs.lib.overrideDerivation hostOutputs.nikopol.nixosBringupSecretCanaryBuild
+                (orig: {
+                  builder = "${linuxPkgs.bash}/bin/bash";
+                  args = [
+                    (linuxPkgs.replaceVars "${linuxPkgs.path}/pkgs/build-support/testers/expect-failure.sh" {
+                      coreutils = linuxPkgs.coreutils;
+                      vars = linuxPkgs.lib.toShellVars { outputNames = orig.outputs or [ "out" ]; };
+                    })
+                    orig.builder
+                  ]
+                  ++ orig.args;
+                });
+          in
+          linuxPkgs.runCommand "bringup-in-guest-secret-guard" { } ''
+            grep -q 'secret-material-guard: REFUSED /mnt/zfs-root/root/.secret-canary/id ' ${refused}/testBuildFailure.log
+            touch $out
+          '';
+      };
+
       # No treefmt check here (its API mismatched during evaluation); the formatter runs as a hook.
       checks = splitChecks (
         system:
@@ -3206,32 +3238,14 @@
                 touch $out
               '';
         }
-        # The in-guest secret-material guard, on a real install: a private key born in the target root
-        # stops the raw build, and the refusal names it in the build log. A full VM build (~13 min).
+        # The in-guest secret-material guard's proof is ON DEMAND (onDemandChecks): it installs the bringup with its
+        # erofs store layers attached (3 × ~4.6 G), which the default set no longer builds (operator, 2026-10-24). Here
+        # it only EVALUATES: its derivation, context discarded, so a module that breaks it is red at once and nothing
+        # is built.
         // {
-          bringup-in-guest-secret-guard =
-            let
-              linuxPkgs = pkgsFor { system = "aarch64-linux"; };
-              # testers.testBuildFailure, by overrideDerivation: a runInLinuxVM derivation has no
-              # overrideAttrs. The same expect-failure.sh, around the original builder and args.
-              refused =
-                linuxPkgs.lib.overrideDerivation hostOutputs.nikopol.nixosBringupSecretCanaryBuild
-                  (orig: {
-                    builder = "${linuxPkgs.bash}/bin/bash";
-                    args = [
-                      (linuxPkgs.replaceVars "${linuxPkgs.path}/pkgs/build-support/testers/expect-failure.sh" {
-                        coreutils = linuxPkgs.coreutils;
-                        vars = linuxPkgs.lib.toShellVars { outputNames = orig.outputs or [ "out" ]; };
-                      })
-                      orig.builder
-                    ]
-                    ++ orig.args;
-                  });
-            in
-            linuxPkgs.runCommand "bringup-in-guest-secret-guard" { } ''
-              grep -q 'secret-material-guard: REFUSED /mnt/zfs-root/root/.secret-canary/id ' ${refused}/testBuildFailure.log
-              touch $out
-            '';
+          bringup-in-guest-secret-guard-evaluates = pkgs.writeText "bringup-in-guest-secret-guard-evaluates" (
+            builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath
+          );
         }
         # The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
         # store layers it guards are packed, through the remote builder, like the images themselves.
