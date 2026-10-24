@@ -77,7 +77,7 @@ arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the t
 
 render() {
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json" [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
   )
@@ -85,7 +85,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | declare | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done

@@ -95,6 +95,7 @@ ndh.store.installBinScript "keys-reconcile" (
     keysJson = ../../home-manager/ssh.d/keys.json;
     publishDir = lib.escapeShellArg publishDir;
     verify = ./verify.sh;
+    declare = ./declare.sh;
     write = ./write.sh;
     classes = ./classes;
     delegation = lib.escapeShellArg delegation;

@@ -8,9 +8,13 @@
 #   keys-reconcile window  (armed through ndh-ops) measures the same way, shows it, asks ONE « oui » on the terminal,
 #                          re-verifies that very measure and writes it into a clean worktree at the revision
 #                          (write.sh): one local commit, never pushed. The measure lives in this process only.
+#   keys-reconcile declare <machine>
+#                          (armed) declares that machine's next host key, a pending slot born on it, in the same
+#                          worktree discipline (declare.sh), after its « oui »: no session's sops set (design §p).
 #
 # No other argument, by design (F5): the revision is the one this closure was built from, baked below, and it must be
-# pushed; the batch is that revision's pending slots, in fleet-switch's order. A session can start it, never steer it.
+# pushed; the batch is that revision's pending slots, in fleet-switch's order; declare's one argument is a machine
+# name, checked against the frozen machine list. A session can start it, never steer it.
 # Prints names, slots, fingerprints and publics only.
 source @nixBashTrampoline@
 PATH="@toolPath@:/usr/bin:/bin"
@@ -23,6 +27,7 @@ readonly bare="${XDG_CACHE_HOME:-$HOME/.cache}/keys-reconcile/ndh.git"
 readonly ttyIn=@ttyIn@ ttyOut=@ttyOut@
 source @verify@
 source @write@
+source @declare@
 source @classes@/attic-cache-key.sh
 
 die() {
@@ -218,11 +223,16 @@ window() {
 }
 
 main() {
-  (($# == 1)) || die "usage: keys-reconcile plan|window (no other argument: the revision and the batch are this closure's)"
-  case $1 in
-    plan) plan ;;
-    window) window ;;
-    *) die "usage: keys-reconcile plan|window" ;;
+  : "F5: plan and window take no argument; declare takes one, a machine name, checked against the frozen list"
+  case "${1:-}:$#" in
+    plan:1) plan ;;
+    window:1) window ;;
+    declare:2)
+      armed || die "declare is not armed: ndh-ops arm --tools keys-reconcile (the operator's gesture)"
+      pushed
+      reconcile::declare "$2"
+      ;;
+    *) die "usage: keys-reconcile plan | window | declare <machine> (no other argument: the revision is this closure's)" ;;
   esac
 }
 
