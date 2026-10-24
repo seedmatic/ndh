@@ -599,7 +599,7 @@ let
       };
       diskImageBringupZfsSystemdBootRaw = mkBringupZfsDiskImages bringupZfsDiskImagesArgs;
 
-      # CHECK ONLY (checks.aarch64-darwin.bringup-in-guest-secret-guard): the same disk set, whose bringup
+      # CHECK ONLY, on demand (onDemandChecks.bringup-in-guest-secret-guard): the same disk set, whose bringup
       # system generates a private key in the target root at install — born there, never in the store,
       # so the store layers pass their own guard and only the in-guest guard can refuse it. Nothing
       # deploys it: its build must FAIL.
