@@ -27,6 +27,8 @@ let
       catalog = ndhContext.catalog or { };
     })
     lanDomain
+    tailnetDomain
+    tailnetAlias
     operatorAliasesOf
     tailnetHostAlias
     hostAliases
@@ -236,9 +238,33 @@ let
         )
     )
     ++ (osConfig.opensshPolicy.fleetHostAliases or [ ]);
+
+  # One Screen Sharing bookmark per OTHER seat, by its fully qualified tailnet name only, the
+  # HostName `darwin.<host>` already uses. Never a home-LAN address: off-site, a hotspot can be
+  # 192.168.1.0/24 too, and `192.168.1.x` then routes into it, so the operator would type the
+  # Mac's credentials into a stranger's machine (measured 2026-10-24). The tailnet name routes
+  # through WireGuard wherever the seat sits.
+  screenBookmarks = lib.listToAttrs (
+    map (host: {
+      name = "Desktop/Screens/${host}.vncloc";
+      value.text = ''
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>URL</key>
+          <string>vnc://${tailnetAlias host}</string>
+        </dict>
+        </plist>
+      '';
+    }) (lib.filter (host: host != profile.host.hostName) inventoryHostNames)
+  );
 in
 {
-  home.file.".ssh/config.d/no-multiplexing.conf".text = vzNoMultiplexing;
+  home.file = {
+    ".ssh/config.d/no-multiplexing.conf".text = vzNoMultiplexing;
+  }
+  // lib.optionalAttrs (pkgs.stdenv.isDarwin && tailnetDomain != "") screenBookmarks;
 
   programs.ssh.extraConfig = lib.mkAfter ''
         ###############################################################################
