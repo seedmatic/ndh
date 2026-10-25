@@ -1110,8 +1110,9 @@
         inputs.treefmt-nix.lib.mkWrapper pkgs treefmtConfig
       );
 
-      # The canary's derivation last proven green on aarch64-linux, one store path, written by whoever ran
-      # onDemandChecks.bringup-in-guest-secret-guard to success (`ndh-canary-proven record`). Empty: never proven.
+      # The canary's derivation last proven green on aarch64-linux, one store path, written only by the
+      # ndh-canary-proven app (`record`, from a clean ndh checkout): it builds onDemandChecks.bringup-in-guest-secret-guard at
+      # the checkout's revision and records it only on a green build that refused the planted key. Empty: never proven.
       canaryProvenRecord = nixpkgs.lib.trim (
         builtins.readFile ./modules/nixos/secret-material-guard.d/canary-proven
       );
@@ -2785,6 +2786,11 @@
             catalog = catalogData;
           };
           ndh-claude-wake-bats = import ./modules/.common.d/claude-wake.d/tests/package.nix { inherit pkgs; };
+          canary-proven-record-bats =
+            import ./modules/nixos/secret-material-guard.d/canary-proven.d/tests/package.nix
+              {
+                inherit pkgs;
+              };
           fleet-switch-bats = import ./modules/.common.d/fleet-switch.d/tests/package.nix {
             inherit pkgs;
             catalog = catalogData;
@@ -4268,6 +4274,13 @@
             program = "${self.darwinConfigurations.bioskop.config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
             meta.description = "Renew the Incus cluster certificate on the cluster's own key (a CSR signed on the operator seat), install it on every member, re-pin the operator seat client, verify — run from the seat, built by revision — src: modules/.common.d/incus-cluster-cert.d/";
           };
+          ndh-canary-proven = {
+            type = "app";
+            program = "${
+              import ./modules/nixos/secret-material-guard.d/canary-proven.d/package.nix { pkgs = pkgsForDarwin; }
+            }/bin/ndh-canary-proven";
+            meta.description = "Prove the in-guest secret-material canary at the checkout's revision and, only on a green build that refused the planted key, record its derivation (the record a bringup image is gated on) — run from a clean ndh checkout — src: modules/nixos/secret-material-guard.d/canary-proven.d/";
+          };
           ndh-claude-wake = {
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.claudeWake.package}/bin/ndh-claude-wake";
@@ -4336,7 +4349,7 @@
           # left the default checks, so its last green run is recorded, and an image whose canary moved since refuses
           # to evaluate, naming the run that proves it again. Every image route (packages, nixosDiskImages, the tart
           # deploy and materialize bundles) goes through this one binding.
-          nixosDiskImageBringupSystemdZfs = canaryProven nixosOutputs.diskImageBringupZfsSystemdBoot;
+          nixosDiskImageBringupSystemdZfs = canaryProven nixosOutputs.diskImageBringupZfsSystemdBootUngated;
           nixosBringupSecretCanaryBuild = nixosOutputs.bringupSecretCanaryBuild;
           nixosDiskImageBringupGrub = nixosOutputs.diskImageBringupGrub;
           nixosDiskSizeHint = nixosOutputs.diskSizeHint;

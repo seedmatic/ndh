@@ -634,7 +634,9 @@ let
           }
         )).builtDiskImages;
 
-      diskImageBringupZfsSystemdBoot = mkDiskImageWithManifest {
+      # UNGATED: flake.nix's nixosDiskImageBringupSystemdZfs is the one consumer, through canaryProven; any other
+      # consumer ships an image whose in-guest guard is unproven.
+      diskImageBringupZfsSystemdBootUngated = mkDiskImageWithManifest {
         attr = "nerd-bringup-zfs-disk-images";
         nixosConfiguration = "nerd-bringup";
         imageMode = "bringup";
@@ -681,7 +683,7 @@ let
         "${mainName}-nixos" = zfsRuntimeTart;
       };
       inherit
-        diskImageBringupZfsSystemdBoot
+        diskImageBringupZfsSystemdBootUngated
         bringupSecretCanaryBuild
         ;
     };
