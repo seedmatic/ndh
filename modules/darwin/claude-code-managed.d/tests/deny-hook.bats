@@ -433,8 +433,8 @@ mkstate() {
 @test "launcher: systemd-run of a mutating kubectl"   { run hook 'systemd-run --user -p X=1 kubectl apply -f m.yaml'; denied; }
 @test "launcher: machinectl shell of a mutating incus" { run hook 'machinectl shell root@c1 /run/current-system/sw/bin/incus delete c1'; denied; }
 @test "launcher: incus exec stays a gated verb"       { run hook 'incus exec c1 -- ls'; denied; }
-@test "launcher: chroot with no command is a shell"   { run hook 'chroot /mnt'; asked; }
-@test "launcher: machinectl shell with no command"    { run hook 'machinectl shell c1'; asked; }
+@test "launcher: chroot with no command is refused, as any chroot"   { run hook 'chroot /mnt'; denied; }
+@test "launcher: machinectl shell with no command is refused"        { run hook 'machinectl shell c1'; denied; }
 @test "ok launcher: tart exec of a read-only incus"   { run hook 'tart exec incus-probe incus list'; allowed; }
 @test "ok launcher: kubectl exec of a listing"        { run hook 'kubectl exec -n x pod -- ls /'; allowed; }
 @test "ok launcher: docker exec of a listing"         { run hook 'docker exec c1 ls /'; allowed; }
@@ -553,6 +553,7 @@ corpus() {
   [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
 }
 @test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
+@test "namespaces: every corpus case gets its verdict" { corpus nsenter-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
