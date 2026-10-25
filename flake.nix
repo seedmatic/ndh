@@ -1314,6 +1314,49 @@
               };
               statements = ./catalog/private-caches.d/statements;
             };
+          # An attic token is sealed only to an access point's SERVING public (slots.nix `current`), never to a pending
+          # slot's, which keys-reconcile has not verified yet (🛡️, 2026-10-25). A mutant taking the newest slot must be
+          # caught.
+          attic-token-targets-serving-slot =
+            let
+              lib = nixpkgs.lib;
+              netplan.baremetal.m1 = {
+                atticFqdn = "attic.m1";
+                nixosHostname = "m1-nixos";
+              };
+              keys."host-m1" = {
+                type = "ssh-ed25519";
+                slots = {
+                  "26-10-17" = {
+                    state = "serving";
+                    public = "AAAASERVING";
+                  };
+                  "99-01-01" = {
+                    state = "pending";
+                    public = "AAAAPENDING";
+                  };
+                };
+              };
+              targets = import ./modules/.common.d/attic-tokens.d/targets.nix { inherit lib keys netplan; };
+              # The mutant: the newest slot, as tokenTargets once took it.
+              newest = map (t: t // { publicKey = "ssh-ed25519 AAAAPENDING"; }) targets;
+              servedOnly = ts: lib.all (t: t.publicKey == "ssh-ed25519 AAAASERVING") ts;
+            in
+            assert lib.assertMsg (
+              map (t: t.machine) targets == [
+                "m1"
+                "m1-nixos"
+              ]
+            ) "attic-token-targets-serving-slot: not the seat's two machines";
+            assert lib.assertMsg (servedOnly targets)
+              "attic-token-targets-serving-slot: a token sealed to a pending slot's public";
+            assert lib.assertMsg (
+              !(servedOnly newest)
+            ) "attic-token-targets-serving-slot: the newest-slot mutant was not caught";
+            assert lib.assertMsg (lib.all (
+              t: builtins.match "[0-9a-f]{64}" t.dir != null
+            ) targets) "attic-token-targets-serving-slot: a served directory is not a sha256";
+            pkgs.runCommand "attic-token-targets-serving-slot" { } "touch $out";
           # The NixOS guests share one Incus cluster, where an instance name is unique in its project: two guests
           # declaring the same container name would make one guest's converge stop the other's (attic, 2026-10-24).
           # So no instance name is declared by two guests; the attic containers are named per metalspace. A mutant
