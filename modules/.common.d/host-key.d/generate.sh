@@ -80,8 +80,8 @@ main() {
   public="$(public_of "$keyFile")" || die "${keyFile} is not a readable ed25519 private"
   [[ $public == ssh-ed25519\ * ]] || die "${keyFile} is not an ed25519 key"
 
-  if [[ $bootstrap == console ]]; then
-    : "a console bootstrap: no old key vouches; the public alone, and its fingerprint shown at the console"
+  if [[ $bootstrap == console || $bootstrap == tailnet ]]; then
+    : "a bootstrap: no old key vouches; the public alone, its binding the operator's witness layer (§o)"
     work="$(mktemp -d "${publishDir}/.publish.XXXXXX")"
     trap 'rm -rf "$work"' EXIT
     printf '%s\n' "$public" >"$work/public"

@@ -380,72 +380,76 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
 }
 
-console_batch() { # the slot as a console bootstrap: no old public, no statement published
-  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "", "bootstrap": "console", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' >"$t/batch.json"
+bootstrap_batch() { # <console|tailnet|…>: the slot as a bootstrap: no old public, no statement published
+  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "", "bootstrap": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' "$1" >"$t/batch.json"
   rm -f "$t/published/host-seat@26-11-01".statement{,.sig}
 }
-prefix() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://' | cut -c1-8; }
+fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 
-@test "a console bootstrap: the right typed fingerprint then « oui » records the key, with no statement" {
-  console_batch
-  run --separate-stderr window "$(prefix)" oui
+@test "a console bootstrap: ONE « oui », nothing typed, the key recorded with no statement; the full fingerprint and the witness shown" {
+  bootstrap_batch console
+  run --separate-stderr window oui
   [ "$status" -eq 0 ]
-  [[ $output == *"empreinte : à lire à la console de seat"* ]]
+  [[ $output == *"host-seat@26-11-01 $(fp)"* ]]
+  [[ $output == *"témoin : toi, à la console de seat, ou la liste des nœuds de ton tailnet"* ]]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
   [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
-  grep -q "lis l empreinte à la console de seat" "$t/prompt"
+  : "no question but the « oui »: each layer trusts the one below (the operator, 2026-10-26)"
+  [ "$(grep -o '\[oui/non\]' "$t/prompt" | wc -l)" -eq 1 ]
+  run grep -q '8 premiers' "$t/prompt"
+  [ "$status" -eq 1 ]
 }
 
-@test "a console bootstrap: a wrong typed fingerprint writes nothing, even with « oui » after" {
-  console_batch
-  run --separate-stderr window "ZZZZZZZZ" oui
-  [ "$status" -eq 6 ]
-  [[ $output == *"l'empreinte tapée ne commence pas comme celle mesurée"* ]]
+@test "a tailnet bootstrap: the same, its witness the tailnet's node list" {
+  bootstrap_batch tailnet
+  run --separate-stderr window oui
+  [ "$status" -eq 0 ]
+  [[ $output == *"témoin : la liste des nœuds de ton tailnet (seat y est seul sous son nom)"* ]]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+}
+
+@test "a bootstrap without « oui » writes nothing" {
+  bootstrap_batch console
+  run --separate-stderr window non
+  [ "$status" -eq 5 ]
   [ ! -e "$(tree)" ]
 }
 
-@test "a console bootstrap: « oui » in place of the fingerprint, or a prefix too short, writes nothing" {
-  console_batch
-  run --separate-stderr window oui oui
-  [ "$status" -eq 6 ]
-  run --separate-stderr window "$(prefix | cut -c1-4)" oui
-  [ "$status" -eq 6 ]
-  [ ! -e "$(tree)" ]
-}
-
-@test "a console bootstrap still refuses a reused public (F2)" {
-  console_batch
+@test "a bootstrap still refuses a reused public (F2)" {
+  bootstrap_batch tailnet
   cut -d' ' -f1,2 "$t/old.pub" >"$t/published/host-seat@26-11-01.public"
-  run --separate-stderr window "$(prefix)" oui
+  run --separate-stderr window oui
   [ "$status" -eq 4 ]
   [[ $output == *"already in keys.yaml"* ]]
 }
 
-@test "a normal slot never takes the console path: its statement stays required" {
+@test "an unknown bootstrap value is refused, never taken for a bootstrap: F1 is not skipped" {
+  bootstrap_batch somethingelse
+  run --separate-stderr window oui
+  [ "$status" -eq 4 ]
+  [[ $output == *"unknown bootstrap 'somethingelse'"* ]]
+  [ ! -e "$(tree)" ]
+}
+
+@test "mutant: a verify that takes any non-empty bootstrap for one skips F1 for an unknown value" {
+  bootstrap_batch somethingelse
+  cp "$BATS_TEST_DIRNAME/../verify.sh" "$t/verify.sh"
+  sed -i 's/^    console | tailnet) published=(public) ;;$/    *) published=(public) ;;/; /unknown bootstrap/d' "$t/verify.sh"
+  sed -i 's/^  if \[\[ -z \$bootstrap \]\]; then$/  if [[ -z $bootstrap ]]; then/' "$t/verify.sh"
+  run grep -c "unknown bootstrap" "$t/verify.sh"
+  [ "$output" = 0 ]
+  bash -n "$t/verify.sh"
+  sed -i "s|^source .*/verify.sh\$|source $t/verify.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/verify.sh\$" "$t/keys-reconcile"
+  : "the published files list keeps the statement for an unknown value (keys-reconcile.sh's own allow-list), so here"
+  : "the mutant's verify accepts the public alone: the slot measures as ready, which the case above refuses"
+  run --separate-stderr bash -c 'HOME="$1/home" XDG_CACHE_HOME="$1/cache" bash "$1/keys-reconcile" plan' _ "$t"
+  [[ $output == *"✓ seat — host-seat@26-11-01"* ]]
+}
+
+@test "a normal slot never takes the bootstrap path: its statement stays required" {
   rm -f "$t/published/host-seat@26-11-01.statement.sig"
   run --separate-stderr window oui
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
-}
-
-@test "a console bootstrap shows no part of its fingerprint, neither in the window's output nor in its prompt (🛡️)" {
-  console_batch
-  run --separate-stderr window "$(prefix)" oui
-  [ "$status" -eq 0 ]
-  printf '%s\n%s\n' "$output" "$stderr" >"$t/out"
-  fp="$(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://')"
-  : "no 8-character window of the fingerprint, anywhere the operator's screen shows"
-  for ((k = 0; k + 8 <= ${#fp}; k++)); do
-    run grep -F -- "${fp:k:8}" "$t/out" "$t/prompt"
-    [ "$status" -eq 1 ]
-  done
-}
-
-@test "plan shows no part of a console bootstrap's fingerprint either" {
-  console_batch
-  HOME="$t/home" XDG_CACHE_HOME="$t/cache" run --separate-stderr bash "$t/keys-reconcile" plan
-  [ "$status" -eq 0 ]
-  fp="$(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://')"
-  [[ $output$stderr != *"${fp:0:8}"* ]]
-  [[ $output == *"à lire à la console de seat"* ]]
 }

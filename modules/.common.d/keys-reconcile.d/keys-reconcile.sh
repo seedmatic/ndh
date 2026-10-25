@@ -99,12 +99,13 @@ class_of() { # <batch index> → its class, or fails
 }
 
 : "row one, the host key (K4): a pending slot's public, its F1 statement and signature"
-# The files a slot publishes: its public, and its F1 statement and signature unless it is a console bootstrap (§o).
+# The files a slot publishes: its public, and its F1 statement and signature unless it is a bootstrap (§o): a machine
+# that serves no key of its own publishes its public alone, and its binding is the operator's witness layer.
 reconcile::host-key::files() { # <batch index> → one file name per line
   local keyName slot
   keyName=$(yq -r -p json -o json ".[$1].key" "$batch")
   slot=$(yq -r -p json -o json ".[$1].slot" "$batch")
-  if [[ $(yq -r -p json -o json ".[$1].bootstrap // \"\"" "$batch") == console ]]; then
+  if [[ $(yq -r -p json -o json ".[$1].bootstrap // \"\"" "$batch") =~ ^(console|tailnet)$ ]]; then
     printf '%s\n' "${keyName}@${slot}.public"
   else
     printf '%s\n' "${keyName}@${slot}".{public,statement,statement.sig}
@@ -133,12 +134,12 @@ reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify 
   reconcile::host-key::collect "$i" "$work"
   : >"$work/why"
   if public=$(NDH_RECONCILE_WHY="$work/why" reconcile::host-key::verify "$work" "$keyName" "$slot" "$oldPublic" "$known" "$bootstrap"); then
-    : "a console bootstrap's fingerprint is never shown here: the operator must read it at the machine's console (🛡️)"
-    if [[ $bootstrap == console ]]; then
-      printf '  ✓ %s — %s@%s empreinte : à lire à la console de %s\n' "$machine" "$keyName" "$slot" "$machine"
-    else
-      printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
-    fi
+    printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
+    : "a bootstrap's binding is the operator's witness layer, outside this tool: each layer trusts the one below it"
+    case $bootstrap in
+      console) printf '      témoin : toi, à la console de %s, ou la liste des nœuds de ton tailnet\n' "$machine" ;;
+      tailnet) printf '      témoin : la liste des nœuds de ton tailnet (%s y est seul sous son nom)\n' "$machine" ;;
+    esac
     printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
       "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
     known+=$'\n'"${public#ssh-ed25519 }"
@@ -205,24 +206,7 @@ window() {
   reconcile::tree::free || return 1
   : "the operator's terminal, opened once for every answer of this window"
   exec 7<"$ttyIn"
-  : "a console bootstrap's binding is the operator's eyes: they type the start of the fingerprint read at its console"
-  local answer i keyName slot public hash typed shown matched
-  while IFS=$'\t' read -r i keyName slot public hash; do
-    [[ $(yq -r -p json -o json ".[$i].bootstrap // \"\"" "$batch") == console ]] || continue
-    printf '%s@%s : lis l empreinte à la console de %s et tapes-en les 8 premiers caractères (après SHA256:) : ' \
-      "$keyName" "$slot" "$(yq -r -p json -o json ".[$i].machine" "$batch")" >>"$ttyOut"
-    : "the fingerprint, and what the operator typed of it, never reach the trace (🛡️: its console is the only place)"
-    matched=0
-    ndh::secret:begin "a console bootstrap's fingerprint is compared with what the operator typed"
-    shown=$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)
-    shown=${shown#SHA256:}
-    read -r typed <&7 || typed=""
-    [[ ${#typed} -ge 8 && $shown == "$typed"* ]] && matched=1
-    shown="" typed=""
-    ndh::secret:end
-    ((matched == 1)) ||
-      { echo "rien écrit : ${keyName}@${slot}, l'empreinte tapée ne commence pas comme celle mesurée"; return 6; }
-  done <"$work/measured"
+  local answer
   : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
   printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >>"$ttyOut"
   read -r answer <&7 || answer=""
