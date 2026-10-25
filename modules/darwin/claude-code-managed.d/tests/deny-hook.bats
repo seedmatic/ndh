@@ -539,3 +539,21 @@ mkstate() {
 @test "operator tool: pass-seedmatic-publish"          { run hook 'pass-seedmatic-publish'; denied; }
 @test "operator tool: pass-seedmatic-publish dry run"  { run hook 'pass-seedmatic-publish --dry-run'; denied; }
 @test "operator tool: pass-seedmatic-publish by nix"   { run hook 'nix run "git+file:///Volumes/git-bare-store/nxmatic/claude-home.git?ref=claude/develop#pass-seedmatic-publish"'; denied; }
+
+# --- security's refusal corpora: one case per line, want, today, cwd (- for the test's), the command as typed ---
+corpus() {
+  local want today cwd cmd bad=""
+  while IFS=$'\t' read -r want today cwd cmd; do
+    case "$want" in '' | '#'*) continue ;; esac
+    case "$cwd" in -) cwd=/tmp/work ;; esac
+    run hook "$cmd" "$cwd"
+    if [ "$want" = DENY ]; then [ "$status" -eq 2 ] || bad+="  want DENY, got status=$status: $cmd"$'\n'
+    else [ "$status" -eq 0 ] && [ -z "$output" ] || bad+="  want ALLOW, got status=$status $output: $cmd"$'\n'; fi
+  done <"$BATS_TEST_DIRNAME/$1"
+  [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
+}
+@test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
+# An xargs feeds only the sudo of its own command, never the commands after it.
+@test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
+# A sudo makes root only the command it prefixes, never the commands after it.
+@test "ok a shell on stdin after a sudo, in its own command" { run hook 'sudo -v; bash < /tmp/x.sh'; allowed; }
