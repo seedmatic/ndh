@@ -287,6 +287,9 @@ keys:
         origin: keyring
         age: age1s4n043p3h4hsxfee6g2p2at63szfslgpm54luyup6ucevjfzpfxq4m8h7x
         recipient: false
+      26-10-22:
+        state: pending
+        origin: host
   vz-recover-nikopol:
     type: ssh-ed25519
     comment: vz-recover-nikopol
@@ -485,6 +488,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-21T14:39:53Z"
-  mac: ENC[AES256_GCM,data:CwPV9p4bADlTR8SbOhNEa6odUnayjSOGJ10wDO5YN6cn1yLnuZ++T7bQ46XexiZTIQ7EU+yZC+QjKE8fVydL/rauhiGI91jjmf/ivg8sruNpMxhLFesVRjDBn6PFBW8rYIU1iohkoHJafwsJ5bU/hyG6QniCJ+Me9uaj7Bmt/8U=,iv:ERdftqOw+/nDExsBqBo6z9RxNdL3I0eXGQgQUhhIAQg=,tag:hbX6z8aSi5u5PGPuRMe2Lw==,type:str]
+  lastmodified: "2026-10-22T09:55:50Z"
+  mac: ENC[AES256_GCM,data:HpGTo+qi94zoGATJTXy3f/3PaOALNna4W/zLV2W7k5O/oD93B0OQkfeqtddv8e9ZnMq96gz/F2clyYKc5jYGW0PJlfZeyiaH22EvG57QsnbWE3hG0jD2prq0of+ZR8KGKLSAJOAczlWuM3zMpegpcAhvMnrG9q0kXLszoRi9iLQ=,iv:d80fKZCG4nZ7ynG4WIbWlsjdirQG8SNEp2CNxVSvwO4=,tag:yTFDzZ/5ZWmZlEOmXa0Zqw==,type:str]
   version: 3.13.3

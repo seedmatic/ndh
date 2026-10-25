@@ -129,7 +129,7 @@ in
 
       # A pending slot (declared in keys.yaml, no key yet): the activation generates its key in its own slot
       # directory and publishes its public and the F1 statement for the seat to collect (host-key.d/generate.sh).
-      # Nothing serves it. With no pending slot, as today on every machine, nothing of this is built.
+      # Nothing serves it. A machine with no pending slot builds none of this.
       ndh.hostKey.generateVars = lib.mkIf (pendingName != null) (
         lib.mapAttrs (_: lib.escapeShellArg) {
           inherit machine;

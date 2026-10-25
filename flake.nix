@@ -1854,8 +1854,8 @@
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
-          # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: no machine of the fleet has
-          # one, so none builds or runs ndh-host-key-generate; given one, a darwin host and a NixOS guest each run it
+          # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: each fleet machine builds and
+          # runs ndh-host-key-generate exactly when keys.yaml declares one for it; given one, a darwin host and a NixOS guest each run it
           # at activation, for that slot, signing with the key they serve; and the current slot is never the pending
           # one (a pending slot is newer by construction).
           host-key-generate-wiring =
@@ -1885,9 +1885,13 @@
               vars = c: c.ndh.hostKey.generateVars;
               roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
             in
-            assert lib.assertMsg (lib.all (c: c.config.ndh.hostKey.generate == null)
-              machines
-            ) "host-key-generate: a machine of the fleet generates a host key, but none has a pending slot";
+            # Each fleet machine generates exactly when keys.yaml declares it a pending host-key slot.
+            assert lib.assertMsg
+              (lib.all (
+                c:
+                (c.config.ndh.hostKey.generate != null) == ((roles c.config.ndh.hostKey.entry).pendingName != null)
+              ) machines)
+              "host-key-generate: a machine generates a host key without a pending slot, or has one and does not";
             assert lib.assertMsg (lib.hasInfix (generateOf darwin) (
               plain darwin.system.activationScripts.postActivation.text
             )) "host-key-generate: darwin's activation does not run it";
