@@ -100,6 +100,29 @@ store_mount() {
   CONTAINER_DIR=$1 CONTAINER_NAME=$2 CONTAINER_PRIVILEGED=$3 LAYER_CONTRACT=$LAYER_CONTRACT "$BASH" "$STORE_SCRIPT"
 }
 
+# point_store {name} {dir}: the 4 store devices' sources and raw.lxc's pre-start hook point into {dir}, in ONE write of
+# the whole config, which Incus validates as its final state. Never key by key: Incus re-validates every device on each
+# config write, and refuses a recursive one whose source is missing, so while one device still named a dir a rename
+# had moved away, every per-key write was refused, the undo's too (bioskop-nixos, 2026-10-25). A no-op when it is so.
+point_store() {
+  local config device src
+  config=$(incus config show --project "$PROJECT" "$1")
+  # Pointed only when ALL FOUR sources are store_devices' and the hook names the dir: a half-pointed container (one
+  # device right, another still on the old dir) is the very state a cut leaves, and must be rewritten (🛡️).
+  local pointed=1
+  while read -r device src; do
+    [ "$(DEV="$device" yq -r '.devices[strenv(DEV)].source // ""' <<<"$config")" = "$src" ] || pointed=0
+  done < <(store_devices "$2")
+  [[ $(yq -r '.config."raw.lxc" // ""' <<<"$config") == *" $2" ]] || pointed=0
+  [ "$pointed" = 0 ] || return 0
+  while read -r device src; do
+    config=$(DEV="$device" SRC="$src" yq '.devices[strenv(DEV)].source = strenv(SRC)' <<<"$config")
+  done < <(store_devices "$2")
+  config=$(RAW="$(raw_lxc "$2")" yq '.config."raw.lxc" = strenv(RAW)' <<<"$config")
+  # Past the incus wrapper, which closes stdin: the edit reads the config there.
+  command incus config edit --project "$PROJECT" "$1" <<<"$config"
+}
+
 # placed {where} {target}: whether an instance at {where} is where its declaration puts it.
 placed() { [ -z "$2" ] || [ "$1" = "$2" ]; }
 
@@ -295,8 +318,8 @@ deliver_steps() {
   done
   # Before anything is snapshotted or moved: Incus can refuse it (an ETag race while it starts up,
   # measured), and a delivery that stops here has changed nothing.
-  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")" ||
-    die "Incus refused raw.lxc for $1 — nothing delivered, and the container stays STOPPED: run deliver again"
+  point_store "$1" "$dir" ||
+    die "Incus refused $1's store devices or raw.lxc — nothing delivered, and the container stays STOPPED: run deliver again"
   systemctl stop "ndh-incus-container-store-$1.service"
   for entry in "$dir/root/nix/store" "$dir/view/nix/store"; do
     if mountpoint -q "$entry"; then die "$entry is still mounted"; fi
@@ -457,10 +480,8 @@ rename_steps() {
     sed -i "s/^ndh-incus-$2-/ndh-incus-$1-/" "$dir/lower.snapshot"
   fi
   incus rename --project "$PROJECT" "$2" "$1"
-  incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$dir")"
-  while read -r device src; do
-    incus config device set --project "$PROJECT" "$1" "$device" source="$src"
-  done < <(store_devices "$dir")
+  # After the dataset move, when the new dir exists: the final state names only it.
+  point_store "$1" "$dir"
   systemctl start "ndh-incus-container-store-$1.service"
   incus start --project "$PROJECT" "$1"
   echo "ndh-incus-container: $2 renamed $1"
@@ -491,10 +512,6 @@ unrename_steps() {
   if systemctl is-active -q "ndh-incus-container-store-$1.service"; then systemctl stop "ndh-incus-container-store-$1.service"; fi
   store_unmount "$dir"
   if [ "$(where_is "$1")" != absent ]; then
-    while read -r device src; do
-      incus config device set --project "$PROJECT" "$1" "$device" source="$src"
-    done < <(store_devices "$old_dir")
-    incus config set --project "$PROJECT" "$1" raw.lxc="$(raw_lxc "$old_dir")"
     incus rename --project "$PROJECT" "$1" "$2"
   fi
   if zfs list -H "$dataset" >/dev/null 2>&1; then
@@ -509,6 +526,8 @@ unrename_steps() {
     zfs rename "$dataset" "$old_dataset"
     zfs set mountpoint="$old_dir" "$old_dataset"
   fi
+  # Its devices back on the old dir, now that the dataset is mounted there again: one write, as in rename.
+  point_store "$2" "$old_dir"
   # The old name's store, brought back by the store script itself: that name's unit is gone with the switch.
   store_mount "$old_dir" "$2" "$(field "$info" privileged)"
   incus start --project "$PROJECT" "$2"
@@ -531,6 +550,9 @@ bring_up_steps() {
   local info dir
   info=$(instance "$1")
   dir=$(field "$info" dir)
+  # Its devices on its own dir first: a rename cut after the instance moved left them naming the old one (bioskop-nixos,
+  # 2026-10-25), and its start would find no store there.
+  point_store "$1" "$dir"
   if ! mountpoint -q "$dir/root/nix/store" || ! mountpoint -q "$dir/view/nix/store"; then
     systemctl start "ndh-incus-container-store-$1.service"
   fi

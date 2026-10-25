@@ -17,9 +17,12 @@ setup() {
   cat >"$t/bin/incus" <<EOF
 #!$BASH
 printf 'incus %s\n' "\$*" >>"$t/calls"
-# A read that times out (status > 128) means stdin was left open: the real incus would hang there.
-read -r -t 2 _
-if [ \$? -gt 128 ]; then echo "incus \$* waited on stdin" >&2; exit 99; fi
+# A read that times out (status > 128) means stdin was left open: the real incus would hang there. Not for config
+# edit, the one call that reads its stdin by design.
+if [ "\$1 \$2" != "config edit" ]; then
+  read -r -t 2 _
+  if [ \$? -gt 128 ]; then echo "incus \$* waited on stdin" >&2; exit 99; fi
+fi
 i=$t/inst
 # The instance an argument list names: the first word that is neither an option nor an option's value.
 name() {
@@ -31,7 +34,59 @@ name() {
     esac
   done
 }
+# An instance's disk devices, "<device> <source> <recursive 0|1>" per line in <name>.dev, and its raw.lxc in
+# <name>.rawlxc. Incus re-validates EVERY device on each config write, and refuses a recursive one whose source is
+# missing (measured on bioskop-nixos, 2026-10-25): so a per-key write is refused while another device names a path a
+# rename moved away, and only a whole-config edit, validated as its final state, gets through.
+valid() { # <devfile>: the Incus check, on what the write would leave
+  local d src rec
+  while read -r d src rec; do
+    [ -n "\$d" ] || continue
+    if [ "\$rec" = 1 ] && [ ! -e "\$src" ]; then
+      echo "Error: Invalid devices: Device validation failed for \"\$d\": The recursive option is only supported for additional bind-mounted paths" >&2
+      return 1
+    fi
+  done <"\$1"
+}
+write() { # <name> <new devfile>: validated, then kept; refused, nothing changes
+  valid "\$2" || { rm -f "\$2"; exit 1; }
+  mv "\$2" "\$i/\$1.dev"
+}
 case "\$1 \$2" in
+  "config device")
+    n=\$(name "\${@:4}") ; f=\$i/\$n.dev; touch "\$f"
+    case "\$3" in
+      add)
+        d=\$6 src= rec=0
+        for a in "\${@:7}"; do case "\$a" in source=*) src=\${a#source=} ;; recursive=true) rec=1 ;; esac; done
+        { cat "\$f"; echo "\$d \${src:--} \$rec"; } >"\$f.new"; write "\$n" "\$f.new" ;;
+      set)
+        d=\$6 src=\${7#source=}
+        awk -v d="\$d" -v s="\$src" '\$1 == d {\$2 = s} {print}' "\$f" >"\$f.new"; write "\$n" "\$f.new" ;;
+    esac ;;
+  "config set")
+    n=\$(name "\${@:3}"); touch "\$i/\$n.dev"
+    valid "\$i/\$n.dev" || exit 1
+    for a in "\$@"; do case "\$a" in raw.lxc=*) printf '%s\n' "\${a#raw.lxc=}" >"\$i/\$n.rawlxc" ;; esac; done ;;
+  # config edit, the whole config on stdin: its devices' sources and raw.lxc, validated as the final state.
+  "config edit")
+    n=\$(name "\${@:3}"); f=\$i/\$n.dev; touch "\$f"
+    y=\$(cat)
+    : >"\$f.new"
+    while read -r d rest; do
+      src=\$(DEV="\$d" yq -r '.devices[strenv(DEV)].source // "-"' <<<"\$y")
+      echo "\$d \$src \${rest#* }" >>"\$f.new"
+    done <"\$f"
+    write "\$n" "\$f.new"
+    yq -r '.config."raw.lxc" // ""' <<<"\$y" >"\$i/\$n.rawlxc" ;;
+  "config show")
+    n=\$(name "\${@:3}"); f=\$i/\$n.dev; touch "\$f"
+    printf 'config:\n  raw.lxc: |-\n'; sed 's/^/    /' "\$i/\$n.rawlxc" 2>/dev/null
+    printf 'devices:\n'
+    while read -r d src rec; do
+      printf '  %s:\n    source: %s\n    type: disk\n' "\$d" "\$src"
+      [ "\$rec" = 0 ] || printf '    recursive: "true"\n'
+    done <"\$f" ;;
   "query /1.0/cluster") if [ -e "$t/clustered" ]; then echo '{"enabled": true}'; else echo '{"enabled": false}'; fi ;;
   "query /1.0/instances/"*)
     n=\${2#/1.0/instances/}; n=\${n%%\?*}; n=\${n%/state}
@@ -68,7 +123,8 @@ case "\$1 \$2" in
     [ ! -e "$t/incus-rename-fails" ] || { echo "incus rename: failing" >&2; exit 1; }
     o=\$4 n=\$5
     [ -e "\$i/\$o" ] && [ ! -e "\$i/\$n" ] || { echo "incus rename: \$o → \$n refused" >&2; exit 1; }
-    mv "\$i/\$o" "\$i/\$n"; [ ! -e "\$i/\$o.running" ] || mv "\$i/\$o.running" "\$i/\$n.running" ;;
+    mv "\$i/\$o" "\$i/\$n"
+    for x in running dev rawlxc; do [ ! -e "\$i/\$o.\$x" ] || mv "\$i/\$o.\$x" "\$i/\$n.\$x"; done ;;
   "exec --project")
     # Before activation the guest has no systemctl: no-systemctl holds how many probes it still lasts.
     if [ "\$7" = --version ]; then
@@ -1004,6 +1060,11 @@ running_attic_before_rename() {
   mkdir -p "$t/zfs/tank/nerd/ndh-containers/attic"
   echo "$t/attic" >"$t/zfs/tank/nerd/ndh-containers/attic.mountpoint"
   for ds in tank/x tank/db tank/nerd/attic; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261024T184302Z"; done
+  # Its 4 store devices as create added them (nix recursive), and its raw.lxc naming the dir.
+  printf '%s\n' "nix $t/attic/root/nix 1" "nix-lower-store $t/attic/view/nix/store 0" \
+    "nix-lower-db $t/attic/view/nix/var/nix 0" "nix-upper $t/attic/upper 0" >"$t/inst/attic.dev"
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' \
+    "$t/attic" >"$t/inst/attic.rawlxc"
 }
 
 # Everything a rename moves, named after attic-bioskop, and nothing left named after attic.
@@ -1093,10 +1154,11 @@ as_before() {
   [ ! -e "$t/attic" ]
   [ "$(cat "$t/attic-bioskop/lower.snapshot")" = ndh-incus-attic-bioskop-20261024T184302Z ]
   # raw.lxc and the four store devices point into the new dir.
-  # raw.lxc is two lines (init, then the pre-start hook naming the dir), so the call spans two lines of calls.
-  grep -A1 '^incus config set --project ndh attic-bioskop raw.lxc=' "$t/calls" | grep -q "pre-start = .* $t/attic-bioskop$"
-  for d in nix nix-lower-store nix-lower-db nix-upper; do
-    grep -q "^incus config device set --project ndh attic-bioskop $d source=$t/attic-bioskop/" "$t/calls"
+  # raw.lxc's pre-start hook and the four store devices point into the new dir: the instance as Incus holds it.
+  grep -q "prestart $t/attic-bioskop$" "$t/inst/attic-bioskop.rawlxc"
+  for d in "nix $t/attic-bioskop/root/nix" "nix-lower-store $t/attic-bioskop/view/nix/store" \
+    "nix-lower-db $t/attic-bioskop/view/nix/var/nix" "nix-upper $t/attic-bioskop/upper"; do
+    grep -q "^$d " "$t/inst/attic-bioskop.dev"
   done
   # The old store unmounted by converge itself, never through attic's unit, which the switch removed.
   run grep -E '^systemctl [a-z-]+ (-q )?ndh-incus-container-store-attic\.service$' "$t/calls"
@@ -1551,3 +1613,118 @@ stopped_by_hand() {
   done <<<"$output"
 }
 
+
+# bioskop-nixos on 2026-10-25 after the switch to c48db1e9, as 🎛️ measured it: the rename moved the dataset, the
+# delivery snapshots and lower.snapshot, renamed the instance, then every config write was refused (Incus re-validates
+# every device, and they still named the moved-away dir). So: attic-bioskop STOPPED on bioskop, no attic instance, the
+# dataset mounted at …/attic-bioskop, an empty leftover …/attic, its 4 store devices and raw.lxc on …/attic, converge's
+# stop mark there, its profiles resolving, its stores unmounted.
+attic_bioskop_cut_after_the_instance_rename() {
+  per_metalspace_cli
+  echo bioskop >"$t/inst/attic-bioskop"
+  mkdir -p "$t/attic"
+  mkdir -p "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root" "$t/attic-bioskop/root/nix/.lower/nix/store" \
+    "$t/attic-bioskop/root/nix/.lower/nix/var/nix" "$t/attic-bioskop/root/nix/.upper" "$t/attic-bioskop/upper" \
+    "$t/attic-bioskop/view/nix/store" "$t/attic-bioskop/view/nix/var/nix"
+  ln -sfn "$t/x-attic" "$t/attic-bioskop/root/nix/var/nix/profiles/system"
+  ln -sfn "$t/x-runtime" "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime"
+  echo ndh-incus-attic-bioskop-20261024T083946Z >"$t/attic-bioskop/lower.snapshot"
+  echo the-cache >"$t/attic-bioskop/upper/marker"
+  touch "$t/attic-bioskop/converge.stopped"
+  mkdir -p "$t/zfs/tank/nerd/ndh-containers/attic-bioskop"
+  echo "$t/attic-bioskop" >"$t/zfs/tank/nerd/ndh-containers/attic-bioskop.mountpoint"
+  for ds in tank/x tank/db; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-bioskop-20261024T083946Z"; done
+  rm -rf "$t/attic/root"
+  printf '%s\n' "nix $t/attic/root/nix 1" "nix-lower-store $t/attic/view/nix/store 0" \
+    "nix-lower-db $t/attic/view/nix/var/nix 0" "nix-upper $t/attic/upper 0" >"$t/inst/attic-bioskop.dev"
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' \
+    "$t/attic" >"$t/inst/attic-bioskop.rawlxc"
+  : >"$t/mounts"
+}
+
+@test "the next converge finishes today's half rename on its own: attic-bioskop RUNNING on its own data, not recreated" {
+  attic_bioskop_cut_after_the_instance_rename
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  # Its devices and its pre-start hook on its own dir, now.
+  grep -qxF "nix $t/attic-bioskop/root/nix 1" "$t/inst/attic-bioskop.dev"
+  grep -qxF "nix-upper $t/attic-bioskop/upper 0" "$t/inst/attic-bioskop.dev"
+  run grep -F "$t/attic/" "$t/inst/attic-bioskop.dev"
+  [ "$status" -eq 1 ]
+  grep -q "prestart $t/attic-bioskop$" "$t/inst/attic-bioskop.rawlxc"
+  # The same container, on the same data: nothing created, nothing deleted, nothing renamed again.
+  [ "$(cat "$t/attic-bioskop/upper/marker")" = the-cache ]
+  run grep -E '^incus (init|delete|rename)' "$t/calls"
+  [ "$status" -eq 1 ]
+  [ ! -e "$t/attic-bioskop/converge.stopped" ]
+}
+
+@test "mutant: a bring-up that writes the devices key by key cannot finish today's half rename" {
+  attic_bioskop_cut_after_the_instance_rename
+  # 4b06525c's form: a per-key write, refused while another device names the moved-away dir.
+  grep -q '^  point_store "\$1" "\$dir"$' "$t/cli-ms"
+  awk '/^bring_up_steps\(\) \{/{b=1} b && /^  point_store "\$1" "\$dir"$/{print "  while read -r device src; do incus config device set --project \"$PROJECT\" \"$1\" \"$device\" source=\"$src\"; done < <(store_devices \"$dir\")"; b=0; next} {print}' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ ! -e "$t/inst/attic-bioskop.running" ]
+  [[ $stderr == *"recursive option is only supported"* ]]
+}
+
+@test "an unrename whose old dir is gone until the dataset moves back now puts the devices back, in one write after it" {
+  running_attic_before_rename
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr != *"needs a hand"* ]]
+  as_before
+  grep -qxF "nix $t/attic/root/nix 1" "$t/inst/attic.dev"
+}
+
+@test "a rename cut after its config write, before the start, is started by the next converge" {
+  attic_bioskop_cut_after_the_instance_rename
+  # The config write landed: the devices and raw.lxc already name the new dir.
+  printf '%s\n' "nix $t/attic-bioskop/root/nix 1" "nix-lower-store $t/attic-bioskop/view/nix/store 0" \
+    "nix-lower-db $t/attic-bioskop/view/nix/var/nix 0" "nix-upper $t/attic-bioskop/upper 0" >"$t/inst/attic-bioskop.dev"
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' \
+    "$t/attic-bioskop" >"$t/inst/attic-bioskop.rawlxc"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  # Already pointed: no config write at all.
+  run grep -E '^incus config edit' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a half-pointed container (three store devices right, one on the old dir) is rewritten, and comes up on its own upper" {
+  attic_bioskop_cut_after_the_instance_rename
+  printf '%s\n' "nix $t/attic-bioskop/root/nix 1" "nix-lower-store $t/attic-bioskop/view/nix/store 0" \
+    "nix-lower-db $t/attic-bioskop/view/nix/var/nix 0" "nix-upper $t/attic/upper 0" >"$t/inst/attic-bioskop.dev"
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' \
+    "$t/attic-bioskop" >"$t/inst/attic-bioskop.rawlxc"
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  grep -qxF "nix-upper $t/attic-bioskop/upper 0" "$t/inst/attic-bioskop.dev"
+  grep -q '^incus config edit' "$t/calls"
+}
+
+
+@test "a half-pointed container that also gets a new system is delivered on re-pointed devices, and comes up" {
+  attic_bioskop_cut_after_the_instance_rename
+  # A new declared system: converge goes straight to delivery, never through bring-up, so the delivery itself must
+  # re-point the store before anything moves (🛡️: the switch may bring attic-bioskop a new toplevel).
+  touch "$t/x-attic-2"
+  # After cli-ms's own INSTANCES line, which renamed the key attic-bioskop: the new toplevel goes on that key.
+  awk '{print} /^INSTANCES=\$\(yq/ && !d {print "INSTANCES=$(yq -p json -o json -I0 '"'"'.[\"attic-bioskop\"].toplevel += \"-2\"'"'"' <<<\"$INSTANCES\")"; d=1}' "$t/cli-ms" >"$t/cli-2"
+  [ "$(grep -c 'toplevel += "-2"' "$t/cli-2")" = 1 ]
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
+  run --separate-stderr "$t/run" "$t/cli-2" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"x-attic-2, healthy"* ]]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  [ "$(readlink "$t/attic-bioskop/root/nix/var/nix/profiles/system")" = "$t/x-attic-2" ]
+  grep -qxF "nix $t/attic-bioskop/root/nix 1" "$t/inst/attic-bioskop.dev"
+  grep -qxF "nix-upper $t/attic-bioskop/upper 0" "$t/inst/attic-bioskop.dev"
+  run grep -E '^incus (init|delete)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
