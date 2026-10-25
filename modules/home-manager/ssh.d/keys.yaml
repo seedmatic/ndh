@@ -318,6 +318,10 @@ keys:
         origin: keyring
         age: age18ufv8m967u84wsq4lrq8qeh5dgvzf7s0tczfckyuqk8x93kl0qxs7sdpdd
         recipient: false
+      26-10-25:
+        state: pending
+        origin: host
+        bootstrap: console
   host-nikopol:
     type: ssh-ed25519
     comment: host-nikopol
@@ -488,6 +492,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-22T09:55:50Z"
-  mac: ENC[AES256_GCM,data:HpGTo+qi94zoGATJTXy3f/3PaOALNna4W/zLV2W7k5O/oD93B0OQkfeqtddv8e9ZnMq96gz/F2clyYKc5jYGW0PJlfZeyiaH22EvG57QsnbWE3hG0jD2prq0of+ZR8KGKLSAJOAczlWuM3zMpegpcAhvMnrG9q0kXLszoRi9iLQ=,iv:d80fKZCG4nZ7ynG4WIbWlsjdirQG8SNEp2CNxVSvwO4=,tag:yTFDzZ/5ZWmZlEOmXa0Zqw==,type:str]
+  lastmodified: "2026-10-25T22:50:05Z"
+  mac: ENC[AES256_GCM,data:BVDkdgke2NN0pH48oVRzzsl6LTLZkn/hpzEG99YRwjF+wM1tc/3WQfO9DQtJt0AOLIXuZFXODZngwzJWVbqMjKfVx5RHlsG1URwKGcqwGOP6Ahmnm4ircrkVN+0gE87TQ/yqWWKtMCVA4WkzmvRkk7Wq8km6bsmx7qr5/l8Om6k=,iv:BD+HtavSwxOlIpJTnm/tyvuo4VU2qYzbsSybSgufvAk=,tag:VEKBnlLXboTN680DhghYHg==,type:str]
   version: 3.13.3
