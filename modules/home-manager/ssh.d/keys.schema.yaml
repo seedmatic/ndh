@@ -158,12 +158,11 @@ $defs:
       # apart from github-signing so the operator's own key never leaves the seat: the
       # bot key is the one a cluster holds, under a bot principal only.
       - bot-signing
-      # v2.1: the `mammoth-skate` authority also signs TLS x509 certs so
-      # headscale can serve HTTPS without introducing a second CA key.
-      # Leaf keys declare `cert_usage: [tls-server]` (and optionally
-      # `tls-client` in future) to opt into x509 issuance alongside SSH
-      # certs.  See modules/nixos/headscale-daemon.nix for the first
-      # consumer.
+      # An authority that signs TLS x509 certificates. It is never also an
+      # ssh-authority: TLS has its own authority (mammoth-skate-tls), and only an
+      # authority whose usage holds ssh-authority is trusted for ssh, as a user
+      # and as a host CA (ssh-extract-keys.split-exp.yq). Leaf keys declare
+      # `cert_usage: [tls-server]` to opt into x509 issuance.
       - tls-authority
 
   profileName:
@@ -406,9 +405,12 @@ $defs:
   authority:
     type: object
     additionalProperties: false
+    # `usage` is required: it is what decides whether the authority is trusted for ssh,
+    # and an authority without one would leave the ssh trust set silently.
     required:
       - type
       - slots
+      - usage
     properties:
       type:
         $ref: "#/$defs/sshKeyType"
