@@ -17,15 +17,14 @@ let
   # ndh.hostKey.own is read from the slot state (K5): each side is reached by giving the machine a host-key entry whose
   # current slot is, or is not, `serving`.
   withSlot =
-    state: extra: system:
+    state: origin: extra: system:
     (system.extendModules {
       modules = [
         {
           ndh.hostKey = {
             entry = lib.mkForce {
               slots."26-01-01" = {
-                inherit state;
-                origin = "keyring";
+                inherit state origin;
               };
             };
           }
@@ -33,8 +32,18 @@ let
         }
       ];
     }).config;
-  owning = withSlot "serving" { certificate = testCertificate; };
-  sharing = withSlot "recorded" { };
+  owning = withSlot "serving" "keyring" { certificate = testCertificate; };
+  sharing = withSlot "recorded" "keyring" { };
+  # A key born on the machine (K3) and certified by the window: served where it was generated, in its slot's directory.
+  born = withSlot "serving" "host" { certificate = testCertificate; };
+  servesBornKeyFromItsSlot =
+    name: c:
+    let
+      wanted = "${c.ndh.hostKey.slotDir}/26-01-01/ssh_host_ed25519_key";
+    in
+    lib.assertMsg (
+      c.ndh.hostKey.file == wanted
+    ) "${name}: a born, serving key is served from ${c.ndh.hostKey.file}, not from its slot ${wanted}";
   linesOf = keyword: text: lib.filter (lib.hasPrefix "${keyword} ") (lib.splitString "\n" text);
   expect =
     what: actual: wanted:
@@ -84,6 +93,12 @@ let
     assert expect "${name} /etc/ssh tmpfiles rules (own = false)" (etcSshRules shared) [ ];
     assert lib.assertMsg (restartsTailscaledOn shared)
       "${name} (own = false): tailscaled does not restart on the own state";
+    assert servesBornKeyFromItsSlot name (born nixosConfigurations.${name});
+    assert expect "${name} HostKey (born, own = true)"
+      (linesOf "HostKey" (born nixosConfigurations.${name}).services.openssh.extraConfig)
+      [
+        "HostKey ${(born nixosConfigurations.${name}).ndh.hostKey.slotDir}/26-01-01/ssh_host_ed25519_key"
+      ];
     assert expect "${name} hostKeys (own = true)" owned.services.openssh.hostKeys [ ];
     assert expect "${name} HostKey (own = true)" (linesOf "HostKey" owned.services.openssh.extraConfig)
       [
@@ -151,6 +166,12 @@ let
     assert expect "${name} HostKey (own = true)" (linesOf "HostKey" (dropIn owned)) [
       "HostKey ${owned.ndh.hostKey.file}"
     ];
+    assert servesBornKeyFromItsSlot name (born darwinConfigurations.${name});
+    assert expect "${name} HostKey (born, own = true)"
+      (linesOf "HostKey" (dropIn (born darwinConfigurations.${name})))
+      [
+        "HostKey ${(born darwinConfigurations.${name}).ndh.hostKey.slotDir}/26-01-01/ssh_host_ed25519_key"
+      ];
     assert expect "${name} HostCertificate (own = true)" (linesOf "HostCertificate" (dropIn owned)) [
       "HostCertificate ${owned.ndh.hostKey.certificateFile}"
     ];

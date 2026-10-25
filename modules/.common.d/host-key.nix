@@ -26,11 +26,20 @@ in
       '';
     };
 
+    # A key born on the machine (K3) is served where it was generated, in its slot's directory: nothing copies it, so
+    # there is no moment it is missing. A key pushed before K5 stays at the fixed path it was pushed to.
     file = lib.mkOption {
       type = lib.types.str;
       readOnly = true;
-      default = "/var/lib/ndh/host-key/ssh_host_ed25519_key";
-      description = "Where the machine's own host key of its current slot lives (pushed there before K5; the keys born on it live under slotDir).";
+      default =
+        let
+          roles = import ./host-key.d/slots.nix { inherit lib; } cfg.entry;
+        in
+        if (roles.current.origin or "") == "host" then
+          "${cfg.slotDir}/${roles.currentName}/ssh_host_ed25519_key"
+        else
+          "/var/lib/ndh/host-key/ssh_host_ed25519_key";
+      description = "Where the machine's own host key of its current slot lives: its slot's directory for a key born on it, the fixed path for one pushed before K5.";
     };
 
     # Not read-only only so the eval checks can give a test configuration a certificate that keys.yaml
@@ -55,7 +64,7 @@ in
       default = pkgs.writeShellScript "ndh-host-key-check" ''
         [[ -s ${cfg.file} ]] && exit 0
         echo "ERROR: ${cfg.file} is missing, and ${machine}'s sshd serves no other host key (ndh.hostKey.own)." >&2
-        echo "Its current slot is serving, so keys.yaml expects it there: a machine born key lives under ${cfg.slotDir} (ops next)." >&2
+        echo "Its current slot is serving, so keys.yaml expects it there: a key born on it is generated there by its pending slot's activation (ops next)." >&2
         exit 1
       '';
       description = "Fails, naming the file and the gesture that places it, when the machine's own host key is missing.";

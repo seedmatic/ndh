@@ -4,7 +4,8 @@
 #
 #   reconcile::host-key::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
 #
-# Per slot: the public, its age, `recipient: true`, `state: recorded` and its ssh-host certificate, each by `sops set`
+# Per slot: the public, its age, `recipient: true`, `state: serving` and its ssh-host certificate, and the slot it
+# replaces `retired`, each by `sops set`
 # on keys.yaml; each new age into every rule of .sops.yaml; then `sops updatekeys` of every file those rules govern;
 # keys.json regenerated. The authority's signing slot is decrypted ONCE, into a private ssh-agent, in a secret window
 # (ndh::secret:begin/end), never into a variable or a file; sops' stderr is never shown (it can quote plaintext).
@@ -104,7 +105,7 @@ reconcile::host-key::write() {
   ((rcs[1] == 0)) || reconcile::fail "the authority's slot did not load into the agent" || return 1
 
   while IFS=$'\t' read -r i keyName slot public hash; do
-    : "${keyName}@${slot}: record the public and its age, sign its ssh-host certificate, mark it recorded"
+    : "${keyName}@${slot}: record the public and its age, sign its ssh-host certificate"
     age=$(printf '%s\n' "$public" | ssh-to-age)
     principals=$(yq -r -p json -o json ".[$i].principals | join(\",\")" "$batch")
     certId=$(KEYNAME="$keyName" NAMES="$(printf '%s' "$principals" | sha256sum | cut -d' ' -f1)" ISSUED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -116,8 +117,14 @@ reconcile::host-key::write() {
     cert=$(<"$work/${keyName}-cert.pub")
     serial=$((serial + 1))
 
+    : "${keyName}@${slot}: born on its machine and certified here, so it is SERVED at that machine's next switch"
+    : "(ndh.hostKey.own reads serving); the slot it replaces is the one served or pushed before, retired with it"
+    local replaced
+    replaced=$(K="$keyName" S="$slot" yq -r '.keys[strenv(K)].slots | to_entries
+      | map(select(.key != strenv(S) and (.value.state // "") != "pending" and (.value.state // "") != "retired"))
+      | sort_by(.key) | .[-1].key // ""' "$work/expected.yaml")
     local base="[\"keys\"][\"${keyName}\"][\"slots\"][\"${slot}\"]"
-    for entry in "public=${public#ssh-ed25519 }" "age=${age}" "state=recorded" "certificates.${authority}.ssh-host=${cert}"; do
+    for entry in "public=${public#ssh-ed25519 }" "age=${age}" "state=serving" "certificates.${authority}.ssh-host=${cert}"; do
       local field="${entry%%=*}" val="${entry#*=}" path="$base"
       IFS=. read -ra parts <<<"$field"
       for part in "${parts[@]}"; do path+="[\"${part}\"]"; done
@@ -127,10 +134,15 @@ reconcile::host-key::write() {
     done
     reconcile::sopsSet "$keysYaml" "${base}[\"recipient\"]" true || return 1
     K="$keyName" S="$slot" yq -i '.keys[strenv(K)].slots[strenv(S)].recipient = true' "$work/expected.yaml"
+    if [[ -n $replaced ]]; then
+      reconcile::sopsSet "$keysYaml" "[\"keys\"][\"${keyName}\"][\"slots\"][\"${replaced}\"][\"state\"]" '"retired"' || return 1
+      K="$keyName" S="$replaced" yq -i '.keys[strenv(K)].slots[strenv(S)].state = "retired"' "$work/expected.yaml"
+    fi
 
     : "${keyName}@${slot}: its age joins every rule of .sops.yaml"
     A="$age" yq -i '.creation_rules[].age += [strenv(A)]' "$sopsYaml"
-    printf '      %s@%s enregistrée, certifiée (série %s), destinataire %s\n' "$keyName" "$slot" "$((serial - 1))" "$age"
+    printf '      %s@%s en service à la prochaine bascule, certifiée (série %s), destinataire %s%s\n' "$keyName" "$slot" \
+      "$((serial - 1))" "$age" "${replaced:+ ; ${keyName}@${replaced} retirée}"
   done <"$work/measured"
   kill "$agentPid" 2>/dev/null || true
 
