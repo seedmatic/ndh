@@ -106,12 +106,13 @@ window() { # <answer>...: runs the window with each <answer> typed on its termin
 tree() { echo "$t/state/keys-reconcile/${rev:0:12}"; }
 encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))' "$1" | sort; }
 
-@test "the window records, certifies and re-keys the batch, in one local commit, never pushed" {
+@test "the window records, certifies and re-keys the batch, the born key serving and the old one retired, in one local commit" {
   run --separate-stderr window oui
   [ "$status" -eq 0 ]
   [[ $output == *"écrit dans $(tree)"* ]]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = recorded ]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
+  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$k")" = retired ]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".public' "$k")" = "$(cut -d' ' -f2 "$t/new.pub")" ]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".age' "$k")" = "$(ssh-to-age <"$t/new.pub")" ]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".recipient' "$k")" = true ]
@@ -130,6 +131,17 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   done
   ssh-to-age -private-key -i "$t/new" >"$t/new.age"
   SOPS_AGE_KEY_FILE="$t/new.age" sops decrypt --input-type yaml --output-type yaml "$(tree)/.secrets" >/dev/null
+}
+
+@test "mutant: a window that leaves the replaced slot unretired is refused by its own postcondition" {
+  : "the mutant drops the sops write of the retirement and keeps its expected-state line"
+  grep -F -v '[\"${replaced}\"][\"state\"]" '"'"'"retired"'"'"'' "$BATS_TEST_DIRNAME/../write.sh" >"$t/write.sh"
+  [ "$(grep -c -F '"retired"' "$BATS_TEST_DIRNAME/../write.sh")" -gt "$(grep -c -F '"retired"' "$t/write.sh")" ]
+  sed -i "s|^source .*/write.sh\$|source $t/write.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/write.sh\$" "$t/keys-reconcile"
+  run --separate-stderr window oui
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"keys.yaml changed more than the fields this window set"* ]]
 }
 
 @test "no « oui », nothing written" {
@@ -232,7 +244,8 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   attic
   run --separate-stderr window oui
   [ "$status" -eq 0 ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = recorded ]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
   [ "$(yq -r -p json -o json '.m1.publicKey' "$(tree)/catalog/private-caches.json")" = "$(cat "$t/attic/attic-m1.cache-key.public")" ]
   [ "$(yq -r -p json -o json '.m1.consumers[0]' "$(tree)/catalog/private-caches.json")" = attic.m1 ]
   [ "$(yq -r -p json -o json '.m1.origin.revision' "$(tree)/catalog/private-caches.json")" = "$rev" ]
@@ -301,7 +314,8 @@ prefix() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2 | sed 's/^SHA256://' | cu
   run --separate-stderr window "$(prefix)" oui
   [ "$status" -eq 0 ]
   [[ $output == *"empreinte : à lire à la console de seat"* ]]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = recorded ]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
   grep -q "lis l empreinte à la console de seat" "$t/prompt"
 }
 
