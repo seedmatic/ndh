@@ -445,6 +445,7 @@ class Analyzer:
         # The assignments in front of the command, kept for check(): GIT_CONFIG_GLOBAL=/dev/null drops the
         # global hooks and sops filters of the git command it prefixes.
         self.assignments = []
+        self.fed_by_xargs = False
         saved = self.git_env_reset
         try:
             self.unwrap_chain(argv, depth)
@@ -474,6 +475,7 @@ class Analyzer:
             if prog in self.NDH_VERBS and "/" in argv[0] and not argv[0].startswith(self.NDH_SWITCH_HOMES):
                 self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
+            self.check_system_switch(prog, rest, argv)
             nxt = self.peel(prog, rest, depth)
             if nxt is not None:
                 # A launcher (bash -c, sudo, env, ssh, nix run…) is not a plain removal either.
@@ -488,8 +490,17 @@ class Analyzer:
         if prog in ("sudo", "doas"):
             # Their environment is reset: the session's sops-neutral git config is gone.
             self.git_env_reset = True
-            return rest[skip_options(rest, {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T",
+            inner = rest[skip_options(rest, {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T",
                                              "--user", "--group", "--host", "--prompt"}):]
+            # With passwordless sudo, a program the hook cannot read is a root command no rule can judge: a variable,
+            # a substitution, find's {}, or one xargs appends from stdin (security, 2026-10-25). Its arguments stay free.
+            program = inner[0] if inner else None
+            if (program is None and self.fed_by_xargs) or (
+                    program is not None and (re.search(r"[$`]", program) or "__subst__" in program or program == "{}")):
+                self.deny(f"{prog} runs a program the hook cannot read, as root; write its path out literally",
+                          [prog] + rest)
+                return []
+            return inner
         if prog == "env":
             i = 0
             while i < len(rest):
@@ -566,6 +577,7 @@ class Analyzer:
             if inner and os.path.basename(inner[0]) in self.FIND_REMOVERS - SHELLS:
                 self.deny("a removal fed by xargs, whose targets the hook cannot see; name the paths", ["xargs"] + rest)
                 return []
+            self.fed_by_xargs = True
             return inner
         if prog == "watch":
             i = skip_options(rest, {"-n", "--interval", "-d", "-q"})
@@ -749,6 +761,42 @@ class Analyzer:
     NIX_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
     NIX_VALUE = {"-I", "--inputs-from", "--profile", "--expr", "-f", "--file", "--override-input",
                  "--option", "--arg", "--argstr", "--store", "--eval-store", "--include"}
+
+    # A machine's activation is the operator's switch gesture: it changes what runs, as root, and on a seat it reaches
+    # tart:vm:factory-reset:apply, whose rm -rf destroys a guest's disks. Sessions have passwordless sudo there, so this
+    # hook is the only barrier, and the rule goes by the script's NAME, whatever path or link reaches it (security,
+    # 2026-10-25): a false refusal costs the operator one hand-run, a miss costs a guest's disks.
+    SYSTEM_SWITCH_PROGRAMS = {"activate", "activate-user", "switch-to-configuration"}
+    SYSTEM_SWITCH_WHY = ("runs a machine's activation, the operator's switch gesture: as root it changes what runs, "
+                         "and it can reach the factory reset that destroys a guest's disks")
+    SYSTEM_PROFILE = re.compile(r"^/nix/var/nix/profiles/system(?:-\d+-link)?/?$")
+
+    def check_system_switch(self, prog, rest, argv):
+        """Refuse running an activation script, pointing the system profile elsewhere, or setting VM_FACTORY_RESET."""
+        if any(a.split("=", 1)[0] == "VM_FACTORY_RESET" for a in self.assignments) or (
+                prog in ("export", "declare", "typeset", "readonly", "local")
+                and any(a.split("=", 1)[0] == "VM_FACTORY_RESET" for a in rest if not a.startswith("-"))):
+            self.deny(f"sets VM_FACTORY_RESET, which arms a guest's factory reset; it {self.SYSTEM_SWITCH_WHY}", argv)
+            return
+        if prog in self.SYSTEM_SWITCH_PROGRAMS:
+            self.deny(self.SYSTEM_SWITCH_WHY, argv)
+            return
+        # A shell given the script as a FILE runs it, as `./activate` does.
+        if prog in SHELLS:
+            script = next((a for a in rest if not a.startswith("-")), None)
+            if script is not None and not any(a.startswith("-") and "c" in a[1:] for a in rest[:rest.index(script)]) \
+                    and os.path.basename(script) in self.SYSTEM_SWITCH_PROGRAMS:
+                self.deny(self.SYSTEM_SWITCH_WHY, argv)
+                return
+        if prog == "nix-env":
+            profile = next((rest[i + 1] for i, a in enumerate(rest) if a in ("-p", "--profile") and i + 1 < len(rest)),
+                           next((a.split("=", 1)[1] for a in rest if a.startswith("--profile=")), None))
+            switches = {"--set", "--rollback", "-i", "--install", "--switch-generation", "-G", "--upgrade", "-u",
+                        "-e", "--uninstall", "--delete-generations"}
+            if profile is not None and self.SYSTEM_PROFILE.match(self.resolve(profile) or profile) \
+                    and any(a in switches for a in rest):
+                self.deny(f"points the system profile at another closure, half of a switch; it {self.SYSTEM_SWITCH_WHY}",
+                          argv)
 
     def peel_nix(self, rest):
         if not rest or rest[0] not in ("run", "shell", "develop"):
