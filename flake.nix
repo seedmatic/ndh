@@ -1840,6 +1840,10 @@
               ]
             ) "keys-reconcile-partial-batch: an entry's old public is not its own recorded serving one";
             pkgs.runCommand "keys-reconcile-partial-batch" { } "touch $out";
+          # tart:vm:recreate refuses when a data disk holds ZFS or cannot be read: the rm -rf takes them with it.
+          tart-recreate-guard-bats = import ./modules/darwin/tart-config.d/tests/package.nix {
+            inherit pkgs;
+          };
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
