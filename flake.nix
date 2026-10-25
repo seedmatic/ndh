@@ -3365,6 +3365,16 @@
           inherit (self) nixosConfigurations;
           catalog = catalogData;
         }
+        // {
+          offtailnet-screens-check-bats = import ./modules/nixos/baremetal-segment.d/tests/screens-check.nix {
+            inherit pkgs;
+            ndh = {
+              store = mkNdhStoreApiFor pkgs;
+              context.nixBashTrampoline =
+                if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
+            };
+          };
+        }
         # The mask a failed install's log goes through into the build log: key material never passes.
         // {
           bringup-install-log-mask =

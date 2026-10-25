@@ -126,6 +126,54 @@ let
   # rides lan-br, the home LAN's L2, so its address alone could be claimed by any LAN device: the
   # vz-host is also matched by its catalog MAC, and with no MAC in the catalog it opens nothing.
   vzHostMac = (netplan.lan.hosts or { }).${bm.vzHostLanName}.mac or null;
+  # The tailnet services the corporate box may open, each by its pinned VIP and port: the seats'
+  # screens, which the operator sits on from that box (decision 2026-10-25), and nothing else.
+  # The tailnet policy admits the same set (manage-tailnet's serviceGrants), so the two edges
+  # agree; this one is the narrower, since the policy admits by service and this by address.
+  #
+  # ★ Fail-closed: the ruleset carries no address. It names an EMPTY set, and the opening is what
+  # has to be earned — `offtailnet-screens-check` adds a `vip . port` only when MagicDNS answers
+  # that service with the pinned vip, and flushes the set on any mismatch or silence. A boot, a
+  # reload or a dead check therefore leaves the door shut; a re-assigned VIP shuts it at the next
+  # tick instead of pointing it at whichever node gets that address next.
+  offtailnetScreensSet = "offtailnet_screens";
+  offtailnetScreensCheck = ndh.store.installBinScript "offtailnet-screens-check" (
+    pkgs.replaceVars ./baremetal-segment.d/offtailnet-screens-check.sh {
+      nixBashTrampoline = "${ndh.context.nixBashTrampoline}";
+      loggerTag = "nixos.offtailnet-screens-check";
+      toolPath = lib.makeBinPath [
+        pkgs.coreutils
+        pkgs.dig
+        pkgs.nftables
+        pkgs.yq-go
+      ];
+      openings = pkgs.writeText "offtailnet-screens.json" (builtins.toJSON offTailnetServiceOpenings);
+      setName = offtailnetScreensSet;
+      tailnetDomain = tailnetZone;
+    }
+  );
+  offTailnetServiceOpenings =
+    lib.concatMap
+      (
+        n:
+        let
+          svc = netplan.tailnet.services.${n};
+        in
+        map (e: {
+          name = n;
+          vip = svc.vip;
+          port = builtins.head (builtins.match "tcp:([0-9]+)" e);
+        }) svc.ip
+      )
+      (
+        lib.filter (n: netplan.tailnet.services.${n}.reachedByOffTailnetVzHosts or false) (
+          builtins.attrNames (netplan.tailnet.services or { })
+        )
+      );
+  # The set, its rule, the check and its timer exist together or not at all: only where a FOREIGN
+  # vz-host, pinned by its MAC on the /30, is declared to reach some screen.
+  screensOpen =
+    hasLink && vzHostMac != null && bm.vzHostKind == "foreign" && offTailnetServiceOpenings != [ ];
   vzHostForwardRules =
     if !hasLink || vzHostMac == null then
       [ ]
@@ -134,7 +182,8 @@ let
     else
       map (h: "ip daddr ${h.ip} udp dport 2055") (
         lib.filter (h: (h.name or "") == "nnh-inlet") segmentHostRecords
-      );
+      )
+      ++ lib.optional screensOpen "ip daddr . tcp dport @${offtailnetScreensSet} ct state new";
 
   # The dotted netmask dnsmasq wants in `dhcp-range` (it takes a mask, not a prefix length).
   # Integer division truncates in Nix, which is what makes the octet extraction work.
@@ -445,6 +494,11 @@ lib.mkIf enabled {
   networking.nftables.tables.metalspace-guard = {
     family = "inet";
     content = ''
+      ${lib.optionalString screensOpen ''
+        set ${offtailnetScreensSet} {
+          type ipv4_addr . inet_service
+        }
+      ''}
       chain forward {
         type filter hook forward priority filter; policy accept;
         ct state established,related accept
@@ -463,4 +517,40 @@ lib.mkIf enabled {
   systemd.network.networks."40-lan-br".address = lib.optionals hasLink [
     "${bm.hostAddress}/${linkPrefix}"
   ];
+
+  # A pinned VIP must be a tailnet address: a typo would otherwise be checked against MagicDNS
+  # forever and never open, or worse, name an address outside the tailnet.
+  assertions = lib.optionals screensOpen (
+    map (o: {
+      assertion =
+        builtins.match "100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}" o.vip
+        != null;
+      message = "netplan.tailnet.services.${o.name}.vip = ${o.vip} is not inside the tailnet's 100.64.0.0/10";
+    }) offTailnetServiceOpenings
+  );
+
+  # Earns the corporate box's screen openings (see offtailnetScreensSet above): after the ruleset
+  # loads empty, and again every few minutes, so a re-assigned VIP shuts the door within one tick.
+  # PartOf nftables: a reload empties the set, and this refills it right after.
+  systemd.services.offtailnet-screens-check = lib.mkIf screensOpen {
+    description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
+    after = [
+      "nftables.service"
+      "tailscaled.service"
+    ];
+    wants = [ "tailscaled.service" ];
+    partOf = [ "nftables.service" ];
+    wantedBy = [ "nftables.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.bash}/bin/bash ${offtailnetScreensCheck}/bin/offtailnet-screens-check";
+    };
+  };
+  systemd.timers.offtailnet-screens-check = lib.mkIf screensOpen {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "1min";
+      OnUnitActiveSec = "5min";
+    };
+  };
 }
