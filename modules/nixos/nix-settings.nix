@@ -38,6 +38,11 @@ in
     # mkForce: NixOS DEFINES its feature list (kvm included) rather than defaulting it, so a plain
     # definition would be concatenated to it.
     system-features = lib.mkForce (lib.remove "kvm" defaultFeatures);
+    # The store is bounded: below 10 G free, a build collects unrooted paths until 30 G are. Unbounded, a guest that
+    # builds for others filled its pool to 0 B (bioskop-nixos, 2026-10-23: 168 G of unrooted erofs layers), and every
+    # build then failed. As darwin's (modules/darwin/core.nix); a cluster builder sizes its own (mkDefault).
+    min-free = lib.mkDefault (10 * 1024 * 1024 * 1024);
+    max-free = lib.mkDefault (30 * 1024 * 1024 * 1024);
   };
 
   # ndh's own file only: an include of a file nothing declares is a way into the daemon's settings (trusted-users,
