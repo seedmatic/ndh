@@ -77,7 +77,7 @@ arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the t
 
 render() {
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json" [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
   )
@@ -85,7 +85,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | declare | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | declare | close | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
@@ -210,11 +210,88 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
 }
 
-@test "a window left open is refused, not overwritten" {
+@test "a window left open is refused BEFORE any question, on the terminal too, not overwritten" {
   window oui
+  : >"$t/prompt"
   run --separate-stderr window oui
   [ "$status" -ne 0 ]
-  [[ $stderr == *"a previous window was not closed"* ]]
+  [[ $stderr == *"is still open"* ]]
+  : "the operator's terminal says it, and was asked nothing"
+  grep -q "refusé : .*is still open: read it, then close it (ndh-ops keys-reconcile close ${rev:0:12})" "$t/prompt"
+  run grep -q '\[oui/non\]' "$t/prompt"
+  [ "$status" -eq 1 ]
+}
+
+close() { # <answer> <rev12>
+  printf '%s\n' "$1" >"$t/tty"
+  GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" close "$2"
+}
+
+@test "close: an open, unmerged window is removed after « oui », its worktree and its branch, and a new window opens" {
+  window oui
+  [ -d "$(tree)" ]
+  run --separate-stderr close oui "${rev:0:12}"
+  [ "$status" -eq 0 ]
+  [[ $output == *"fermée : keys-reconcile/${rev:0:12} supprimée"* ]]
+  [ ! -e "$(tree)" ]
+  run git -C "$t/cache/keys-reconcile/ndh.git" rev-parse --verify -q "refs/heads/keys-reconcile/${rev:0:12}"
+  [ "$status" -ne 0 ]
+  run --separate-stderr window oui
+  [ "$status" -eq 0 ]
+}
+
+@test "close: without « oui », nothing removed" {
+  window oui
+  run --separate-stderr close non "${rev:0:12}"
+  [ "$status" -eq 5 ]
+  [ -d "$(tree)" ]
+}
+
+@test "close: refused, nothing removed — a path, an unknown window, uncommitted changes, unarmed" {
+  window oui
+  run --separate-stderr close oui "../../etc"
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"is not a revision's 12-character prefix"* ]]
+  grep -q "refusé : close: '../../etc' is not a revision's 12-character prefix" "$t/prompt"
+  run --separate-stderr close oui "0123456789ab"
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"no window"* ]]
+  printf 'x\n' >>"$(tree)/.secrets"
+  run --separate-stderr close oui "${rev:0:12}"
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"has uncommitted changes"* ]]
+  [ -d "$(tree)" ]
+  git -C "$(tree)" checkout -q -- .secrets
+  rm -f "$t/delegation"
+  run --separate-stderr close oui "${rev:0:12}"
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"close is not armed"* ]]
+  [ -d "$(tree)" ]
+}
+
+@test "close: a window already merged into develop is refused, nothing removed" {
+  window oui
+  git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
+  run --separate-stderr close oui "${rev:0:12}"
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"is already on develop: nothing to discard"* ]]
+  [ -d "$(tree)" ]
+}
+
+@test "mutant: a close that skips the merged check removes a merged window" {
+  window oui
+  git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
+  : "the mutant keeps the loop and empties its body"
+  sed -e 's|^    ! git -C "\$bare" merge-base --is-ancestor "\$head" "refs/heads/\$ref" 2>/dev/null \|\||    :|' \
+    -e '/nothing to discard"$/d' "$BATS_TEST_DIRNAME/../close.sh" >"$t/close.sh"
+  [ "$(grep -c 'nothing to discard' "$t/close.sh")" -eq 0 ]
+  bash -n "$t/close.sh"
+  sed -i "s|^source .*/close.sh\$|source $t/close.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/close.sh\$" "$t/keys-reconcile"
+  run --separate-stderr close oui "${rev:0:12}"
+  : "under the mutant the merged window is deleted: what the case above guards"
+  [ "$status" -eq 0 ]
+  [ ! -e "$(tree)" ]
 }
 
 @test "without the trampoline's secret window, nothing is decrypted" {

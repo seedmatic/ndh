@@ -11,6 +11,9 @@
 #   keys-reconcile declare <machine>
 #                          (armed) declares that machine's next host key, a pending slot born on it, in the same
 #                          worktree discipline (declare.sh), after its « oui »: no session's sops set (design §p).
+#   keys-reconcile close <rev12>
+#                          (armed) removes one window left open, unmerged: its worktree and its branch, after checking
+#                          it is a keys-reconcile window, clean and unpushed. The only way to discard one (write.sh).
 #
 # No other argument, by design (F5): the revision is the one this closure was built from, baked below, and it must be
 # pushed; the batch is that revision's pending slots, in fleet-switch's order; declare's one argument is a machine
@@ -28,11 +31,18 @@ readonly ttyIn=@ttyIn@ ttyOut=@ttyOut@
 source @verify@
 source @write@
 source @declare@
+source @close@
 source @classes@/attic-cache-key.sh
 source @classes@/attic-tls-csr.sh
 
+# A refusal goes to the operator's terminal as well: the logger sends stderr to the unified log, where nobody reads it.
+say_refused() { # <message>
+  printf '[keys-reconcile] refused: %s\n' "$1" >&2
+  { printf 'refusé : %s\n' "$1" >>"$ttyOut"; } 2>/dev/null || true
+}
+
 die() {
-  printf '[keys-reconcile] refused: %s\n' "$*" >&2
+  say_refused "$*"
   exit 3
 }
 
@@ -191,6 +201,8 @@ window() {
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   measure "$work" || return $?
+  : "refused BEFORE the operator is asked anything: a window already open would only refuse after their answers"
+  reconcile::tree::free || return 1
   : "the operator's terminal, opened once for every answer of this window"
   exec 7<"$ttyIn"
   : "a console bootstrap's binding is the operator's eyes: they type the start of the fingerprint read at its console"
@@ -240,7 +252,11 @@ main() {
       pushed
       reconcile::declare "$2"
       ;;
-    *) die "usage: keys-reconcile plan | window | declare <machine> (no other argument: the revision is this closure's)" ;;
+    close:2)
+      armed || die "close is not armed: ndh-ops arm --tools keys-reconcile (the operator's gesture)"
+      reconcile::close "$2"
+      ;;
+    *) die "usage: keys-reconcile plan | window | declare <machine> | close <rev12> (no other argument: the revision is this closure's)" ;;
   esac
 }
 
