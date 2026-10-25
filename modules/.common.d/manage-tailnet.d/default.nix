@@ -240,20 +240,30 @@ let
       offTailnetVzHosts = map (h: bm.${h}.vzHostAddress) (
         builtins.filter (h: (bm.${h}.vzHostKind or "") == "foreign") (builtins.attrNames bm)
       );
-      # Every service here is operator-facing, so one src list covers them all — including
-      # the bbox, since whoever needs a screen also needs the router's UI.
+      # Every service is operator-facing, so every one admits the console role. The
+      # off-tailnet vz-host is admitted only where a service says so: the operator sits on
+      # the seats from that corporate box, so it needs their screens, and nothing else — not
+      # the router's admin UI (the operator's decision, 2026-10-25). Its subnet router's
+      # metalspace-guard accepts the same set, so the two edges agree.
       # A service is named in `dst` WITH its prefix; unlike a subnet route it needs no CIDR,
       # and unlike a tag it grants no reach to the advertiser's own addresses.
       serviceGrants = map (n: {
-        src = [ (tg t.role.console) ] ++ offTailnetVzHosts;
+        src = [
+          (tg t.role.console)
+        ]
+        ++ (if builtins.elem n offTailnetServices then offTailnetVzHosts else [ ]);
         dst = [ "svc:${n}" ];
         ip = tailnetServices.${n}.ip;
       }) serviceNames;
       # `tests` wants an `ip:port`, and a service accepts `svc:<name>:<port>` — so the
       # reachability of every service is assertable, and the control plane refuses a policy
       # that would drop one.
-      serviceProbes = builtins.concatMap (
-        n: map (e: "svc:${n}:${builtins.head (builtins.match "[a-z]+:([0-9]+)" e)}") tailnetServices.${n}.ip
+      serviceProbesOf =
+        n:
+        map (e: "svc:${n}:${builtins.head (builtins.match "[a-z]+:([0-9]+)" e)}") tailnetServices.${n}.ip;
+      serviceProbes = builtins.concatMap serviceProbesOf serviceNames;
+      offTailnetServices = builtins.filter (
+        n: tailnetServices.${n}.reachedByOffTailnetVzHosts or false
       ) serviceNames;
       # Concrete in-family addresses for the `tests` block below.  A test asserts an
       # `ip:port`, and a CIDR is not one — so the families above cannot be tested by
@@ -503,7 +513,17 @@ let
           # a headless node has no business on an operator console.
           deny = [ "${tg t.role.console}:5900" ];
         }
-      ];
+      ]
+      # The corporate box reaches exactly the services that say so (the seats' screens), and
+      # is refused the others (the router's admin UI): stated both ways, so a later edit that
+      # widens it by default again is refused by the control plane, not found in review.
+      ++ map (src: {
+        inherit src;
+        accept = builtins.concatMap serviceProbesOf offTailnetServices;
+        deny = builtins.concatMap serviceProbesOf (
+          builtins.filter (n: !(builtins.elem n offTailnetServices)) serviceNames
+        );
+      }) offTailnetVzHosts;
     };
   tailnetAclCanonicalFile = pkgs.writeText "tailnet-acl-canonical.json" (
     builtins.toJSON tailnetAclCanonical

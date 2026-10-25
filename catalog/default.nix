@@ -663,12 +663,29 @@ rec {
           # a MagicDNS host name for the tailnet members, a fabric-zone record behind a
           # subnet route for the corp Mac — and that asymmetry is in the mechanism, not
           # merely the spelling.
+          #
+          # `vip` is the service's tailnet address, pinned — the one exception to « no hardcoded
+          # IPs » above, because a firewall opening needs an address and cannot follow a name.
+          # The corp bare-metal reaches these two screens through its subnet router's
+          # metalspace-guard (modules/nixos/baremetal-segment.nix), which accepts exactly these
+          # VIPs; the activation refuses the opening when a VIP no longer matches the service's
+          # DNS answer, so a re-assigned address closes the door instead of moving it.
+          #
+          # Where a seat's screen (tcp/5900, listening on every address: macOS's Screen Sharing is
+          # a SIP-protected launchd socket with no bind) is reachable, and why:
+          #   * home LAN: by design (the operator's macOS credentials guard it; the home segment is
+          #     unmanaged, see home-segment-unmanaged-fabric-via-tailnet);
+          #   * tailnet: through these services only, by the grants (console role, and the corp box
+          #     for `reachedByOffTailnetVzHosts`);
+          #   * fabric: only the corp box, only to these VIPs, through metalspace-guard's earned set.
           rdp-bioskop = {
             advertisers = [ "bioskop" ];
             endpoints = {
               "tcp:5900" = "tcp://localhost:5900";
             };
             ip = [ "tcp:5900" ];
+            vip = "100.73.113.146";
+            reachedByOffTailnetVzHosts = true;
           };
           rdp-nikopol = {
             advertisers = [ "nikopol" ];
@@ -676,6 +693,8 @@ rec {
               "tcp:5900" = "tcp://localhost:5900";
             };
             ip = [ "tcp:5900" ];
+            vip = "100.77.231.247";
+            reachedByOffTailnetVzHosts = true;
           };
           # The one REMOTE destination: the corp Mac never joins the tailnet (VPN
           # binaries are not allowed on it), so its screen needs an advertiser that can
