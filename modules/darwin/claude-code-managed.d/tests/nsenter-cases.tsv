@@ -33,3 +33,14 @@ ALLOW	ALLOW	-	machinectl list
 ALLOW	ALLOW	-	man nsenter
 ALLOW	ALLOW	-	systemd-run --user --scope true
 ALLOW	ALLOW	-	grep -n nsenter /tmp/notes.txt
+
+# A help flag counts only when it is the whole command (🛡️, 2026-10-25): an exemption that looked at every argument let
+# the launched command carry one, `sudo nsenter … cat /etc/shadow -h`.
+DENY	ALLOW	-	sudo nsenter -t 1234 -a cat /etc/shadow -h
+DENY	ALLOW	-	sudo nsenter -t 1234 -n sh -c "ss -ltnH" -h
+DENY	ALLOW	-	sudo chroot /var/lib/incus/containers/attic-nikopol/rootfs cat /etc/shadow --version
+DENY	ALLOW	-	sudo unshare -m bash -c "id" --help
+DENY	ALLOW	-	sudo systemd-run -M attic-nikopol --wait cat /etc/shadow -V
+DENY	ALLOW	-	sudo machinectl shell attic-nikopol /bin/cat /etc/shadow --help
+ALLOW	ALLOW	-	nsenter --help
+ALLOW	ALLOW	-	chroot --version
