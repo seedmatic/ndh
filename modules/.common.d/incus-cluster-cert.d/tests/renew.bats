@@ -264,7 +264,7 @@ hostile() { # <cmd>... — runs <cmd> under it
   guard() { sed -n '/^# ★ xtrace-guard/,/^unset BASH_XTRACEFD/p' "$1" | sed -E 's/this script handles (private keys|cache tokens)/this script handles <secret>/'; }
   [ -n "$(guard "$here/incus-cluster-cert-renew.sh")" ]
   for f in authority-bootstrap-tls-root.d/authority-bootstrap-tls-root.sh ../home-manager/git.d/sops.sh \
-    keyring.d/ndh-keyring.sh ../nixos/attic-cache.d/token-issue.sh keys-yaml.d/krl.sh \
+    keyring.d/ndh-keyring.sh ../nixos/attic-cache.d/token-mint.sh keys-yaml.d/krl.sh \
     attic-tokens.d/unseal.sh; do
     [ "$(guard "$here/../$f")" = "$(guard "$here/incus-cluster-cert-renew.sh")" ] || { echo "${f}: not the same guard" >&2; return 1; }
   done

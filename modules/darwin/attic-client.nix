@@ -21,13 +21,32 @@ let
     inherit (ndh.context.catalog) netplan;
   };
   # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
+  # The fleet TLS authority's trusted roots (every slot not marked compromised): the only ones the pull accepts.
+  tlsRoots =
+    let
+      authorities = config.ndh.keysYaml.authorities or { };
+      trusted = config.ndh.keysYaml.trustedAuthoritySlots;
+    in
+    lib.concatMap
+      (
+        name:
+        lib.concatMap (m: lib.optional (m ? ca_crt) m.ca_crt) (lib.attrValues (trusted.${name} or { }))
+      )
+      (
+        lib.filter (name: lib.elem "tls-authority" (authorities.${name}.usage or [ ])) (
+          lib.attrNames authorities
+        )
+      );
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
     identityMode = "hostkey";
     identity = config.ndh.hostKey.file;
   };
-  receive = tokens.receive {
+  fetch = tokens.fetch {
     machine = config.networking.hostName;
+    inherit (cfg) metalspace;
+    inherit (config.ndh.keysYaml) keys;
+    inherit tlsRoots;
     unsealer = unseal;
   };
 in
@@ -69,34 +88,23 @@ in
         install -d -o ${account} -g ${account} -m 0700 ${home}
       '';
 
-      # The operator seat's deposit reaches it by its fixed path under sudo -n: that one command, nothing else.
-      environment.systemPackages = [ receive ];
-      security.sudo.extraConfig = ''
-        ${config.profile.user.name} ALL=(root) NOPASSWD: /run/current-system/sw/bin/ndh-attic-tokens-receive
-      '';
-      launchd.daemons.ndh-attic-tokens = {
-        command = lib.getExe unseal;
+      # Each machine pulls its own tokens from every cache (F6): at load and daily; the unseal runs at the end of
+      # each pull. A machine outside the fleet's inventory has none to pull.
+      launchd.daemons.ndh-attic-tokens = lib.mkIf (cfg.metalspace != null) {
+        command = lib.getExe fetch;
         serviceConfig = {
           Label = ndh.store.mkLaunchdLabel "attic-tokens";
           RunAtLoad = true;
+          StartCalendarInterval = [
+            {
+              Hour = 4;
+              Minute = 0;
+            }
+          ];
           StandardErrorPath = "/var/log/ndh-attic-tokens.log";
         };
       };
     }
-
-    # The keyring seat deposits every other live machine's tokens, by the operator's ssh name for each.
-    (lib.mkIf config.ndh.keyring.enable {
-      environment.systemPackages = [
-        (tokens.deposit {
-          seat = config.networking.hostName;
-          localReceive = receive;
-          targets = map (m: {
-            inherit (m) name kind;
-            ssh = "${m.kind}.${m.metalspace}";
-          }) (lib.filter (m: m.name != config.networking.hostName) ndh.context.catalog.machines);
-        })
-      ];
-    })
 
     (lib.mkIf cfg.watchStore.enable {
       launchd.daemons.ndh-attic-watch-store = {

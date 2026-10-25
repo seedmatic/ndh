@@ -1,5 +1,5 @@
-# The attic token delivery (roles × keys ⑤), one definition for every machine: the unseal (unseal.sh) and the
-# receive (receive.sh), built for one machine, and the operator seat's deposit (deposit.sh).
+# The attic token delivery (F6), one definition for every machine: the pull (fetch.sh), which takes this machine's
+# own tokens from every cache it reads, and the unseal (unseal.sh), which decrypts and checks them; built for one machine.
 {
   pkgs,
   lib,
@@ -45,44 +45,45 @@ rec {
       + builtins.readFile ./unseal.sh;
     };
 
-  receive =
-    { machine, unsealer }:
-    pkgs.writeShellApplication {
-      name = "ndh-attic-tokens-receive";
-      runtimeInputs = [ pkgs.coreutils ];
-      text = ''
-        machine=${lib.escapeShellArg machine}
-        store=${lib.escapeShellArg store}
-        maxBytes=${toString maxBytes}
-        unseal=${lib.getExe unsealer}
-        declare -A cacheFqdn=(${cacheFqdn})
-      ''
-      + builtins.readFile ./receive.sh;
-    };
-
-  # targets: [ { name; kind; ssh; } ], every machine but the seat, by the operator's ssh name for it.
-  deposit =
+  # The pull (F6): machine, its own metalspace (its write token comes from that cache alone), keys (keys.yaml's, for
+  # its served directory), tlsRoots (the fleet TLS authority's trusted ca_crt PEMs: the ONLY roots the pull accepts,
+  # never the system store, which holds every public CA), unsealer.
+  fetch =
     {
-      seat,
-      localReceive,
-      targets,
+      machine,
+      metalspace,
+      keys,
+      tlsRoots,
+      unsealer,
     }:
     let
-      table =
-        attr: lib.concatMapStringsSep " " (t: "[${t.name}]=${lib.escapeShellArg t.${attr}}") targets;
+      cacert = pkgs.writeText "ndh-attic-tokens-tls-roots.pem" (lib.concatStringsSep "\n" tlsRoots);
+      targets = import ./targets.nix { inherit lib keys netplan; };
+      mine = lib.findFirst (t: t.machine == machine) null targets;
+      caches = lib.concatStringsSep " " (
+        lib.mapAttrsToList (ms: bm: "[${ms}]=${lib.escapeShellArg bm.atticFqdn}") netplan.baremetal
+      );
     in
     pkgs.writeShellApplication {
-      name = "ndh-attic-tokens-deposit";
+      name = "ndh-attic-tokens-fetch";
       runtimeInputs = [
         pkgs.coreutils
-        pkgs.openssh
+        pkgs.curl
+        pkgs.diffutils
+        pkgs.findutils
+        pkgs.gnugrep
       ];
       text = ''
-        seat=${lib.escapeShellArg seat}
-        localSudo=/usr/bin/sudo
-        localReceive=${lib.getExe localReceive}
-        declare -A targetKind=(${table "kind"}) targetSsh=(${table "ssh"})
+        machine=${lib.escapeShellArg machine}
+        own=${lib.escapeShellArg metalspace}
+        store=${lib.escapeShellArg store}
+        dir=${lib.escapeShellArg (if mine == null then "" else mine.dir)}
+        maxBytes=${toString maxBytes}
+        cacert=${lib.escapeShellArg cacert}
+        staleAfter=10
+        unseal=${lib.getExe unsealer}
+        declare -A caches=(${caches})
       ''
-      + builtins.readFile ./deposit.sh;
+      + builtins.readFile ./fetch.sh;
     };
 }
