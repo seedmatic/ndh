@@ -67,3 +67,16 @@ ALLOW	ALLOW	-	sudo launchctl kickstart -k "system/$label"
 ALLOW	ALLOW	-	ls -l /tmp/build/activate
 ALLOW	ALLOW	-	cat /tmp/x/activate
 ALLOW	ALLOW	-	sha256sum /run/current-system/activate
+
+# A root shell fed its program from STDIN or by xargs (🛡️, 2026-10-25): the hook can't read what it runs, the same
+# blind feed as an opaque program under sudo, one level down. Refused when the shell gets no script or -c to judge.
+DENY	ALLOW	-	echo /run/current-system/activate | sudo xargs sh
+DENY	ALLOW	-	echo /run/current-system/activate | sudo xargs bash
+DENY	ALLOW	-	printf '%s\n' /tmp/x/activate | sudo xargs -I{} sh {}
+DENY	ALLOW	-	echo 'sudo /run/current-system/activate' | sudo sh
+DENY	ALLOW	-	sudo bash < /tmp/script.sh
+DENY	ALLOW	-	sudo sh -s < /tmp/script.sh
+# Still judged, so allowed: a root shell given -c with a literal the hook reads.
+ALLOW	ALLOW	-	sudo sh -c 'launchctl kickstart -k system/org.nixos.nix-daemon'
+# xargs feeding sudo ANY program is refused already (the opaque-program rule): what it runs on comes from stdin.
+DENY	DENY	-	find /tmp/logs -name '*.log' -print0 | sudo xargs -0 rm -f
