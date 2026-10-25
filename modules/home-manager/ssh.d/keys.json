@@ -381,6 +381,11 @@
           "origin": "keyring",
           "age": "age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf",
           "recipient": true
+        },
+        "26-10-25": {
+          "state": "pending",
+          "origin": "host",
+          "bootstrap": "console"
         }
       }
     },
