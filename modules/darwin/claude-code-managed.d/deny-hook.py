@@ -477,6 +477,7 @@ class Analyzer:
                 self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
             self.check_system_switch(prog, rest, argv)
+            self.check_namespace_doors(prog, rest, argv)
             nxt = self.peel(prog, rest, depth)
             if nxt is not None:
                 # A launcher (bash -c, sudo, env, ssh, nix run…) is not a plain removal either.
@@ -809,6 +810,22 @@ class Analyzer:
                     and any(a in switches for a in rest):
                 self.deny(f"points the system profile at another closure, half of a switch; it {self.SYSTEM_SWITCH_WHY}",
                           argv)
+
+    # A second door to `incus exec` and `incus shell`, which are refused outright, read-only commands included: entering
+    # a container's or another process's namespaces opens a root shell there with passwordless sudo, so these are
+    # refused the same way, whatever they launch (security, 2026-10-25). Asking for help or a listing changes nothing.
+    NAMESPACE_DOORS_WHY = ("enters a container's or another process's namespaces, a second door to incus exec, which "
+                           "is refused outright: the operator runs it")
+
+    def check_namespace_doors(self, prog, rest, argv):
+        if any(a in ("-h", "--help", "-V", "--version") for a in rest):
+            return
+        sub = positionals(rest, {"-M", "--machine", "-H", "--host"})[:1]
+        door = (prog in ("nsenter", "lxc-attach", "unshare", "chroot")
+                or (prog == "machinectl" and sub and sub[0] in ("shell", "login"))
+                or (prog == "systemd-run" and any(a in ("-M", "--machine") or a.startswith("--machine=") for a in rest)))
+        if door:
+            self.deny(self.NAMESPACE_DOORS_WHY, argv)
 
     def peel_nix(self, rest):
         if not rest or rest[0] not in ("run", "shell", "develop"):
