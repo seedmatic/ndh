@@ -54,6 +54,7 @@ let
   loggerTagEnrich = "nixos.services.ssh-keys-enrichment.enrichSSHKeysYaml";
   loggerTagSplit = "nixos.services.ssh-keys-enrichment.splitSSHKeysYaml";
   loggerTagExtract = "nixos.services.ssh-keys-enrichment.extractSSHKeys";
+  loggerTagTrustedUserCa = "nixos.services.ssh-keys-enrichment.trustedUserCa";
 
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 "${ndhHm}/ssh-key.d/ssh-extract-keys.split-exp.yq" "$out"
@@ -67,6 +68,10 @@ let
     ssh-split-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
+    };
+    ssh-trusted-user-ca = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-trusted-user-ca.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagTrustedUserCa;
     };
     # ssh-extract-keys carries an extra @splitExpFile@ substitution but shares
     # the same activation pipeline + logger shape, so bundle it alongside.
@@ -246,18 +251,8 @@ in
           "${profileOwnerName}"
       ''}
 
-      # 4. Build the aggregate TrustedUserCAKeys file in place — every
-      #    activation, so stale CAs cannot linger.
-      : > "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
-      for ca in "${config.sshPaths.systemKeysDir}"/*-ca.pub; do
-        [ -f "$ca" ] || continue
-        case "$(basename "$ca")" in
-          trusted-user-ca.pub) continue ;;
-        esac
-        cat "$ca" >> "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
-        printf "\n" >> "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
-      done
-      chmod 644 "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"
+      # 4. The aggregate TrustedUserCAKeys file, in place.
+      ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-trusted-user-ca "${config.sshPaths.systemKeysDir}"
 
       # 5. Materialize authorizedKeysDir/<user> from EVERY published generation of
       #    the rdp-host pubkey. The earlier system.activationScripts.sshGroupKeys

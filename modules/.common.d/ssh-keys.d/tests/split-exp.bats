@@ -11,6 +11,8 @@
 # The names matter because two aggregators glob them: both platforms rebuild
 # trusted-user-ca.pub from `*-ca.pub` on every activation, so a second authority
 # generation joins the trust set with no change on either side.
+# The fixtures' authority declares `usage: [ssh-authority]`, as the registry's does: an
+# authority without it becomes no `-ca.pub` at all (trust-by-usage.bats).
 
 SPLIT_EXP="${BATS_TEST_DIRNAME}/../../../home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq"
 
@@ -40,6 +42,7 @@ one_slot() {
 authorities:
   mammoth-skate:
     type: ssh-ed25519
+    usage: [ssh-authority]
     comment: ca
     slots:
       26-05-29: { public: AUTHPUBLIC }
@@ -58,6 +61,7 @@ two_slots() {
 authorities:
   mammoth-skate:
     type: ssh-ed25519
+    usage: [ssh-authority]
     comment: ca
     slots:
       26-05-29: { public: OLDAUTHPUBLIC }
@@ -124,6 +128,7 @@ user rdp-host.pub" ]
 authorities:
   mammoth-skate:
     type: ssh-ed25519
+    usage: [ssh-authority]
     slots:
       26-10-04: { public: AUTHPUBLIC }
 keys:
@@ -186,6 +191,7 @@ YAML
 authorities:
   mammoth-skate:
     type: ssh-ed25519
+    usage: [ssh-authority]
     slots:
       26-05-29: { public: AUTHPUBLIC }
 keys:
@@ -204,6 +210,7 @@ YAML
 authorities:
   mammoth-skate:
     type: ssh-ed25519
+    usage: [ssh-authority]
     comment: ca
     slots:
       26-05-29: { public: OLDAUTHPUBLIC, compromised: published }

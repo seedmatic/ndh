@@ -35,7 +35,13 @@ env(TMPDIR) + "/" as $tmpdir |
 # Authorities need the overlap most: both aggregators that build
 # trusted-user-ca.pub glob `*-ca.pub`, so a second generation joins the trust set
 # with no change on either platform.
-( ( .authorities // {} ) | to_entries | map(
+#
+# That glob is why only an authority whose `usage` holds `ssh-authority` becomes a
+# `-ca.pub`: every file named so is trusted to sign ssh USER certificates
+# (TrustedUserCAKeys) and HOST certificates (KnownHostsCommand's @cert-authority).
+# A TLS authority, or one declaring no usage, is no ssh authority, whatever its
+# file would be called.
+( ( .authorities // {} ) | to_entries | map(select((.value.usage // []) | any_c(. == "ssh-authority"))) | map(
     .key as $authName |
     .value.type as $authType |
     .value.comment as $authComment |
