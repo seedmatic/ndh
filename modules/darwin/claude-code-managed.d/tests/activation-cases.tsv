@@ -1,0 +1,44 @@
+# Running a machine's system activation is the operator's switch gesture: it changes what runs, as root, and on a
+# seat it can reach tart:vm:factory-reset:apply, whose rm -rf destroys a guest's disks (its Incus DB included). The
+# sessions have passwordless sudo here, so the deny hook is the only barrier. Columns, tab-separated: want
+# (DENY|ALLOW), today (bad62b2a's hook, measured), cwd (- for /tmp/work), cmd. A case is loosened only with 🛡️'s review.
+
+# The activation script itself, by every path a system profile reaches it.
+DENY	ALLOW	-	/run/current-system/activate
+DENY	ALLOW	-	sudo /run/current-system/activate
+DENY	ALLOW	-	/nix/var/nix/profiles/system/activate
+DENY	ALLOW	-	sudo /nix/var/nix/profiles/system/activate
+DENY	ALLOW	-	sudo /nix/var/nix/profiles/system-42-link/activate
+DENY	ALLOW	-	sudo /nix/store/abc-darwin-system-25.11/activate
+DENY	ALLOW	-	sudo /nix/store/abc-nixos-system-bioskop-nixos-25.11/activate
+DENY	ALLOW	-	sudo /run/current-system/activate-user
+# NixOS: the switch program inside a system closure.
+DENY	ALLOW	-	sudo /run/current-system/bin/switch-to-configuration switch
+DENY	ALLOW	-	sudo /nix/var/nix/profiles/system/bin/switch-to-configuration boot
+DENY	ALLOW	-	sudo /nix/store/abc-nixos-system-x/bin/switch-to-configuration test
+# Behind a launcher, a shell or a prefix.
+DENY	ALLOW	-	sudo env VM_FACTORY_RESET=true /run/current-system/activate
+DENY	ALLOW	-	sudo VM_FACTORY_RESET=true /run/current-system/activate
+DENY	ALLOW	-	export VM_FACTORY_RESET=true; sudo /run/current-system/activate
+DENY	ALLOW	-	sudo bash -c '/run/current-system/activate'
+DENY	ALLOW	-	sudo sh /run/current-system/activate
+DENY	ALLOW	-	sudo bash /nix/var/nix/profiles/system/activate
+DENY	ALLOW	-	cd /run/current-system && sudo ./activate
+# Pointing the system profile at another closure is half of a switch.
+DENY	ALLOW	-	sudo nix-env -p /nix/var/nix/profiles/system --set /nix/store/abc-darwin-system-25.11
+DENY	ALLOW	-	sudo nix-env --profile /nix/var/nix/profiles/system --rollback
+# Setting the factory-reset variable at all, for any command.
+DENY	ALLOW	-	export VM_FACTORY_RESET=true
+DENY	ALLOW	-	VM_FACTORY_RESET=1 true
+
+# Already refused: the darwin-rebuild front door (kept so a rewrite keeps them).
+DENY	DENY	-	sudo darwin-rebuild switch
+DENY	DENY	-	sudo darwin-rebuild activate
+DENY	DENY	-	sudo /run/current-system/sw/bin/darwin-rebuild activate
+
+# Reading an activation script, or listing a profile, changes nothing.
+ALLOW	ALLOW	-	cat /run/current-system/activate
+ALLOW	ALLOW	-	ls -l /run/current-system/
+ALLOW	ALLOW	-	readlink /nix/var/nix/profiles/system
+ALLOW	ALLOW	-	grep -n VM_FACTORY_RESET /run/current-system/activate
+ALLOW	ALLOW	-	nix-env -p /nix/var/nix/profiles/system --list-generations
