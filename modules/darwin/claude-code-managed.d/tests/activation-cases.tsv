@@ -42,3 +42,28 @@ ALLOW	ALLOW	-	ls -l /run/current-system/
 ALLOW	ALLOW	-	readlink /nix/var/nix/profiles/system
 ALLOW	ALLOW	-	grep -n VM_FACTORY_RESET /run/current-system/activate
 ALLOW	ALLOW	-	nix-env -p /nix/var/nix/profiles/system --list-generations
+
+
+# The indirections (🛡️, 2026-10-25). A file named activate, activate-user or switch-to-configuration is refused BY
+# NAME, whatever path reaches it: a symlink made earlier in the same command hides the closure from the hook, and on
+# a no-rollback path with passwordless sudo a false refusal is cheap while a miss costs a guest's disks.
+DENY	ALLOW	-	ln -s /run/current-system /tmp/x && sudo /tmp/x/activate
+DENY	ALLOW	-	sudo /tmp/build/activate
+DENY	ALLOW	-	/tmp/build/switch-to-configuration switch
+DENY	ALLOW	-	sudo -i /run/current-system/activate
+DENY	ALLOW	-	sudo -s /run/current-system/activate
+DENY	ALLOW	-	echo /run/current-system/activate | xargs sudo
+DENY	ALLOW	-	find /run/current-system -name activate -exec sudo {} \;
+# An OPAQUE PROGRAM under sudo: a variable or a substitution in the PROGRAM position. With passwordless sudo this is a
+# root command the hook cannot judge at all, a blind spot for EVERY refusal, not only activation. Decided: refused.
+# Writing the path out literally is the way. Arguments stay free: only the program position is judged.
+DENY	ALLOW	-	p=/run/current-system/activate; sudo "$p"
+DENY	ALLOW	-	sudo "$TOOL" --apply
+DENY	ALLOW	-	sudo $(command -v something) --apply
+DENY	ALLOW	-	sudo `which something`
+ALLOW	ALLOW	-	sudo cp "$src" "$dst"
+ALLOW	ALLOW	-	sudo launchctl kickstart -k "system/$label"
+# Reading an activate script, by any path, changes nothing.
+ALLOW	ALLOW	-	ls -l /tmp/build/activate
+ALLOW	ALLOW	-	cat /tmp/x/activate
+ALLOW	ALLOW	-	sha256sum /run/current-system/activate
