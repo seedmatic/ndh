@@ -14,6 +14,22 @@ let
     inherit (ndh.context.catalog) netplan;
   };
   # Its identity is the sops keyFile: its access point's age identity, the one the tokens are sealed to.
+  # The fleet TLS authority's trusted roots (every slot not marked compromised): the only ones the pull accepts.
+  tlsRoots =
+    let
+      authorities = config.ndh.keysYaml.authorities or { };
+      trusted = config.ndh.keysYaml.trustedAuthoritySlots;
+    in
+    lib.concatMap
+      (
+        name:
+        lib.concatMap (m: lib.optional (m ? ca_crt) m.ca_crt) (lib.attrValues (trusted.${name} or { }))
+      )
+      (
+        lib.filter (name: lib.elem "tls-authority" (authorities.${name}.usage or [ ])) (
+          lib.attrNames authorities
+        )
+      );
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
     identityMode = "keyfile";
@@ -37,29 +53,41 @@ in
       };
     }
 
-    {
-      # The tokens rest as ciphertext; their tmpfs paths are filled at every boot, once the identity is placed.
-      # Present before the client is enabled, so a deposit lands first and the client starts on tokens in place.
+    # A machine outside the fleet's inventory (a generic bringup image) has no token to pull.
+    (lib.mkIf (cfg.metalspace != null) {
+      # The tokens rest as ciphertext; their tmpfs paths are filled at boot and at every pull, once the identity is
+      # placed. Each machine pulls its own from every cache (F6): daily, and at boot after the identity; the unseal
+      # runs at the end of each pull.
       systemd.tmpfiles.rules = [ "d ${tokens.store} 0700 root root - -" ];
-      # The operator seat's deposit reaches it over ssh, by its fixed path under sudo -n.
-      environment.systemPackages = [
-        (tokens.receive {
-          machine = config.networking.hostName;
-          unsealer = unseal;
-        })
-      ];
       systemd.services.ndh-attic-tokens = {
-        description = "Unseal this machine's attic tokens into ${cfg.paths.dir}";
+        description = "Pull and unseal this machine's attic tokens into ${cfg.paths.dir}";
         wantedBy = [ "multi-user.target" ];
-        after = [ "sops-install-secrets.service" ];
-        unitConfig.ConditionDirectoryNotEmpty = tokens.store;
+        after = [
+          "sops-install-secrets.service"
+          "network-online.target"
+        ];
+        wants = [ "network-online.target" ];
         serviceConfig = {
           Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = lib.getExe unseal;
+          ExecStart = lib.getExe (
+            tokens.fetch {
+              machine = config.networking.hostName;
+              inherit (cfg) metalspace;
+              inherit (config.ndh.keysYaml) keys;
+              inherit tlsRoots;
+              unsealer = unseal;
+            }
+          );
         };
       };
-    }
+      systemd.timers.ndh-attic-tokens = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "daily";
+          Persistent = true;
+        };
+      };
+    })
 
     (lib.mkIf cfg.watchStore.enable {
       # Started as soon as the delivery writes the token, and at every boot once it is there.

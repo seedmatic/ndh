@@ -1,6 +1,6 @@
 # The cache container's bats suites as a flake check: attic-tls-key (the key is never replaced, a
-# foreign leaf is refused), attic-token-issue (one far validity, the scopes, who gets a write token) and
-# attic-cache-ensure (the key generated inside and named as the catalog accepts it), and the guest's attic-publish (the
+# foreign leaf is refused), attic-token-mint (the declared validity, the scopes, who gets a write token, the hashed
+# directories), attic-cache-ensure (the key generated inside and named as the catalog accepts it), and the guest's attic-publish (the
 # container's public, read as hostile input, signed by the key the guest serves) through the real trampoline and
 # logger (handed over: the sandbox cannot search the store for it).
 { pkgs, trampoline }:

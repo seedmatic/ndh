@@ -53,6 +53,19 @@ in
       description = "The caches this machine reads, by fabric name.";
     };
 
+    metalspace = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      readOnly = true;
+      # Null outside the fleet's inventory (a generic bringup image): its unit is then not built (attic-client.nix).
+      default =
+        let
+          m = lib.findFirst (m: m.name == config.networking.hostName) null ndh.context.catalog.machines;
+        in
+        if m == null then null else m.metalspace;
+      defaultText = lib.literalExpression "this machine's metalspace in catalog/machines.nix, or null";
+      description = "This machine's metalspace: the one cache that also gives it a write token.";
+    };
+
     ownCache = lib.mkOption {
       type = lib.types.str;
       example = "attic.bioskop";

@@ -32,6 +32,9 @@ let
   secretsDir = "/var/lib/attic-secrets";
   tlsDir = "/var/lib/attic-tls";
   envFile = "${secretsDir}/server.env";
+  # The served tokens: ciphertext only, rewritten at each mint, so no persistent device; a delivery starts it empty and
+  # the timer's first tick (Persistent) fills it.
+  tokensDir = "/var/lib/attic-tokens";
   loopback = "127.0.0.1:8080";
   metalspace = if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn;
   # The TLS leaf keys-reconcile signed for this cache, if the catalog records one.
@@ -162,6 +165,18 @@ let
             proxy_request_buffering off;
           '';
         };
+        # Each machine pulls its own tokens: ciphertext only, sealed to its access point, in a directory named by a
+        # hash; no listing, no cache on the way, nothing but .age files.
+        locations."~ ^/tokens/[0-9a-f]{64}/[a-z0-9.-]+\\.age$" = {
+          root = "/var/lib";
+          extraConfig = ''
+            rewrite ^/tokens/(.*)$ /attic-tokens/$1 break;
+            autoindex off;
+            add_header Cache-Control "no-store" always;
+            default_type application/octet-stream;
+          '';
+        };
+        locations."/tokens/".return = "404";
       };
     };
     systemd.services.nginx = {
@@ -180,6 +195,48 @@ let
       description = "Take a new TLS leaf: check it against the held key, then serve it";
       serviceConfig.Type = "oneshot";
       script = "systemctl restart attic-tls-key.service nginx.service";
+    };
+
+    # The tokens, minted here for every target and pulled by each machine (F6): weekly, valid twice that, so a missed
+    # tick is harmless and two fail closed. `systemctl start attic-token-mint` is the « mint now » that follows a
+    # rotation of the token-signing secret.
+    systemd.services.attic-token-mint = {
+      description = "Mint the private cache's tokens for every machine, sealed to each access point";
+      requires = [ "attic-cache-ensure.service" ];
+      after = [ "attic-cache-ensure.service" ];
+      # atticd-atticadm as attic-cache-ensure takes it: the atticd module's wrapper, which loads atticd's own config
+      # and secret.
+      path = [ "/run/current-system/sw" ];
+      serviceConfig = {
+        Type = "oneshot";
+        Environment = [
+          "CACHE_FQDN=${cfg.fqdn}"
+          "METALSPACE=${metalspace}"
+          "CACHE_NAME=${cfg.cacheName}"
+          "VALIDITY=${cfg.tokens.validity}"
+          "TARGETS=${
+            lib.concatMapStringsSep "\\n" (
+              t: "${t.machine} ${t.metalspace} ${t.dir} ${t.publicKey}"
+            ) cfg.tokenTargets
+          }"
+        ];
+        ExecStart = "${
+          script "attic-token-mint" [
+            pkgs.age
+            pkgs.ssh-to-age
+            pkgs.coreutils
+            pkgs.findutils
+          ] ./attic-cache.d/token-mint.sh
+        }/bin/attic-token-mint ${tokensDir}";
+      };
+    };
+    systemd.timers.attic-token-mint = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = cfg.tokens.period;
+        OnActiveSec = "1min";
+        Persistent = true;
+      };
     };
 
     systemd.services.attic-cache-ensure = {
@@ -281,6 +338,24 @@ in
       description = "attic's retention period, server-wide and on the cache (operator, 2026-10-15).";
     };
 
+    # The tokens rotate by themselves (the operator, 2026-10-22: never a rotation waiting on their hand): minted every
+    # period, valid twice that; a machine fails loudly at three halves of it. attic cannot revoke, so `validity` bounds
+    # a stolen token (🛡️, 2026-10-25).
+    tokens = {
+      period = lib.mkOption {
+        type = lib.types.str;
+        readOnly = true;
+        default = "weekly";
+        description = "How often the cache mints its tokens (systemd OnCalendar).";
+      };
+      validity = lib.mkOption {
+        type = lib.types.str;
+        readOnly = true;
+        default = "14 days";
+        description = "Each token's own validity (atticadm --validity): twice the period.";
+      };
+    };
+
     keyName = lib.mkOption {
       type = lib.types.str;
       # Named after the metalspace, as catalog/private-caches.nix accepts it (the probe, outside the catalog,
@@ -352,42 +427,44 @@ in
             metalspace = lib.mkOption { type = lib.types.str; };
             publicKey = lib.mkOption {
               type = lib.types.str;
-              description = "Its access point's operator-seat host key, PUBLIC (`ssh-ed25519 AAAA…`).";
+              description = "Its access point's operator-seat host key, PUBLIC (`ssh-ed25519 AAAA…`), its current slot.";
+            };
+            dir = lib.mkOption {
+              type = lib.types.str;
+              description = "Where its tokens are served: a hash of the machine and its public, naming no machine.";
             };
           };
         }
       );
-      # Every metalspace's two machines — its darwin host and its NixOS guest — that share one access
-      # point, whose age recipient is ssh-to-age of the operator seat's host key (roles x keys, S3b).
-      # An access point with no host-<seat> key recorded yet is left out: its machines wait for it.
-      default = lib.concatLists (
-        lib.mapAttrsToList (
-          host: bm:
-          let
-            slots = (config.ndh.keysYaml.keys."host-${host}" or { }).slots or { };
-            newest = lib.last (lib.sort lib.lessThan (lib.attrNames slots));
-            key = "${config.ndh.keysYaml.keys."host-${host}".type or "ssh-ed25519"} ${slots.${newest}.public}";
-          in
-          lib.optionals (slots != { }) (
-            map
-              (machine: {
-                inherit machine;
-                metalspace = host;
-                publicKey = key;
-              })
-              [
-                host
-                bm.nixosHostname
-              ]
-          )
-        ) (netplan.baremetal or { })
-      );
-      defaultText = lib.literalExpression "each metalspace's darwin host and NixOS guest, with its host-<seat> public key";
-      description = "The machines attic-token-issue issues for, each with its access point's public key.";
+      default = import ../.common.d/attic-tokens.d/targets.nix {
+        inherit lib netplan;
+        inherit (config.ndh.keysYaml) keys;
+      };
+      defaultText = lib.literalExpression "modules/.common.d/attic-tokens.d/targets.nix";
+      description = "The machines this cache mints tokens for, each with its access point's current public key.";
     };
   };
 
   config = lib.mkIf cfg.enable {
+    # A token is sealed only to a verified public: never to a pending slot's, which keys-reconcile has not yet checked.
+    assertions = [
+      {
+        assertion =
+          let
+            pending = lib.concatMap (
+              entry:
+              let
+                slots = entry.slots or { };
+              in
+              map (n: "${entry.type or "ssh-ed25519"} ${slots.${n}.public or ""}") (
+                lib.filter (n: (slots.${n}.state or "") == "pending") (lib.attrNames slots)
+              )
+            ) (lib.attrValues config.ndh.keysYaml.keys);
+          in
+          lib.all (t: !(lib.elem t.publicKey pending)) cfg.tokenTargets;
+        message = "ndh.atticCache.tokenTargets: a token would be sealed to a PENDING slot's public, not yet verified by keys-reconcile";
+      }
+    ];
     ndh.incusNixosContainers.instances.${cfg.instanceName} = {
       inherit (cfg) target;
       # Its name before it was per metalspace. Only bioskop's ran: converge renames it in place, data and all. Another
@@ -440,37 +517,6 @@ in
         };
       };
     };
-
-    # The operator runs it on this NixOS guest: ciphertext only comes out, for ndh-attic-tokens-deposit.
-    environment.systemPackages = [
-      (pkgs.writeShellApplication {
-        name = "attic-token-issue";
-        runtimeInputs = [
-          config.virtualisation.incus.package
-          pkgs.age
-          pkgs.ssh-to-age
-          pkgs.coreutils
-          pkgs.findutils
-        ];
-        text = ''
-          CACHE_FQDN=${lib.escapeShellArg cfg.fqdn}
-          METALSPACE=${
-            lib.escapeShellArg (
-              if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn
-            )
-          }
-          CACHE_NAME=${lib.escapeShellArg cfg.cacheName}
-          PROJECT=${lib.escapeShellArg config.ndh.incusNixosContainers.project}
-          INSTANCE=${lib.escapeShellArg cfg.instanceName}
-          TARGETS=${
-            lib.escapeShellArg (
-              lib.concatMapStringsSep "\n" (t: "${t.machine} ${t.metalspace} ${t.publicKey}") cfg.tokenTargets
-            )
-          }
-        ''
-        + builtins.readFile ./attic-cache.d/token-issue.sh;
-      })
-    ];
 
     # The cache's public, written by attic-cache-ensure on the tls device this guest shares, is signed here with the key
     # this guest serves and published for the seat (keys-reconcile, class attic-cache-key). At every activation, and
