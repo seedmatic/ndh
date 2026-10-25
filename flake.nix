@@ -1756,6 +1756,12 @@
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
           };
+          keys-reconcile-fingerprint-window-mutant =
+            import ./modules/.common.d/keys-reconcile.d/tests/fingerprint-window-mutant.nix
+              {
+                inherit pkgs;
+                trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+              };
           host-key-generate-bats = import ./modules/.common.d/host-key.d/tests/generate-bats.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
