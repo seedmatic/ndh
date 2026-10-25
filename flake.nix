@@ -1774,11 +1774,19 @@
               signsWith = c: c.nix.settings.secret-key-files;
               holdsFleet = c: c.sops.secrets ? "${fleet}.key.bare";
               ownKey = c: (c.ndh.nixSigning or { }).signs or false;
+              # On a machine signing with its own key, the compose step REMOVES the fleet private an earlier
+              # activation wrote: read in the script as built, not in an intention.
+              removesFleet =
+                c:
+                lib.elem fleet c.ndh.cacheTrust.retiredNames
+                && lib.hasInfix "rm -f /etc/nix/${fleet}.key" (
+                  builtins.readFile "${c.ndh.cacheTrust.composeScript}/bin/cache-trust-compose"
+                );
               trustsFleet = c: lib.any (lib.hasPrefix "${fleet}:") c.nix.settings.extra-trusted-public-keys;
               wrong =
                 c:
                 lib.length (signsWith c) != 1
-                || (ownKey c && (holdsFleet c || lib.any (lib.hasInfix fleet) (signsWith c)))
+                || (ownKey c && (holdsFleet c || lib.any (lib.hasInfix fleet) (signsWith c) || !(removesFleet c)))
                 || (!(ownKey c) && !(holdsFleet c))
                 || !(trustsFleet c);
               offending = lib.attrNames (lib.filterAttrs (_: wrong) machines);
@@ -1788,7 +1796,7 @@
                 }).config;
             in
             assert lib.assertMsg (offending == [ ])
-              "nix-signing-one-key: not exactly one signing key, the fleet private held where unused, or the fleet public untrusted, on: ${lib.concatStringsSep ", " offending}";
+              "nix-signing-one-key: not exactly one signing key, the fleet private held or left where unused, or the fleet public untrusted, on: ${lib.concatStringsSep ", " offending}";
             assert lib.assertMsg (wrong mutant) "nix-signing-one-key: a machine signing with two keys passed";
             pkgs.runCommand "nix-signing-one-key" { } "touch $out";
           # A partial batch (the operator's order, 2026-10-22: the guests first): with two machines pending and two

@@ -22,11 +22,9 @@
     };
   };
 
+  # Every machine runs it: it writes the fleet keys it signs with and removes the ones it no longer signs with.
   config.system.activationScripts.postActivation.text =
-    lib.mkIf (config.ndh.cacheTrust.cachixNames != [ ])
-      (
-        lib.mkOrder config.ndh.darwin.postActivationOrder.cacheTrustCompose ''
-          ${config.ndh.cacheTrust.composeScript}/bin/cache-trust-compose
-        ''
-      );
+    lib.mkOrder config.ndh.darwin.postActivationOrder.cacheTrustCompose ''
+      ${config.ndh.cacheTrust.composeScript}/bin/cache-trust-compose
+    '';
 }
