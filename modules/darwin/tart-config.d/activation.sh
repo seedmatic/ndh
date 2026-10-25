@@ -107,6 +107,39 @@ tart:image:zfs:contains() {
 	tart:image:partition:hint:present "$image_path" solaris
 }
 
+tart:vm:recreate:guard() {
+	# tart:vm:recreate:guard <data disk>…  — 0 when every disk may be destroyed, 1 (naming it) when one may not.
+	#
+	# tart:vm:recreate removes the whole VM directory, data disks included, and is reached AUTOMATICALLY when the
+	# root disk is missing, its size unreadable or its resize failed. On a live guest those data disks are the
+	# pool that holds /, /nix and /var/lib/incus (the cluster's DB): erasing them is not reversible. So a disk is
+	# destroyed only when it is absent or carries no ZFS member (tart:image:zfs:contains says 1: no ZFS or Solaris
+	# partition hint). ZFS on it (0), or not being able to tell (2), refuses: « I could not look » never counts as
+	# « nothing there ». A fresh host, whose data disks are blank or absent, still recovers by recreate.
+	# What « 1 » does NOT prove: that the disk is empty. A non-ZFS disk (ext4, raw data with no partition table)
+	# reads 1 as well; this guard protects ZFS pools, which is what these VMs' data disks are.
+	local disk status
+	for disk in "$@"; do
+		[[ -e "$disk" ]] || continue
+		status=0
+		tart:image:zfs:contains "$disk" || status=$?
+		case "$status" in
+			1) ;;
+			0)
+				echo "[tartConfig][ERROR] REFUSED to recreate the VM: data disk $disk holds a ZFS pool (the guest's /, /nix and Incus state)." >&2
+				echo "[tartConfig][ERROR] Nothing was stopped, deleted or removed. To re-materialize, move the data disks aside by hand first: that is the operator's act." >&2
+				return 1
+				;;
+			*)
+				echo "[tartConfig][ERROR] REFUSED to recreate the VM: cannot tell whether data disk $disk holds a ZFS pool (unreadable partition table)." >&2
+				echo "[tartConfig][ERROR] Nothing was stopped, deleted or removed. Inspect the disk, or move the data disks aside by hand first." >&2
+				return 1
+				;;
+		esac
+	done
+	return 0
+}
+
 tart:image:efi:contains() {
 	# Positive content test for "this disk was materialized from a boot image",
 	# and the reason it replaced a virtual-size comparison against the source:
@@ -746,6 +779,19 @@ main() {
 		local disk_size="$2"
 		local disk_format="$3"
 
+		# Before anything is stopped or removed: the rm -rf below takes the WHOLE directory with it, so the guard probes
+		# every disk image actually THERE (declared in the manifest or not: a renamed or dropped data disk is still a
+		# pool), except the root disk, which the callers recreate precisely because it is missing or unreadable.
+		local vm_dir="${effective_home}/.tart/vms/${vm}"
+		local -a present=()
+		local img
+		if [[ -d "$vm_dir" ]]; then
+			while IFS= read -r -d '' img; do
+				[[ "$(basename "$img")" == disk.img ]] || present+=("$img")
+			done < <(find "$vm_dir" -maxdepth 1 \( -type f -o -type l \) -name '*.img' -print0)
+		fi
+		tart:vm:recreate:guard "${present[@]}" || exit 1
+
 		tart:vm:run stop "$vm" >/dev/null 2>&1 || true
 
 		if tart:vm:exists "$vm"; then
@@ -753,7 +799,7 @@ main() {
 			tart:vm:run delete "$vm" >/dev/null 2>&1 || true
 		fi
 
-		rm -rf "${effective_home}/.tart/vms/${vm}" 2>/dev/null || true
+		rm -rf "$vm_dir" 2>/dev/null || true
 
 		: "creating tart VM: $vm (os=linux disk-size=${disk_size}GiB disk-format=${disk_format})"
 		tart:vm:run create "$vm" --linux --disk-size "$disk_size" --disk-format "$disk_format"
