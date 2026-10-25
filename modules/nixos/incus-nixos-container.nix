@@ -167,6 +167,8 @@ let
       stackDescription = "/run/ndh/store-stack.json";
       storeDegraded = "/run/ndh/store-degraded";
       guestSystemctl = "/run/current-system/sw/bin/systemctl";
+      # What every store unit runs: an unrename runs it itself for the old name, whose unit the switch removed.
+      storeScript = "${storeScript}/bin/ndh-incus-container-store";
       healthTimeout = toString cfg.healthTimeout;
       nixConfig = lib.escapeShellArg "extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}";
     }

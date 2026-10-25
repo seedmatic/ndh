@@ -44,9 +44,14 @@ case "\$1 \$2" in
   "project show") exit 1 ;;
   "info --project") [ -e "\$i/\$(name "\${@:2}")" ] ;;
   "start --project")
+    [ ! -e "$t/no-start" ] || { echo "incus start: refused for this run" >&2; exit 1; }
     n=\$(name "\${@:2}")
     for m in nix/.lower/nix/store nix/.lower/nix/var/nix nix/.upper; do
       [ -d "$t/\$n/root/\$m" ] || { echo "incus start: mkdir \$m: EPERM" >&2; exit 98; }
+    done
+    # The pre-start hook: no start without the container's two store mounts (it refused incus's own autostart, live).
+    for m in "$t/\$n/root/nix/store" "$t/\$n/view/nix/store"; do
+      grep -qxF -- "\$m" "$t/mounts" || { echo "ndh-incus-container-prestart: \$m is not mounted" >&2; exit 1; }
     done
     touch "\$i/\$n.running"
     # A test's stand-in for what the new system does on its first start (a data migration).
@@ -90,6 +95,8 @@ EOF
   # refuses without -r and destroys them with it: each snapshot records its creation order in $t/zfs/order.
   mkdir -p "$t/zfs/tank/nerd/attic" "$t/zfs/tank/x" "$t/zfs/tank/db"
   touch "$t/mounts"
+  # The units the current system declares: the suite's one instance, attic.
+  echo ndh-incus-container-store-attic.service >"$t/units.declared"
   # The real cp, by its path: $t/bin/cp below stands for deliver's DB copy and copies nothing.
   realcp=$(command -v cp)
   cat >"$t/bin/zfs" <<EOF
@@ -132,6 +139,9 @@ case "\$1" in
       [ "\${o%@*}" = "\${n%@*}" ] || { echo "cannot rename \$o: snapshots stay on their dataset" >&2; exit 1; }
       mv "\$z/\$o" "\$z/\$n"
     else
+      if [ -e "\$z/\$o.mountpoint" ] && grep -q "^\$(cat "\$z/\$o.mountpoint")/" "$t/mounts"; then
+        echo "cannot rename \$o: dataset is busy" >&2; exit 1
+      fi
       mv "\$z/\$o" "\$z/\$n"
       [ ! -e "\$z/\$o.mountpoint" ] || mv "\$z/\$o.mountpoint" "\$z/\$n.mountpoint"
       for s in "\$z/\$o"@*; do [ ! -d "\$s" ] || mv "\$s" "\$z/\$n@\${s##*@}"; done
@@ -207,7 +217,8 @@ EOF
 #!$BASH
 c=\$(cat "$t/clock" 2>/dev/null || echo 1000); echo \$((c + \${1%.*})) >"$t/clock"
 EOF
-  printf '#!%s\nexit 1\n' "$BASH" >"$t/bin/mountpoint"
+  # One mount table for everything mounted: the store's overlays and the snapshots' automounts.
+  printf '#!%s\n[ "$1" != -q ] || shift\ngrep -qxF -- "$1" %q\n' "$BASH" "$t/mounts" >"$t/bin/mountpoint"
   # nix-env --store S -p PROFILE --set TARGET: the profile becomes a link to TARGET, as nix makes it, and
   # like nix it makes no parent ("cannot read directory", live). nix-env-fails makes it fail for that profile.
   cat >"$t/bin/nix-env" <<EOF
@@ -224,7 +235,35 @@ EOF
 if [ -e "$t/yq-profiles-fails" ] && [[ " \$* " == *".profiles"* ]]; then echo "yq: failing" >&2; exit 1; fi
 exec $realyq "\$@"
 EOF
-  for c in systemctl nix; do printf '#!%s\nprintf "%s %%s\\n" "$*" >>%q\nexit 0\n' "$BASH" "$c" "$t/calls" >"$t/bin/$c"; done
+  printf '#!%s\nprintf "nix %%s\\n" "$*" >>%q\nexit 0\n' "$BASH" "$t/calls" >"$t/bin/nix"
+  # systemctl knows only the units the CURRENT system declares, one per line in units.declared: any other is « not
+  # loaded », rc 5, as live after a switch removed it (bioskop-nixos, 2026-10-25). A store unit's start runs the store
+  # stub with its environment; its stop unmounts what it mounted; is-active reads it.
+  cat >"$t/bin/systemctl" <<EOF
+#!$BASH
+printf 'systemctl %s\\n' "\$*" >>"$t/calls"
+q=; [ "\$1 \$2" != "is-active -q" ] || { q=1; set -- is-active "\$3"; }
+u=\$2
+grep -qxF -- "\$u" "$t/units.declared" 2>/dev/null || {
+  [ -n "\$q" ] || echo "Failed to \$1 \$u: Unit \$u not loaded." >&2
+  exit 5
+}
+n=\${u#ndh-incus-container-store-}; n=\${n%.service}
+case "\$1" in
+  start) [ "\$n" = "\$u" ] || CONTAINER_DIR="$t/\$n" CONTAINER_NAME="\$n" "$t/bin/store"; touch "$t/active-\$u" ;;
+  stop) [ "\$n" = "\$u" ] || for m in "$t/\$n/root/nix/store" "$t/\$n/view/nix/store"; do "$t/bin/umount" "\$m"; done; rm -f "$t/active-\$u" ;;
+  is-active) [ -e "$t/active-\$u" ] ;;
+esac
+exit 0
+EOF
+  # The store script as a unit runs it: its two mounts of CONTAINER_DIR.
+  cat >"$t/bin/store" <<EOF
+#!$BASH
+printf 'store %s\\n' "\$CONTAINER_NAME" >>"$t/calls"
+for m in "\$CONTAINER_DIR/root/nix/store" "\$CONTAINER_DIR/view/nix/store"; do
+  grep -qxF -- "\$m" "$t/mounts" || echo "\$m" >>"$t/mounts"
+done
+EOF
   chmod +x "$t/bin/"*
   touch "$t/x-attic" "$t/x-attic-old" "$t/x-runtime"
   printf '{"upperRoot":"%s/rw","lowerdirs":["/nix/.erofs/0"]}' "$t" >"$t/layers.json"
@@ -236,7 +275,7 @@ EOF
     [project]=ndh [pool]=default [prestartHook]=/run/current-system/sw/bin/ndh-incus-container-prestart
     [layerContract]="$t/layers.json" [guestLower]=/nix/.lower [guestUpper]=/nix/.upper
     [stackDescription]="$t/stack.json" [storeDegraded]="$t/degraded" [gcroots]="$t/gcroots" [healthTimeout]=20
-    [guestSystemctl]=/run/current-system/sw/bin/systemctl [nixConfig]="extra-experimental-features = nix-command"
+    [guestSystemctl]=/run/current-system/sw/bin/systemctl [storeScript]="$t/bin/store" [nixConfig]="extra-experimental-features = nix-command"
     [logTag]=ndh.test.incusContainer
   )
   local text k
@@ -322,6 +361,9 @@ teardown() { kill "$holder" 2>/dev/null || true; }
 # A container already delivered once on x-attic-old: a profile, a previous snapshot's stamp, an upper.
 delivered_before() {
   echo none >"$t/inst/attic"
+  # Delivered, so running, its store mounted: a stopped one with no converge mark is the operator's, held.
+  touch "$t/inst/attic.running"
+  printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >>"$t/mounts"
   mkdir -p "$t/attic/root/nix/var/nix/profiles" "$t/attic/upper" "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
   ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/system"
   echo ndh-incus-attic-20261001T000000Z >"$t/attic/lower.snapshot"
@@ -331,6 +373,9 @@ delivered_before() {
 
 @test "converge on the declared system does nothing" {
   delivered_before
+  # Running on it, its store mounted: nothing to deliver, nothing to start.
+  touch "$t/inst/attic.running"
+  printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >"$t/mounts"
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
@@ -935,6 +980,8 @@ foreign_snapshot_on_start() {
 # attic. Derived from the suite's CLI by its declaration alone.
 per_metalspace_cli() {
   touch "$t/clustered"
+  # Switched to the system that names it attic-bioskop: attic's store unit is gone, as live (2026-10-25).
+  echo ndh-incus-container-store-attic-bioskop.service >"$t/units.declared"
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'with_entries(.key = "attic-bioskop" | .value.name = "attic-bioskop" | .value.target = "bioskop" | .value.renamedFrom = "attic" | .value.dir |= sub("/attic$"; "/attic-bioskop") | .value.dataset |= sub("/attic$"; "/attic-bioskop"))'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-ms"
   [ "$(grep -c 'attic-bioskop' "$t/cli-ms")" = 1 ]
 }
@@ -945,6 +992,8 @@ running_attic_before_rename() {
   per_metalspace_cli
   echo bioskop >"$t/inst/attic"
   touch "$t/inst/attic.running"
+  # Running, so its store is mounted: by a unit the switch has since removed.
+  printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >>"$t/mounts"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root" "$t/attic/root/nix/.lower/nix/store" \
     "$t/attic/root/nix/.lower/nix/var/nix" "$t/attic/root/nix/.upper" "$t/attic/upper"
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
@@ -1049,8 +1098,16 @@ as_before() {
   for d in nix nix-lower-store nix-lower-db nix-upper; do
     grep -q "^incus config device set --project ndh attic-bioskop $d source=$t/attic-bioskop/" "$t/calls"
   done
-  grep -q '^systemctl stop ndh-incus-container-store-attic.service$' "$t/calls"
+  # The old store unmounted by converge itself, never through attic's unit, which the switch removed.
+  run grep -E '^systemctl [a-z-]+ (-q )?ndh-incus-container-store-attic\.service$' "$t/calls"
+  [ "$status" -eq 1 ]
+  grep -qxF "umount $t/attic/root/nix/store" "$t/calls"
+  grep -qxF "umount $t/attic/view/nix/store" "$t/calls"
   grep -q '^systemctl start ndh-incus-container-store-attic-bioskop.service$' "$t/calls"
+  # The store mounted again, under the new dir only.
+  grep -qxF "$t/attic-bioskop/root/nix/store" "$t/mounts"
+  run grep -F "$t/attic/" "$t/mounts"
+  [ "$status" -eq 1 ]
 }
 
 @test "mutant: a rename that leaves the delivery snapshots named after attic pins them past every commit" {
@@ -1070,7 +1127,11 @@ as_before() {
   [ "$status" -eq 1 ]
   [[ $stderr == *"attic-bioskop is unhealthy after its rename: putting attic back"* ]]
   as_before
-  grep -q '^systemctl start ndh-incus-container-store-attic.service$' "$t/calls"
+  # attic's store brought back by the store script itself: its unit is gone.
+  grep -qxF 'store attic' "$t/calls"
+  grep -qxF "$t/attic/root/nix/store" "$t/mounts"
+  run grep -E '^systemctl [a-z-]+ (-q )?ndh-incus-container-store-attic\.service$' "$t/calls"
+  [ "$status" -eq 1 ]
 }
 
 @test "mutant: without the undo, an unhealthy rename is left half-renamed" {
@@ -1298,5 +1359,195 @@ dataset_left_from_before() {
   [ "$status" -eq 0 ]
   [[ $output == *"attic holds its declared system and profiles"* ]]
   [[ $stderr != *"leftovers could not be listed"* ]]
+}
+
+
+# A converge cut short mid-rename (the guest rebooted, the unit was killed) after the dataset moved and before the
+# instance did, on the system that has no attic unit any more: the dataset and its snapshots named attic-bioskop, the
+# instance still attic, stopped.
+cut_after_the_dataset_moved() {
+  running_attic_before_rename
+  rm -f "$t/inst/attic.running"
+  : >"$t/mounts"
+  "$t/bin/zfs" rename tank/nerd/ndh-containers/attic tank/nerd/ndh-containers/attic-bioskop
+  "$t/bin/zfs" set mountpoint="$t/attic-bioskop" tank/nerd/ndh-containers/attic-bioskop
+  for ds in tank/x tank/db tank/nerd/attic; do
+    "$t/bin/zfs" rename "$ds@ndh-incus-attic-20261024T184302Z" "$ds@ndh-incus-attic-bioskop-20261024T184302Z"
+  done
+  : >"$t/calls"
+}
+
+@test "the next converge after a rename cut after the dataset moved finishes it, the old unit absent, and attic-bioskop runs" {
+  cut_after_the_dataset_moved
+  run --separate-stderr "$t/run" "$t/cli-ms" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  renamed
+  [ "$(cat "$t/attic-bioskop/upper/marker")" = the-cache ]
+  run grep -E '^systemctl [a-z-]+ (-q )?ndh-incus-container-store-attic\.service$' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+# bioskop-nixos after the rollback of 2026-10-25: attic holds its declared state, but a switch restarted incus before
+# its store unit; incus's own autostart was refused by the pre-start hook, so attic is stopped and its store unmounted.
+# Converge had stopped it (its rename): the mark says so.
+up_to_date_but_stopped() {
+  stopped_by_hand
+  touch "$t/attic/converge.stopped"
+}
+
+# The same container stopped by the operator (`incus stop attic`, for maintenance, or a service they distrust): no mark.
+stopped_by_hand() {
+  echo none >"$t/inst/attic"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root" "$t/attic/root/nix/.lower/nix/store" \
+    "$t/attic/root/nix/.lower/nix/var/nix" "$t/attic/root/nix/.upper"
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  : >"$t/mounts"
+}
+
+@test "converge brings up a container that holds its declared state but is stopped: its store, then itself, healthy" {
+  up_to_date_but_stopped
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic was stopped: started on its declared system"* ]]
+  [ -e "$t/inst/attic.running" ]
+  grep -qxF "$t/attic/root/nix/store" "$t/mounts"
+  grep -qxF "$t/attic/view/nix/store" "$t/mounts"
+  # The store before the container.
+  store=$(grep -n '^systemctl start ndh-incus-container-store-attic.service$' "$t/calls" | cut -d: -f1)
+  start=$(grep -n '^incus start --project ndh attic$' "$t/calls" | cut -d: -f1)
+  [ -n "$store" ]
+  [ -n "$start" ]
+  [ "$store" -lt "$start" ]
+}
+
+@test "a stopped container whose store is still mounted is started alone" {
+  up_to_date_but_stopped
+  printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >"$t/mounts"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [ -e "$t/inst/attic.running" ]
+  run grep -E '^systemctl start ndh-incus-container-store-attic' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a stopped container that comes up unhealthy fails loudly, and nothing is delivered or rolled back" {
+  up_to_date_but_stopped
+  echo "atticd.service failed" >"$t/units"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"atticd.service is failed"* ]]
+  run grep -E '^(zfs (snapshot|rollback|rename)|incus rename)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "mutant: without the bring-up, a stopped container stays down after converge" {
+  up_to_date_but_stopped
+  grep -q '        if ! bring_up "\$name"; then' "$cli"
+  sed 's/        if ! bring_up "\$name"; then/        if false; then/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ ! -e "$t/inst/attic.running" ]
+}
+
+@test "mutant: a bring-up without the store start runs into the pre-start hook's refusal" {
+  up_to_date_but_stopped
+  grep -q '    systemctl start "ndh-incus-container-store-\$1.service"$' "$cli"
+  awk '/^bring_up_steps\(\) \{/{r=1} r && /^    systemctl start "ndh-incus-container-store-\$1.service"$/{print "    :"; r=0; next} {print}' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  run grep -qxF "$t/attic/root/nix/store" "$t/mounts"
+  [ "$status" -eq 1 ]
+}
+
+@test "mutant: a container brought up and never health-checked passes as holding its state" {
+  up_to_date_but_stopped
+  echo "atticd.service failed" >"$t/units"
+  grep -q 'is unhealthy started on its declared system' "$cli"
+  awk '/^        if ! healthy "\$name"; then$/ && !d {getline; getline; getline; getline; d=1; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c 'is unhealthy started on its declared system' "$t/mutant")" = 0 ]
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+}
+
+@test "a container the operator stopped stays stopped after converge: held, reported, not an error" {
+  stopped_by_hand
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic is stopped, not by converge: held by the operator, left stopped"* ]]
+  [ ! -e "$t/inst/attic.running" ]
+  run grep -E '^(incus start|systemctl start ndh-incus-container-store)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a container the operator stopped is not delivered either: a delivery would start it" {
+  delivered_before
+  rm -f "$t/inst/attic.running"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"attic is stopped, not by converge: held by the operator, not delivered"* ]]
+  [ ! -e "$t/inst/attic.running" ]
+  run grep -E '^(zfs snapshot|incus start)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
+
+@test "a container converge stopped and left down is brought up by the next converge: its stop was marked" {
+  delivered_before
+  # The guest goes down mid-delivery, after converge stopped attic and before anything else ran: the delivery's own
+  # steps, alone, cut at their start (no rollback runs after a cut).
+  touch "$t/no-start"
+  run --separate-stderr "$t/run" "$cli" _deliver-steps attic <"$t/stdin"
+  [ "$status" -ne 0 ]
+  grep -q '^incus stop --project ndh attic$' "$t/calls"
+  [ ! -e "$t/inst/attic.running" ]
+  # The cut left the delivery half done: the system profile moved, the previous one aside. Put back as a reboot would
+  # find it is converge's business; here only the stop matters.
+  rm "$t/no-start"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [[ $output != *"held by the operator"* ]]
+  [ -e "$t/inst/attic.running" ]
+  [ ! -e "$t/attic/converge.stopped" ]
+}
+
+@test "a container converge stopped and left down after a failed rollback is brought up on its previous system" {
+  delivered_before
+  # A delivery that fails, then its rollback's start fails too: down, its declared system already failed.
+  touch "$t/no-start"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ ! -e "$t/inst/attic.running" ]
+  rm "$t/no-start"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [[ $output == *"attic was down: started on its previous system"* ]]
+  [ -e "$t/inst/attic.running" ]
+  [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
+}
+
+@test "mutant: a bring-up without the mark check restarts a container the operator stopped" {
+  stopped_by_hand
+  grep -q '        if \[ ! -e "\$dir/converge.stopped" \]; then' "$cli"
+  sed 's/        if \[ ! -e "\$dir\/converge.stopped" \]; then/        if false; then/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ -e "$t/inst/attic.running" ]
+}
+
+@test "mutant: a delivery without the hold starts a container the operator stopped" {
+  delivered_before
+  rm -f "$t/inst/attic.running"
+  grep -q '    if \[ -e "\$dir/lower.snapshot" \] && \[ ! -e "\$dir/converge.stopped" \] &&' "$cli"
+  sed 's/    if \[ -e "\$dir\/lower.snapshot" \] \&\& \[ ! -e "\$dir\/converge.stopped" \] \&\&/    if false \&\&/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" converge <"$t/stdin"
+  [ -e "$t/inst/attic.running" ]
+}
+
+@test "converge's stop mark lies outside every path the container mounts, so the container cannot forge it" {
+  # Every source a device of the container binds: the store's four (store_devices) and the declared ones.
+  sed 's/^ndh::logger:command:run .*/store_devices "$(field "$(instance attic)" dir)"; yq -p json -oy -r ".attic.devices[] | select(.type == \\"disk\\") | .source" <<<"$INSTANCES"/' "$cli" >"$t/probe"
+  run --separate-stderr "$t/run" "$t/probe"
+  [ "$status" -eq 0 ]
+  mark="$t/attic/converge.stopped"
+  [ -n "$output" ]
+  while read -r line; do
+    src=${line##* }
+    [ -n "$src" ] || continue
+    case "$mark" in "$src" | "$src"/*) echo "the mark $mark lies under the device source $src" >&2; false ;; esac
+  done <<<"$output"
 }
 
