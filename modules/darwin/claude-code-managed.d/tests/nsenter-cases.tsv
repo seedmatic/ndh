@@ -18,6 +18,8 @@ DENY	ALLOW	-	sudo machinectl shell attic-nikopol
 DENY	ALLOW	-	sudo lxc-attach -n attic-nikopol -- sh
 DENY	DENY	-	sudo systemd-run -M attic-nikopol --pty sh
 DENY	DENY	-	sudo systemd-run --machine=attic-nikopol --pty sh
+DENY	ALLOW	-	sudo systemd-run -M attic-nikopol --pty ss -ltnH
+DENY	ALLOW	-	sudo systemd-run --machine=attic-nikopol --wait cat /etc/shadow
 DENY	ALLOW	-	sudo unshare --mount-proc --pid --fork sh
 DENY	ALLOW	-	sudo chroot /var/lib/ndh/incus-nixos-containers/attic-nikopol/root sh
 DENY	ALLOW	-	sudo chroot /var/lib/incus/containers/attic-nikopol/rootfs sh
