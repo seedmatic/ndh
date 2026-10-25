@@ -35,6 +35,8 @@ reconcile::declare() { # <machine>
   local -a fields=("state=pending" "origin=host")
   [[ $current == serving ]] || fields+=("bootstrap=console")
 
+  : "refused BEFORE the operator is asked: a window of this revision still open would only refuse after their « oui »"
+  reconcile::tree::free || return 1
   echo "déclarer ${keyName}@${today} dans keys.yaml (révision ${revision:0:12}), les champs :"
   for field in "${fields[@]}"; do printf '  %s.slots."%s".%s = %s\n' "$keyName" "$today" "${field%%=*}" "${field#*=}"; done
   [[ $current == serving ]] ||

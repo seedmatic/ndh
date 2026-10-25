@@ -59,7 +59,7 @@ EOF
 render() {
   local -A vars=(
     [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh"
-    [write]="$BATS_TEST_DIRNAME/../write.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [write]="$BATS_TEST_DIRNAME/../write.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json"
     [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
@@ -68,7 +68,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | declare | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | declare | close | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
@@ -135,6 +135,31 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
   run --separate-stderr declare_ oui own
   [ "$status" -eq 3 ]
   [[ $stderr == *"has a rotation in flight"* ]]
+}
+
+@test "a window of this revision still open: refused BEFORE the « oui », on the terminal, nothing asked" {
+  : "the operator's case (2026-10-25): a first declare left its window open; the second must say so before asking"
+  declare_ oui own
+  : >"$t/prompt"
+  run --separate-stderr declare_ oui shared
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is still open"* ]]
+  grep -q "refusé : .*is still open: read it, then close it" "$t/prompt"
+  run grep -q 'déclarer ces champs' "$t/prompt"
+  [ "$status" -eq 1 ]
+}
+
+@test "mutant: a declare that checks the open window only after its « oui » asks first" {
+  declare_ oui own
+  : >"$t/prompt"
+  grep -F -v 'reconcile::tree::free || return 1' "$BATS_TEST_DIRNAME/../declare.sh" >"$t/declare.sh"
+  [ "$(grep -c -F 'reconcile::tree::free' "$t/declare.sh")" -eq 0 ]
+  sed -i "s|^source .*/declare.sh\$|source $t/declare.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/declare.sh\$" "$t/keys-reconcile"
+  run --separate-stderr declare_ oui shared
+  : "still refused, by tree::open's own check, but only after the operator was asked: what the case above guards"
+  [ "$status" -ne 0 ]
+  grep -q 'déclarer ces champs' "$t/prompt"
 }
 
 @test "refused: a slot that would not sort after the newest one" {

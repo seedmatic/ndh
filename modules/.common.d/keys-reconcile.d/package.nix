@@ -119,6 +119,7 @@ ndh.store.installBinScript "keys-reconcile" (
     publishDir = lib.escapeShellArg publishDir;
     verify = ./verify.sh;
     declare = ./declare.sh;
+    close = ./close.sh;
     write = ./write.sh;
     classes = ./classes;
     delegation = lib.escapeShellArg delegation;

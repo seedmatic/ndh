@@ -16,7 +16,7 @@
 # private is still ENC[…].
 
 reconcile::fail() {
-  printf '[keys-reconcile] refused: %s; nothing committed (the worktree %s is left for reading)\n' "$1" "${tree:-?}" >&2
+  say_refused "$1; nothing committed (the worktree ${tree:-?} is left for reading)"
   return 1
 }
 
@@ -39,11 +39,18 @@ sopsFiles=(.secrets catalog/cache-trust.yaml modules/home-manager/ssh.d/keys.yam
 # reconcile::tree::open: the window's one clean worktree of the bare at the revision, on its own local branch; every
 # class writes into it, and reconcile::tree::commit commits it once. The encrypted values are snapshotted here, before
 # ANY class writes, so the byte-identity postcondition covers every class's writes, not only the host keys'.
+# reconcile::tree::free: refused while a window of this revision is still open, before anything is asked.
+reconcile::tree::free() {
+  local open="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"
+  [[ ! -e $open ]] ||
+    { say_refused "${open} is still open: read it, then close it (ndh-ops keys-reconcile close ${revision:0:12})"; return 1; }
+}
+
 reconcile::tree::open() {
   local f
   branch="keys-reconcile/${revision:0:12}"
   tree="${XDG_STATE_HOME:-$HOME/.local/state}/keys-reconcile/${revision:0:12}"
-  [[ ! -e $tree ]] || reconcile::fail "${tree} already exists: a previous window was not closed (read it, then remove it)" || return 1
+  [[ ! -e $tree ]] || reconcile::fail "${tree} already exists: a previous window was not closed (close it: ndh-ops keys-reconcile close ${revision:0:12})" || return 1
   git -C "$bare" cat-file -e "${revision}^{commit}" 2>/dev/null || reconcile::fail "${revision} is not in ${bare}" || return 1
   git -C "$bare" worktree add -q -b "$branch" "$tree" "$revision" || reconcile::fail "cannot add the worktree at ${revision}" || return 1
   for f in "${sopsFiles[@]}"; do reconcile::encrypted "$tree/$f" >"$work/before.${f//\//_}"; done
