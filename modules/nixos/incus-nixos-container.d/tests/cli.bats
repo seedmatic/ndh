@@ -1708,3 +1708,23 @@ attic_bioskop_cut_after_the_instance_rename() {
   grep -q '^incus config edit' "$t/calls"
 }
 
+
+@test "a half-pointed container that also gets a new system is delivered on re-pointed devices, and comes up" {
+  attic_bioskop_cut_after_the_instance_rename
+  # A new declared system: converge goes straight to delivery, never through bring-up, so the delivery itself must
+  # re-point the store before anything moves (🛡️: the switch may bring attic-bioskop a new toplevel).
+  touch "$t/x-attic-2"
+  # After cli-ms's own INSTANCES line, which renamed the key attic-bioskop: the new toplevel goes on that key.
+  awk '{print} /^INSTANCES=\$\(yq/ && !d {print "INSTANCES=$(yq -p json -o json -I0 '"'"'.[\"attic-bioskop\"].toplevel += \"-2\"'"'"' <<<\"$INSTANCES\")"; d=1}' "$t/cli-ms" >"$t/cli-2"
+  [ "$(grep -c 'toplevel += "-2"' "$t/cli-2")" = 1 ]
+  mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
+  run --separate-stderr "$t/run" "$t/cli-2" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  [[ $output == *"x-attic-2, healthy"* ]]
+  [ -e "$t/inst/attic-bioskop.running" ]
+  [ "$(readlink "$t/attic-bioskop/root/nix/var/nix/profiles/system")" = "$t/x-attic-2" ]
+  grep -qxF "nix $t/attic-bioskop/root/nix 1" "$t/inst/attic-bioskop.dev"
+  grep -qxF "nix-upper $t/attic-bioskop/upper 0" "$t/inst/attic-bioskop.dev"
+  run grep -E '^incus (init|delete)' "$t/calls"
+  [ "$status" -eq 1 ]
+}
