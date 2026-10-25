@@ -263,10 +263,14 @@ $defs:
           $ref: "#/$defs/ageRecipient"
         bootstrap:
           description: >
-            `console`: the machine serves no key of its own that could vouch for this one (it serves a shared key),
-            so the new key's binding is its fingerprint, compared by the operator with the machine's console, once
-            (the fabric-delivery frame's one exception, roles × keys §o). Only on a pending slot born on its machine.
-          const: console
+            The machine serves no key of its own that could vouch for this one (it serves a shared key), so no F1
+            statement binds the new key: its binding is the operator's offline witness, the layer below this one,
+            which keys-reconcile trusts (each layer trusts the one below; the operator, 2026-10-26). Once, per
+            machine; only on a pending slot born on its machine. `console`: the operator's eyes at the machine's
+            console, or their tailnet's node list (both accepted for this value, the operator's call, 2026-10-26).
+            `tailnet`: the operator's tailnet node list, checked in its console (the registration secret is shared
+            per machine kind: an accepted risk).
+          enum: [console, tailnet]
         recipient:
           type: boolean
           description: >

@@ -109,7 +109,7 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
   run --separate-stderr declare_ oui shared
   [ "$status" -eq 0 ]
   [[ $output == *"host-shared.slots.\"$today\".bootstrap = console"* ]]
-  [[ $output == *"liée par l'empreinte lue à sa console"* ]]
+  [[ $output == *"liée par ton témoin, sa console ou la liste des nœuds de ton tailnet"* ]]
   [ "$(yq -r ".keys.\"host-shared\".slots.\"$today\".bootstrap" "$(keys)")" = console ]
 }
 

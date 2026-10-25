@@ -5,7 +5,7 @@
 # public published beside it; the public must be new to the whole fleet, recorded or retired.
 #
 #   reconcile::host-key::verify <dir> <key> <slot> <recorded old public> <every public keys.json holds, one per line>
-#                               [console: the slot is a console bootstrap, from the frozen batch]
+#                               [console | tailnet: the slot is a bootstrap, from the frozen batch]
 # prints the verified public on stdout, or writes the reason to the file NDH_RECONCILE_WHY names (stderr when it names
 # none) and returns non-zero. A file, not stderr: the logger traces the run, so stderr also carries the trace.
 
@@ -18,8 +18,13 @@ reconcile::host-key::verify() {
   local dir="$1" keyName="$2" slot="$3" oldPublic="$4" known="$5" bootstrap="${6:-}"
   local stem="${dir}/${keyName}@${slot}" public allowed f
   local -a published=(public statement statement.sig)
-  : "a console bootstrap (§o, from the frozen batch only) publishes its public alone: its binding is the operator's"
-  [[ $bootstrap == console ]] && published=(public)
+  : "a bootstrap (§o, from the frozen batch only) publishes its public alone: its binding is the operator's witness"
+  : "layer. Only the two values the schema allows skip F1: any other is refused, never taken for a bootstrap"
+  case $bootstrap in
+    "") ;;
+    console | tailnet) published=(public) ;;
+    *) reconcile::refuse "${keyName}@${slot}: unknown bootstrap '${bootstrap}'"; return 1 ;;
+  esac
 
   for f in "${published[@]}"; do
     [[ -f "${stem}.${f}" && ! -L "${stem}.${f}" ]] || { reconcile::refuse "${keyName}@${slot}: ${f} was not published"; return 1; }
@@ -28,7 +33,7 @@ reconcile::host-key::verify() {
   [[ $public =~ ^ssh-ed25519\ [A-Za-z0-9+/]{68}$ ]] ||
     { reconcile::refuse "${keyName}@${slot}: its published public is not one ed25519 public"; return 1; }
 
-  if [[ $bootstrap != console ]]; then
+  if [[ -z $bootstrap ]]; then
   : "F1: the statement names this key, this slot and this public, and the RECORDED old public signed it"
   [[ "$(<"${stem}.statement")" == "$(printf 'seedmatic-rotate v1\nname %s\nslot %s\nkey %s' "$keyName" "$slot" "$public")" ]] ||
     { reconcile::refuse "${keyName}@${slot}: its statement does not name this key, slot and public"; return 1; }
