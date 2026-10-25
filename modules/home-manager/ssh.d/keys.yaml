@@ -341,6 +341,10 @@ keys:
         origin: keyring
         age: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
         recipient: true
+      26-10-25:
+        state: pending
+        origin: host
+        bootstrap: console
   sshfs-nikopol-nixos:
     type: ssh-ed25519
     comment: sshfs-nikopol-nixos
@@ -492,6 +496,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-25T22:50:05Z"
-  mac: ENC[AES256_GCM,data:BVDkdgke2NN0pH48oVRzzsl6LTLZkn/hpzEG99YRwjF+wM1tc/3WQfO9DQtJt0AOLIXuZFXODZngwzJWVbqMjKfVx5RHlsG1URwKGcqwGOP6Ahmnm4ircrkVN+0gE87TQ/yqWWKtMCVA4WkzmvRkk7Wq8km6bsmx7qr5/l8Om6k=,iv:BD+HtavSwxOlIpJTnm/tyvuo4VU2qYzbsSybSgufvAk=,tag:VEKBnlLXboTN680DhghYHg==,type:str]
+  lastmodified: "2026-10-25T22:59:01Z"
+  mac: ENC[AES256_GCM,data:NcnaJIuIgmbbw/RFAjpjdvnFyVvhYG82Ja4Ze6UkxyfuYYs64MTA+Fz5KHKPPyJWbdIKGymbU3ejUV/Zug6/1N/WBgYt6bENkkVkVt+CUzmIUYnzZDV23WXsmkgoPkfGGb+VAf2fNBp+xKV10Scy96/lMTblOQjHQsk2MOdAIVw=,iv:F2iGbEDhN7mRMSr2b3sY6ts9WICHxtrun1ZA6GneEoI=,tag:SgRqTA3L8x0ZDWGkel59mg==,type:str]
   version: 3.13.3
