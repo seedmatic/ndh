@@ -157,21 +157,24 @@ let
   ops = lib.mapAttrs build fixtures;
 in
 assert derivationOk;
-# The repo's own queue offers exactly its declared pending slots, born on their machine (none before M1; M1 declares
-# bioskop-nixos's): a step appears only from a declaration.
+# The repo's own queue offers exactly its declared pending slots, born on their machine: a step appears only from a
+# declaration. Compared as SETS: keys.json has no order, and the head's (fleet-switch's) is the fixtures' to prove.
 assert lib.assertMsg
   (
-    map (e: "${e.step}:${e.key}@${e.slot}") repoQueue.head == lib.concatLists (
-      lib.mapAttrsToList (
-        k: key:
-        map (slot: "generate:${k}@${slot}") (
-          lib.attrNames (
-            lib.filterAttrs (_: s: (s.state or "") == "pending" && (s.origin or "") == "host") (
-              key.slots or { }
+    lib.sort lib.lessThan (map (e: "${e.step}:${e.key}@${e.slot}") repoQueue.head)
+    == lib.sort lib.lessThan (
+      lib.concatLists (
+        lib.mapAttrsToList (
+          k: key:
+          map (slot: "generate:${k}@${slot}") (
+            lib.attrNames (
+              lib.filterAttrs (_: s: (s.state or "") == "pending" && (s.origin or "") == "host") (
+                key.slots or { }
+              )
             )
           )
-        )
-      ) (lib.filterAttrs (k: _: lib.hasPrefix "host-" k || lib.hasPrefix "sshfs-" k) repoKeys)
+        ) (lib.filterAttrs (k: _: lib.hasPrefix "host-" k || lib.hasPrefix "sshfs-" k) repoKeys)
+      )
     )
   )
   "ops-queue: the repo's queue head is not its declared pending slots: ${builtins.toJSON repoQueue.head}";
