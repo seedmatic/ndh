@@ -21,6 +21,9 @@ pkgs.runCommand "ssh-keys-bats"
       yq-go
     ];
     NDH_TRAMPOLINE = trampoline;
+    # trust-by-usage.bats runs the operator's KnownHostsCommand over what the split expression writes.
+    KNOWN_HOSTS_COMMAND = ../../../home-manager/ssh.d/scripts/ca-known-hosts-command.sh;
+    NDH_LOGGER_SH = ../../shell.d/logger.sh;
     NDH_BOOTSTRAP_PROFILE_DIR = import ../../shell.d/tests/bootstrap-profile.nix { inherit pkgs; };
   }
   # split-exp.bats reads the extractor's expression from the home-manager tree, by a

@@ -64,6 +64,7 @@ let
   loggerTagExtractSystem = "darwin.activationScripts.ssh-keys-enrichment.extractSystemKeys";
   loggerTagExtractUser = "darwin.activationScripts.ssh-keys-enrichment.extractUserKeys";
   loggerTagEnsureAuthorizedKeys = "darwin.activationScripts.ssh-keys-enrichment.ensureAuthorizedKeys";
+  loggerTagTrustedUserCa = "darwin.activationScripts.ssh-keys-enrichment.trustedUserCa";
 
   sshExtractKeysSplitExpFile = ndh.store.runCommand "ssh-extract-keys.split-exp.yq" { } ''
     install -m 0444 "${hmSshKeyDir}/ssh-extract-keys.split-exp.yq" "$out"
@@ -77,6 +78,10 @@ let
     ssh-split-keys-yaml = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-split-keys-yaml.sh" {
       nixBashTrampoline = nixBashTrampoline;
       loggerTag = loggerTagSplit;
+    };
+    ssh-trusted-user-ca = pkgs.replaceVars "${ndhCommon}/ssh-keys.d/ssh-trusted-user-ca.sh" {
+      nixBashTrampoline = nixBashTrampoline;
+      loggerTag = loggerTagTrustedUserCa;
     };
     # System-scope extract: ssh-host privates → sshPaths.systemKeysDir.
     ssh-extract-keys-system = pkgs.replaceVars "${hmSshKeyDir}/ssh-extract-keys.sh" {
@@ -207,19 +212,9 @@ in
     # cert files now landing here too, a filename-allowlist check would
     # delete legitimate artifacts.
 
-    # Build the aggregate TrustedUserCAKeys file in place — sshd reads
-    # this path directly (no /etc/ssh/keys.d mirror). Runs every
-    # activation so stale CAs cannot linger.
-    : > ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
-    for ca in ${lib.escapeShellArg config.sshPaths.systemKeysDir}/*-ca.pub; do
-      [ -f "$ca" ] || continue
-      case "$(basename "$ca")" in
-        trusted-user-ca.pub) continue ;;
-      esac
-      cat "$ca" >> ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
-      printf "\n" >> ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
-    done
-    chmod 644 ${lib.escapeShellArg "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub"}
+    # The aggregate TrustedUserCAKeys file, in place — sshd reads this path directly (no /etc/ssh/keys.d mirror).
+    ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-trusted-user-ca \
+      ${lib.escapeShellArg config.sshPaths.systemKeysDir}
 
     # Install the user-scope per-profile yaml where HM's extractor expects it.
     # install runs as root so we hand ownership to the profile owner afterwards.

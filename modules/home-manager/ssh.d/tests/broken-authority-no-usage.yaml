@@ -1,0 +1,9 @@
+# Must FAIL the schema, for ONE reason only: an authority declares no usage, so nothing says whether ssh may trust
+# it. Everything else here is valid.
+authorities:
+  fixture-ca:
+    type: ssh-ed25519
+    comment: cert-authority@fixture-ca
+    slots:
+      26-10-01: { public: AAAAC3NzaC1lZDI1NTE5AAAAIOneFixtureBlobOneFixtureBlobOneFixtureBlob }
+keys: {}
