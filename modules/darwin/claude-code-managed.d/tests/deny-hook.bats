@@ -555,3 +555,5 @@ corpus() {
 @test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
+# A sudo makes root only the command it prefixes, never the commands after it.
+@test "ok a shell on stdin after a sudo, in its own command" { run hook 'sudo -v; bash < /tmp/x.sh'; allowed; }

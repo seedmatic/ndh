@@ -446,6 +446,7 @@ class Analyzer:
         # global hooks and sops filters of the git command it prefixes.
         self.assignments = []
         self.fed_by_xargs = False
+        self.as_root = False
         saved = self.git_env_reset
         try:
             self.unwrap_chain(argv, depth)
@@ -500,6 +501,7 @@ class Analyzer:
                 self.deny(f"{prog} runs a program the hook cannot read, as root; write its path out literally",
                           [prog] + rest)
                 return []
+            self.as_root = True
             return inner
         if prog == "env":
             i = 0
@@ -587,13 +589,23 @@ class Analyzer:
             self.analyze(" ".join(rest), depth + 1)
             return []
         if prog in SHELLS:
+            script = False
             for i, tok in enumerate(rest):
                 if tok.startswith("-") and not tok.startswith("--") and "c" in tok[1:]:
                     if i + 1 < len(rest):
                         self.analyze(rest[i + 1], depth + 1)
                     return []
-                if not tok.startswith("-"):
+                if tok.startswith("-") and not tok.startswith("--") and "s" in tok[1:]:
                     break
+                if not tok.startswith("-"):
+                    # xargs' {} is the path it feeds in: still a program from stdin.
+                    script = not (self.fed_by_xargs and tok == "{}")
+                    break
+            # As root, a shell that reads its program from stdin, a redirect or xargs runs what the hook cannot read
+            # (security, 2026-10-25). A script file is judged by check_system_switch, a -c string above.
+            if (self.as_root or self.fed_by_xargs) and not script:
+                self.deny(f"a root shell reads its program from stdin or xargs, which the hook cannot read; give it "
+                          f"the commands with -c", [prog] + rest)
             return []
         launched = self.launched(prog, rest)
         if launched is not None:
