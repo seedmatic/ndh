@@ -102,7 +102,8 @@ known_hosts() { # <dir>: the @cert-authority lines the KnownHostsCommand emits f
 
 @test "mutant: a split expression that trusts by name puts the TLS authority in BOTH outputs" {
   sed 's/ | map(select((.value.usage \/\/ \[\]) | any_c(. == "ssh-authority")))//' "$SPLIT_EXP" >"$tmp/by-name.yq"
-  ! grep -q 'ssh-authority' "$tmp/by-name.yq"
+  run grep -q 'any_c(. == "ssh-authority")' "$tmp/by-name.yq"
+  [ "$status" -eq 1 ]
   extract_into "$tmp/by-name.yq" "$tmp/keys.d"
   [[ "$(aggregate "$tmp/keys.d")" == *"$TLS_PUB"* ]]
   [[ "$(known_hosts "$tmp/keys.d")" == *"ecdsa-sha2-nistp256 $TLS_PUB"* ]]
