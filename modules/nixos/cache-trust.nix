@@ -27,7 +27,8 @@
     ) config.ndh.cacheTrust.cachixNames
   );
 
-  config.systemd.services.cache-trust-compose = {
+  # A machine that signs with its own key composes no fleet key: no unit.
+  config.systemd.services.cache-trust-compose = lib.mkIf (config.ndh.cacheTrust.cachixNames != [ ]) {
     description = "Compose fleet cache signing keys from SOPS-deployed bare values (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [ "sops-install-secrets.service" ];
