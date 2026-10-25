@@ -1761,6 +1761,44 @@
               !forced.success
             ) "host-key-own-is-serving: a configuration could set ndh.hostKey.own";
             pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+          # A machine signs with exactly ONE key, never none: its own once it signs with it (ndh.nixSigning.signs), the
+          # shared fleet key before, whose private it then holds and no longer after. The fleet public stays trusted on
+          # every machine. A mutant giving a machine that signs both keys must be caught.
+          nix-signing-one-key =
+            let
+              lib = nixpkgs.lib;
+              fleet = "seedmatic-fleet-1";
+              machines =
+                lib.mapAttrs (_: c: c.config) self.nixosConfigurations
+                // lib.mapAttrs (_: c: c.config) self.darwinConfigurations;
+              signsWith = c: c.nix.settings.secret-key-files;
+              holdsFleet = c: c.sops.secrets ? "${fleet}.key.bare";
+              ownKey = c: (c.ndh.nixSigning or { }).signs or false;
+              # On a machine signing with its own key, the compose step REMOVES the fleet private an earlier
+              # activation wrote: read in the script as built, not in an intention.
+              removesFleet =
+                c:
+                lib.elem fleet c.ndh.cacheTrust.retiredNames
+                && lib.hasInfix "rm -f /etc/nix/${fleet}.key" (
+                  builtins.readFile "${c.ndh.cacheTrust.composeScript}/bin/cache-trust-compose"
+                );
+              trustsFleet = c: lib.any (lib.hasPrefix "${fleet}:") c.nix.settings.extra-trusted-public-keys;
+              wrong =
+                c:
+                lib.length (signsWith c) != 1
+                || (ownKey c && (holdsFleet c || lib.any (lib.hasInfix fleet) (signsWith c) || !(removesFleet c)))
+                || (!(ownKey c) && !(holdsFleet c))
+                || !(trustsFleet c);
+              offending = lib.attrNames (lib.filterAttrs (_: wrong) machines);
+              mutant =
+                (self.darwinConfigurations.bioskop.extendModules {
+                  modules = [ { nix.settings.secret-key-files = [ "/etc/nix/${fleet}.key" ]; } ];
+                }).config;
+            in
+            assert lib.assertMsg (offending == [ ])
+              "nix-signing-one-key: not exactly one signing key, the fleet private held or left where unused, or the fleet public untrusted, on: ${lib.concatStringsSep ", " offending}";
+            assert lib.assertMsg (wrong mutant) "nix-signing-one-key: a machine signing with two keys passed";
+            pkgs.runCommand "nix-signing-one-key" { } "touch $out";
           # A partial batch (the operator's order, 2026-10-22: the guests first): with two machines pending and two
           # serving their current key, keys-reconcile's batch is exactly the two pending, in fleet-switch's order, each
           # with its own recorded old public; the serving ones are in no batch and keep their key.

@@ -27,6 +27,7 @@
     ) config.ndh.cacheTrust.cachixNames
   );
 
+  # Every machine runs it: it writes the fleet keys it signs with and removes the ones it no longer signs with.
   config.systemd.services.cache-trust-compose = {
     description = "Compose fleet cache signing keys from SOPS-deployed bare values (@codebase)";
     wantedBy = [ "multi-user.target" ];

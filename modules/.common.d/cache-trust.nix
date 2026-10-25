@@ -53,11 +53,18 @@ let
 
   cachixPubs = mapAttrsToList (_: entry: entry.publicKey) cachixCaches;
 
+  # The fleet keys this machine SIGNS with, so holds the private of: none once it signs with its own key (its host key
+  # serving and its nixSigning recorded, ndh.nixSigning.signs), every one before. Their publics stay trusted
+  # everywhere: a path the fleet key signed is still accepted until its trust is cut (roles × keys, after batch 2).
+  # A configuration without nix-signing (the bringup and generic images) has no own key, so it keeps the fleet one.
+  signsWithOwnKey = (config.ndh.nixSigning or { }).signs or false;
+  cachixNames = if signsWithOwnKey then [ ] else builtins.attrNames cachixCaches;
+  # The fleet keys it no longer signs with: their private, which an earlier activation wrote, leaves its disk.
+  retiredNames = lib.subtractLists cachixNames (builtins.attrNames cachixCaches);
+
   externalSubstituters = flatten (
     mapAttrsToList (_: entry: optional (entry ? substituter) entry.substituter) externalCaches
   );
-
-  cachixNames = builtins.attrNames cachixCaches;
 
   # writeShellApplication: explicit runtimeInputs give the script a
   # deterministic PATH so it never depends on whatever ambient shell
@@ -82,6 +89,14 @@ let
           status=1
         fi
       '') cachixNames}
+      ${concatMapStringsSep "\n" (name: ''
+        # Signed with its own key now: the fleet private an earlier activation wrote is removed, and checked gone.
+        rm -f /etc/nix/${name}.key
+        if [ -e /etc/nix/${name}.key ]; then
+          echo "[cache-trust] ERROR: /etc/nix/${name}.key is still there after its removal" >&2
+          status=1
+        fi
+      '') retiredNames}
       exit "$status"
     '';
   };
@@ -101,20 +116,26 @@ in
       '';
     };
 
+    retiredNames = mkOption {
+      type = types.listOf types.str;
+      readOnly = true;
+      description = "The fleet keypairs this machine no longer signs with: the compose step removes their private from /etc/nix.";
+    };
+
     cachixNames = mkOption {
       type = types.listOf types.str;
       readOnly = true;
       description = ''
-        Names of fleet-owned signing keypairs (keys in caches.cachix).
-        Exposed for platform modules that iterate over them when wiring
-        the compose invocation.
+        The fleet-owned keypairs (caches.cachix) this machine signs with and holds the private of: every one until it
+        signs with its own key (ndh.nixSigning.signs), none after. Their publics are trusted on every machine either
+        way. The platform modules and sops read it to deploy and compose those privates only.
       '';
     };
   };
 
   config = {
     ndh.cacheTrust = {
-      inherit composeScript cachixNames;
+      inherit composeScript cachixNames retiredNames;
     };
 
     nix.settings = {
