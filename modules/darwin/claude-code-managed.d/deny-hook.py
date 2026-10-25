@@ -818,7 +818,8 @@ class Analyzer:
                            "is refused outright: the operator runs it")
 
     def check_namespace_doors(self, prog, rest, argv):
-        if any(a in ("-h", "--help", "-V", "--version") for a in rest):
+        # Only when the flag IS the whole command: the launched command's own arguments are not the door's.
+        if rest in (["-h"], ["--help"], ["-V"], ["--version"]):
             return
         sub = positionals(rest, {"-M", "--machine", "-H", "--host"})[:1]
         door = (prog in ("nsenter", "lxc-attach", "unshare", "chroot")
