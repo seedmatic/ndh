@@ -29,6 +29,7 @@ STORE_DEGRADED=@storeDegraded@
 GCROOTS=@gcroots@
 HEALTH_TIMEOUT=@healthTimeout@
 GUEST_SYSTEMCTL=@guestSystemctl@
+STORE_SCRIPT=@storeScript@
 NIX_CONFIG=@nixConfig@
 export NIX_CONFIG
 
@@ -72,6 +73,31 @@ where_is() {
 # and a rename re-points.
 store_devices() {
   printf '%s %s\n' nix "$1/root/nix" nix-lower-store "$1/view/nix/store" nix-lower-db "$1/view/nix/var/nix" nix-upper "$1/upper"
+}
+
+# stop_marked {name} {dir}: converge's own stop of a running container, marked in {dir} (converge.stopped), so that
+# converge brings back up only what IT stopped: a container the operator stopped stays stopped (🛡️). The mark lives in
+# the container's dataset, so it moves with a rename. It must stay outside every path the container mounts (its store
+# devices and its declared ones): a container that could write it would get itself started after a stop meant to hold.
+stop_marked() {
+  touch "$2/converge.stopped"
+  incus stop --project "$PROJECT" "$1"
+}
+
+# store_unmount {dir}: what a store unit's ExecStop does, done here: the container's two store mounts, each only if
+# mounted. A rename needs it of the OLD name, whose unit the switch has already removed (live, 2026-10-25: « not
+# loaded »), and the dataset under them cannot move while they hold it.
+store_unmount() {
+  local m
+  for m in "$1/root/nix/store" "$1/view/nix/store"; do
+    if mountpoint -q "$m"; then umount "$m"; fi
+  done
+}
+
+# store_mount {dir} {name} {privileged}: what a store unit runs, run here, with the environment it would give: an
+# unrename brings the OLD name's store back, and that name has no unit any more.
+store_mount() {
+  CONTAINER_DIR=$1 CONTAINER_NAME=$2 CONTAINER_PRIVILEGED=$3 LAYER_CONTRACT=$LAYER_CONTRACT "$BASH" "$STORE_SCRIPT"
 }
 
 # placed {where} {target}: whether an instance at {where} is where its declaration puts it.
@@ -261,7 +287,7 @@ deliver_steps() {
   db=$(findmnt -no SOURCE /nix/var/nix/db)
 
   if [ "$(incus query "/1.0/instances/$1/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
-    incus stop --project "$PROJECT" "$1"
+    stop_marked "$1" "$dir"
   fi
   # Stopped first, so nothing in the container changes a component between this check and the mkdir.
   for entry in "${GUEST_LOWER#/}/nix/store" "${GUEST_LOWER#/}/nix/var/nix" "${GUEST_UPPER#/}"; do
@@ -404,14 +430,25 @@ rename_steps() {
   where=$(where_is "$2")
   [ "$where" != absent ] || die "$2 does not exist: nothing renamed"
   placed "$where" "$target" || die "$2 runs on member $where, not on $1's target $target: nothing renamed"
-  zfs list -H "$old_dataset" >/dev/null || die "$2 has no dataset $old_dataset: nothing renamed"
-  ! zfs list -H "$dataset" >/dev/null 2>&1 || die "$dataset already exists: nothing renamed"
+  # Resumable, each step decided by what its object now is: a converge cut short mid-rename (a reboot, a killed unit)
+  # is finished by the next one. The dataset, moved or not, decides; both or neither is a state no rename makes.
+  local moved
+  if zfs list -H "$old_dataset" >/dev/null 2>&1; then
+    ! zfs list -H "$dataset" >/dev/null 2>&1 || die "both $old_dataset and $dataset exist: nothing renamed"
+    moved=0
+  elif zfs list -H "$dataset" >/dev/null 2>&1; then
+    moved=1
+  else
+    die "$2 has no dataset, neither $old_dataset nor $dataset: nothing renamed"
+  fi
 
   if [ "$(incus query "/1.0/instances/$2/state?project=$PROJECT" | yq -p json -oy -r '.status')" != Stopped ]; then
-    incus stop --project "$PROJECT" "$2"
+    if [ "$moved" = 0 ]; then stop_marked "$2" "$old_dir"; else stop_marked "$2" "$dir"; fi
   fi
-  systemctl stop "ndh-incus-container-store-$2.service"
-  zfs rename "$old_dataset" "$dataset"
+  if [ "$moved" = 0 ]; then
+    store_unmount "$old_dir"
+    zfs rename "$old_dataset" "$dataset"
+  fi
   zfs set mountpoint="$dir" "$dataset"
   for snap in $(delivery_snapshots_of "$2" "$rw" "$db" "$info"); do
     zfs rename "$snap" "${snap%@*}@ndh-incus-$1-${snap##*@ndh-incus-"$2"-}"
@@ -446,9 +483,13 @@ unrename_steps() {
   rw=$(findmnt -no SOURCE "$upper_root")
   db=$(findmnt -no SOURCE /nix/var/nix/db)
   if [ "$(where_is "$1")" != absent ]; then
+    # Converge's stop, marked where the dataset now is: a failed undo leaves a container converge brings back up.
+    if [ -d "$dir" ]; then touch "$dir/converge.stopped"; fi
     incus stop --force --project "$PROJECT" "$1" || true
   fi
-  systemctl stop "ndh-incus-container-store-$1.service" || true
+  # Its store, by its mounts: the new unit may have run, or been skipped at the switch (its dir not yet a mountpoint).
+  if systemctl is-active -q "ndh-incus-container-store-$1.service"; then systemctl stop "ndh-incus-container-store-$1.service"; fi
+  store_unmount "$dir"
   if [ "$(where_is "$1")" != absent ]; then
     while read -r device src; do
       incus config device set --project "$PROJECT" "$1" "$device" source="$src"
@@ -468,7 +509,8 @@ unrename_steps() {
     zfs rename "$dataset" "$old_dataset"
     zfs set mountpoint="$old_dir" "$old_dataset"
   fi
-  systemctl start "ndh-incus-container-store-$2.service"
+  # The old name's store, brought back by the store script itself: that name's unit is gone with the switch.
+  store_mount "$old_dir" "$2" "$(field "$info" privileged)"
   incus start --project "$PROJECT" "$2"
   echo "ndh-incus-container: $1 renamed back $2" >&2
 }
@@ -478,6 +520,21 @@ unrename_steps() {
 delivery_snapshots_of() {
   zfs list -H -t snapshot -o name "$2" "$3" | grep -E "@ndh-incus-$1-[0-9]{8}T[0-9]{6}Z\$" || true
   state_snapshots "$4" "$1"
+}
+
+# bring_up {name}: a stopped container, on what it holds: its store, by its unit (the current system declares it) unless
+# already mounted, then the container. Its health is converge's to read after. In its own process: converge runs it
+# under `if`.
+bring_up() { "$BASH" "${BASH_SOURCE[0]}" _bring-up "$1"; }
+
+bring_up_steps() {
+  local info dir
+  info=$(instance "$1")
+  dir=$(field "$info" dir)
+  if ! mountpoint -q "$dir/root/nix/store" || ! mountpoint -q "$dir/view/nix/store"; then
+    systemctl start "ndh-incus-container-store-$1.service"
+  fi
+  incus start --project "$PROJECT" "$1"
 }
 
 # create and uncreate as converge runs them, under `if`: in processes of their own. Only converge.created marks an
@@ -606,6 +663,7 @@ rollback_steps() {
   aside="$dir/.previous-$2"
   [ -d "$aside" ] || die "nothing kept for $1 at $aside — no rollback possible"
 
+  touch "$dir/converge.stopped"
   incus stop --force --project "$PROJECT" "$1" || true
   systemctl stop "ndh-incus-container-store-$1.service"
   restore_aside "$dir" "$aside"
@@ -727,6 +785,7 @@ converge() {
         failed=1
         continue
       fi
+      rm -f "$dir/converge.stopped"
       echo "ndh-incus-container: $old renamed $name, healthy"
       where=$(where_is "$name")
     fi
@@ -746,6 +805,27 @@ converge() {
     # links: system → system-N-link → the store path). One that is not means a delivery: the container's scripts
     # read those profiles, so one set under a running container would go unchecked by any health test.
     if wrong=$(declared_ok "$name"); then
+      # Holding its declared state yet stopped (a switch restarted incus before its store unit, and incus's own
+      # autostart was refused by the pre-start hook: live, 2026-10-25): its store, then itself, then its health.
+      if [ "$(incus query "/1.0/instances/$name/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Stopped ]; then
+        # Only what converge stopped: one the operator stopped stays stopped, the gesture that must stick (🛡️).
+        if [ ! -e "$dir/converge.stopped" ]; then
+          echo "ndh-incus-container: $name is stopped, not by converge: held by the operator, left stopped"
+          continue
+        fi
+        if ! bring_up "$name"; then
+          echo "ndh-incus-container: $name holds its declared state but could not be started" >&2
+          failed=1
+          continue
+        fi
+        if ! healthy "$name"; then
+          echo "ndh-incus-container: $name was stopped, and is unhealthy started on its declared system" >&2
+          failed=1
+          continue
+        fi
+        rm -f "$dir/converge.stopped"
+        echo "ndh-incus-container: $name was stopped: started on its declared system"
+      fi
       # A commit that stopped half-way (a snapshot busy, live 2026-10-22) left the previous delivery behind; this
       # run finishes it, once the container proves healthy on what it runs: before that, the aside is its way back.
       local unfinished=0
@@ -764,8 +844,14 @@ converge() {
         fi
       fi
       # What holds needs no attempt marker: a stale one (a commit that died after a healthy delivery) goes.
-      if [ "$unfinished" = 1 ]; then failed=1; else rm -f "$dir/converge.failed"; fi
+      if [ "$unfinished" = 1 ]; then failed=1; else rm -f "$dir/converge.failed" "$dir/converge.stopped"; fi
       echo "ndh-incus-container: $name holds its declared system and profiles"
+      continue
+    fi
+    # Stopped by the operator, it is held: a delivery would start it (🛡️). One converge stopped is converge's own.
+    if [ -e "$dir/lower.snapshot" ] && [ ! -e "$dir/converge.stopped" ] &&
+      [ "$(incus query "/1.0/instances/$name/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Stopped ]; then
+      echo "ndh-incus-container: $name is stopped, not by converge: held by the operator, not delivered"
       continue
     fi
     echo "ndh-incus-container: $name to deliver: ${wrong//$'\n'/; }" >&2
@@ -803,6 +889,16 @@ converge() {
     fi
     if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$declared" ]; then
       echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
+      # Stays on it RUNNING: converge left it down (a rollback whose start failed too), so it brings it up there.
+      if [ -e "$dir/converge.stopped" ] &&
+        [ "$(incus query "/1.0/instances/$name/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Stopped ]; then
+        if bring_up "$name" && healthy "$name"; then
+          rm -f "$dir/converge.stopped"
+          echo "ndh-incus-container: $name was down: started on its previous system"
+        else
+          echo "ndh-incus-container: $name could not be started on its previous system either: it needs a hand" >&2
+        fi
+      fi
       failed=1
       continue
     fi
@@ -830,7 +926,7 @@ converge() {
     if healthy "$name"; then
       # Healthy is the verdict: the system is kept whatever its cleanup does. An unfinished commit is resumed by the
       # next converge, and marks no failed attempt.
-      rm -f "$dir/converge.failed" "$dir/converge.created"
+      rm -f "$dir/converge.failed" "$dir/converge.created" "$dir/converge.stopped"
       echo "ndh-incus-container: $name ← $toplevel, healthy, on snapshot $snapshot"
       if ! commit "$name" "$snapshot"; then
         echo "ndh-incus-container: $name's commit is unfinished; the next converge resumes it" >&2
@@ -878,6 +974,10 @@ main() {
   _unrename)
     [ -n "${3:-}" ] || usage
     unrename_steps "$2" "$3"
+    ;;
+  _bring-up)
+    [ -n "${2:-}" ] || usage
+    bring_up_steps "$2"
     ;;
   _uncreate)
     [ -n "${2:-}" ] || usage
