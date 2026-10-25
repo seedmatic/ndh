@@ -199,7 +199,7 @@ The access point's two machines hold the metalspace's **builder role**, which di
 other's store: each is a trusted client of the other's `nix-store` (accepted: they already share every
 secret, and the darwin host runs the guest). **Every fleet builder** (the access point's two machines; the
 cluster builders hold no attic token, see <<cluster-builds>>) **pushes its outputs into its metalspace's
-attic**: each holds a write token and a watch-store, minted by `attic-token-issue` for both machines.
+attic**: each holds a write token and a watch-store, minted by its cache's `attic-token-mint` and pulled by the machine.
 
 A cache is as trustworthy as its least trusted writer (<<trust-model>>), and each cache has only its
 own access point's writers. But nikopol's writers, the darwin host nikopol and nikopol-nixos, are
@@ -465,10 +465,10 @@ host**, each with its own subject. attic issues as many tokens for one cache as 
 
 [source,bash]
 ----
-atticadm make-token --sub bioskop       --validity "100 years" --pull seedmatic --push seedmatic
-atticadm make-token --sub nikopol       --validity "100 years" --pull seedmatic --push seedmatic
-atticadm make-token --sub bioskop-nixos --validity "100 years" --pull seedmatic --push seedmatic
-atticadm make-token --sub nikopol-nixos --validity "100 years" --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop       --validity "14 days"   --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol       --validity "14 days"   --pull seedmatic --push seedmatic
+atticadm make-token --sub bioskop-nixos --validity "14 days"   --pull seedmatic --push seedmatic
+atticadm make-token --sub nikopol-nixos --validity "14 days"   --pull seedmatic --push seedmatic
 ----
 
 What a per-host token does **not** give yet is revocation of that host alone. attic's tokens are
@@ -491,10 +491,11 @@ public cache.
 `configure-cache`, `delete` or `destroy-cache`
 
 | validity
-| none of its own (**decided by the operator on 2026-10-17**: a token is renewed on an event, never
-on a calendar). attic cannot mint a token without an expiry, every JWT carries `exp`, so
-`attic-token-issue` mints every token, read and write, with one fixed `--validity "100 years"`, which
-stands for never. A token ends only when its cache's server secret rotates.
+| 14 days, renewed by itself every week (**decided on 2026-10-22/25**, the operator: no rotation that waits on
+their hand; 🛡️'s parameters). The cache container's `attic-token-mint` (a weekly, persistent timer) mints every
+token with `--validity "14 days"`; each machine pulls its own. A missed week is harmless; a machine that has not
+pulled for 10 days (one and a half periods) fails loudly. attic cannot revoke a token (its validation is stateless,
+signature and `exp` only), so 14 days bounds a stolen one; a token also ends when its cache's server secret rotates.
 
 | a host is lost or compromised
 | rotate the server secret, then re-issue every other host's write token and every read token (see
@@ -2074,13 +2075,13 @@ pieces are on every machine before its client is enabled, so tokens are in place
 through a file the operator opens in the IDE. Decided by the operator on 2026-10-17 (roles × keys ⑤,
 option B), replacing the sshfs drop-box of 2026-10-16, which was never built: with no token lifetime,
 nothing needs the periodic refresh it was for
-| atticadm, inside each metalspace's cache container (`attic-token-issue`, ciphertext only out); the
-operator's `ndh-attic-tokens-deposit <dir>` on the keyring seat sends each machine a frame of its own
-ciphertext over the fleet ssh (certificates only, over the tailnet, so a roaming metalspace is reached
-too) to `ndh-attic-tokens-receive`, by its fixed path under `sudo -n`. The receive checks the frame's
-address, the item names against the catalog, the age header and a size bound, keeps the items and runs
-the unseal; at worst a local caller replaces this machine's own tokens with garbage. Identities never
-take this path: they stay on S2
+| atticadm, inside each metalspace's cache container (`attic-token-mint`), piped straight into age to each target
+machine's access point (its CURRENT slot, never a pending one), into `/var/lib/attic-tokens/<sha256 of the machine
+and its public>/`, which nginx serves at `/tokens/` (static, no listing, `no-store`, `.age` only, same 443 and fabric
+allow-list). Each machine's `ndh-attic-tokens-fetch` (NixOS: daily timer and boot; darwin: launchd at load and
+daily) pulls its own directory from every cache over the fleet's TLS, bounded, required to be age, keeps the previous
+generation and runs the unseal. No push channel, no operator gesture. Identities never take this path: they stay on
+S2
 |===
 ====
 
@@ -2211,14 +2212,13 @@ The rotation, for each cache named, then the re-issue:
 . rotate the server secret: in the cache container, remove `/var/lib/attic-secrets/server.env`, then
   restart `attic-server-secret` (it generates a new one, which never leaves the container) and
   `atticd`. Every token of that cache, write and read, stops working at that moment;
-. mint new write tokens for the remaining hosts, one each, and new read tokens
-  (`attic-token-issue`, same subjects and scopes, the same far validity);
-. deposit the new ciphertext on every machine except a lost one (`ndh-attic-tokens-deposit`, roles ×
-  keys ⑤), whose receive unseals it into `ndh.atticClient.paths`;
+. mint now: `systemctl start attic-token-mint` in that container, so every machine finds a valid token at its next
+  pull instead of at the next weekly mint (a lost host is first removed from the declaration, so it gets none);
+. each machine pulls by itself (`systemctl start ndh-attic-tokens` on a NixOS guest, or wait for its daily pull);
 . check with <<read-test>> that the old read token gets 401 and the new one 200.
 
-Until step 3 reaches a host, that host can neither upload nor substitute from attic. It falls back to
-cache.nixos.org and to building.
+Until a host has pulled, it can neither upload nor substitute from attic. It falls back to cache.nixos.org and to
+building.
 
 [mermaid]
 ....
