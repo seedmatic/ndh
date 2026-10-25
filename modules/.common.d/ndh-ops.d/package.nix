@@ -5,7 +5,8 @@ let
   inherit (pkgs) lib;
   inherit (import ./paths.nix) dir;
   verbs = builtins.fromJSON (builtins.readFile ../../darwin/claude-code-managed.d/verbs.json);
-  # never_delegated (the root's ceremony): the operator's alone, at a terminal; no armed delegation may run it.
+  # never_delegated holds two kinds: the operator's alone, at a terminal (the root's ceremony), and the retired tools
+  # still denied by name while old store paths hold them (verbs.json's why); no armed delegation may run either.
   operatorTools = lib.subtractLists verbs.operator_tools.never_delegated verbs.operator_tools.programs;
 in
 assert lib.assertMsg (

@@ -17,15 +17,12 @@ setup() {
   OLD=$(git -C "$T/work" rev-parse HEAD)
   git -C "$T/work" commit -q --allow-empty -m "incus no-decrypt"
   FIX_INCUS=$(git -C "$T/work" rev-parse HEAD)
-  git -C "$T/work" commit -q --allow-empty -m "attic no-decrypt"
-  FIX_ATTIC=$(git -C "$T/work" rev-parse HEAD)
   git -C "$T/work" commit -q --allow-empty -m head
   MERGED=$(git -C "$T/work" rev-parse HEAD)
   git clone -q --bare "$T/work" "$T/github.git"
   PREV=$(printf '%040d' 1)
 
-  i=$FIX_INCUS a=$FIX_ATTIC yq '(.[] | select(.name == "incus-cluster-cert-renew") | .noDecryptFix) = strenv(i)
-    | (.[] | select(.name == "attic-leaf-sign") | .noDecryptFix) = strenv(a)' "$D/signers.yaml" >"$T/signers.yaml"
+  i=$FIX_INCUS yq '(.[] | select(.name == "incus-cluster-cert-renew") | .noDecryptFix) = strenv(i)' "$D/signers.yaml" >"$T/signers.yaml"
 
   # ndh-switch: records its argv; $T/behave.<machine> scripts it (ok, fail N, unreachable, noreach, refused).
   cat >"$T/bin/ndh-switch" <<STUB
@@ -95,7 +92,6 @@ switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print
   [ "$(switched)" = "bioskop-nixos nikopol-nixos nikopol bioskop " ]
   grep -qx "nix run github:seedmatic/ndh/$MERGED#incus-cluster-cert-renew -- --check" "$T/calls"
   [ "$(grep -n 'incus-cluster-cert-renew -- --check' "$T/calls" | cut -d: -f1)" -lt "$(grep -n '^ndh-switch bioskop ' "$T/calls" | cut -d: -f1)" ]
-  refute grep -q 'attic-leaf-sign' "$T/calls"
 }
 @test "the revision defaults to develop's head on the remote" {
   run fs --only nikopol-nixos
@@ -157,11 +153,11 @@ switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print
   [ "$(switched)" = "bioskop-nixos nikopol-nixos nikopol " ]
 }
 @test "a signer --check that cannot classify stops the seat too (fail closed)" {
-  echo true >"$T/signer.bioskop.atticLeaf"
-  echo 2 >"$T/check.attic-leaf-sign"
+  echo true >"$T/signer.bioskop.incusClusterCert"
+  echo 2 >"$T/check.incus-cluster-cert-renew"
   run fs --with-seat --only bioskop --rev "$MERGED"
   [ "$status" -eq 4 ]
-  [[ "$output" == *"bioskop: STOPPED: attic-leaf-sign --check could not classify (exit 2): not activating"* ]]
+  [[ "$output" == *"bioskop: STOPPED: incus-cluster-cert-renew --check could not classify (exit 2): not activating"* ]]
   refute grep -q '^ndh-switch bioskop ' "$T/calls"
 }
 @test "a target revision older than a signer's no-decrypt fix never runs that signer" {
@@ -186,10 +182,10 @@ switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print
   refute grep -q '^ndh-switch bioskop ' "$T/calls"
 }
 @test "a remote darwin host whose activation would sign is refused" {
-  echo true >"$T/signer.nikopol.atticLeaf"
+  echo true >"$T/signer.nikopol.incusClusterCert"
   run fs --rev "$MERGED"
   [ "$status" -eq 4 ]
-  [[ "$output" == *"nikopol: STOPPED: a remote darwin host whose activation signs (attic-leaf-sign)"* ]]
+  [[ "$output" == *"nikopol: STOPPED: a remote darwin host whose activation signs (incus-cluster-cert-renew)"* ]]
   [ "$(switched)" = "bioskop-nixos nikopol-nixos " ]
 }
 @test "--dry-run switches nothing: ndh-switch --dry-run per machine, and the seat guard still runs" {

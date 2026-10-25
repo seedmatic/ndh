@@ -29,6 +29,7 @@ source @verify@
 source @write@
 source @declare@
 source @classes@/attic-cache-key.sh
+source @classes@/attic-tls-csr.sh
 
 die() {
   printf '[keys-reconcile] refused: %s\n' "$*" >&2

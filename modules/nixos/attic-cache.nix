@@ -34,14 +34,18 @@ let
   envFile = "${secretsDir}/server.env";
   loopback = "127.0.0.1:8080";
   metalspace = if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn;
+  # The TLS leaf keys-reconcile signed for this cache, if the catalog records one.
+  recordedLeaf = ../../catalog/attic-leaves + "/${metalspace}.crt";
   # The guest's half of keys-reconcile's attic-cache-key class: on the ndh trampoline and logger, as host-key-generate.
   publish = ndh.store.installBinScript "attic-publish" (
     pkgs.replaceVars ./attic-cache.d/publish.sh (
       lib.mapAttrs (_: lib.escapeShellArg) {
         machine = config.networking.hostName;
         cache = metalspace;
+        inherit (cfg) fqdn;
         keyNameRegex = ndh.context.catalog.privateCaches.keyNamePattern metalspace;
-        shared = "${paths.hostTls}/cache-key.public";
+        sharedPublic = "${paths.hostTls}/cache-key.public";
+        sharedCsr = "${paths.hostTls}/request.csr";
         base = "/var/lib/ndh";
         owner = "0";
         inherit (paths) publishDir;
@@ -49,6 +53,7 @@ let
       }
       // {
         inherit (ndh.context) nixBashTrampoline;
+        openssl = "${pkgs.openssl}/bin/openssl";
       }
     )
   );
@@ -165,8 +170,8 @@ let
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
     };
-    # The operator seat writes a new leaf on the NixOS guest (attic-leaf-sign); the container takes it
-    # by itself: attic-tls-key checks it certifies the held key, then nginx serves it.
+    # The guest's switch writes the leaf keys-reconcile recorded (catalog/attic-leaves); the container takes it by
+    # itself: attic-tls-key checks it certifies the held key, then nginx serves it.
     systemd.paths.attic-tls-leaf = {
       wantedBy = [ "multi-user.target" ];
       pathConfig.PathChanged = "${tlsDir}/cert.pem";
@@ -476,13 +481,30 @@ in
       supportsDryActivation = false;
       text = ''
         if ! ${pkgs.bash}/bin/bash ${publish}/bin/attic-publish; then
-          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key; the next activation retries" >&2
+          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key or TLS CSR; the next activation retries" >&2
+        fi
+      '';
+    };
+    # The leaf keys-reconcile recorded for this cache, delivered by the switch: copied onto the tls device only when it
+    # differs, so an unchanged generation restarts nothing in the container. Without a recorded leaf, nothing is
+    # written and nginx stays off (its ConditionPathExists).
+    system.activationScripts.ndhAtticLeaf = lib.mkIf (builtins.pathExists recordedLeaf) {
+      deps = [ "specialfs" ];
+      supportsDryActivation = false;
+      text = ''
+        if ! cmp -s ${recordedLeaf} ${paths.hostTls}/cert.pem; then
+          install -m 0644 ${recordedLeaf} ${paths.hostTls}/cert.pem.new &&
+            mv -f ${paths.hostTls}/cert.pem.new ${paths.hostTls}/cert.pem ||
+            echo "[attic-leaf] FAILED to install ${cfg.fqdn}'s recorded leaf; the next activation retries" >&2
         fi
       '';
     };
     systemd.paths.ndh-attic-publish = {
       wantedBy = [ "multi-user.target" ];
-      pathConfig.PathChanged = "${paths.hostTls}/cache-key.public";
+      pathConfig.PathChanged = [
+        "${paths.hostTls}/cache-key.public"
+        "${paths.hostTls}/request.csr"
+      ];
     };
     systemd.services.ndh-attic-publish = {
       description = "Publish the cache container's public key, signed by this guest";

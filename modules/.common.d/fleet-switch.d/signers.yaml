@@ -4,6 +4,3 @@
 - name: incus-cluster-cert-renew
   option: incusClusterCert
   noDecryptFix: 7a71fcfa15cac6fd7c6de9bfc5a2f3b0f5f03ee9
-- name: attic-leaf-sign
-  option: atticLeaf
-  noDecryptFix: cf0a0731c495a612fc8bae6e5ae82f698d3b30ba
