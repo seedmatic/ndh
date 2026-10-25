@@ -6,7 +6,9 @@
 # decrypted files), and writes into that same checkout, so it refuses a checkout whose tree is not exactly that
 # revision: one with changes (staged, unstaged or untracked), and one whose HEAD moves while the build runs. The
 # derivation recorded is the one of the revision built, read before the build. Written only when the build succeeded
-# AND its log carries the guard's REFUSED line for the planted key: an image ships only on a guard that refused.
+# AND the guard's REFUSED line for the planted key is in the log of the canary's install (the derivation the check
+# wraps: its own log holds only the check's lines): an image ships only on a guard that refused. That log is read from
+# the store by `nix log`, straight into the match, so no copy of the guest's install log lands on disk.
 #
 # Usage: ndh-canary-proven record     prints the commit-message line to use; commits nothing
 set -euo pipefail
@@ -40,14 +42,16 @@ if [ "$(tr -d '[:space:]' <"$record_rel")" = "$drv" ]; then
   exit 0
 fi
 
-log=$(mktemp)
-trap 'rm -f "$log"' EXIT
+install=$(nix-store --query --references "$drv" | grep -E -- '-secret-canary\.drv$') ||
+  die "the canary's install is not among $drv's inputs"
+[ "$(grep -c . <<<"$install")" = 1 ] || die "more than one canary install among $drv's inputs"
+
 echo "ndh-canary-proven: proving $attr at ${rev:0:12} (a full VM install, ~13 min)…" >&2
 rc=0
-nix build --no-link -L "$flake#$attr" >"$log" 2>&1 || rc=$?
-((rc == 0)) || { tail -n 20 "$log" >&2; die "the canary's build failed (exit $rc): nothing recorded"; }
-line=$(grep -m1 -F -- "$refused_line" "$log") ||
-  die "the build succeeded but its log carries no « ${refused_line% } »: nothing recorded"
+nix build --no-link "$flake#$attr" || rc=$?
+((rc == 0)) || die "the canary's build failed (exit $rc): nothing recorded; its log: nix log $install"
+line=$(nix log "$install" | grep -m1 -F -- "$refused_line") ||
+  die "the build succeeded but the canary's install log carries no « ${refused_line% } »: nothing recorded"
 
 [ "$(git rev-parse HEAD)" = "$rev" ] || die "HEAD moved during the build (was ${rev:0:12}): nothing recorded"
 [ -z "$(git status --porcelain --untracked-files=all)" ] || die "the checkout changed during the build: nothing recorded"
