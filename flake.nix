@@ -1769,6 +1769,52 @@
           # A machine signs with exactly ONE key, never none: its own once it signs with it (ndh.nixSigning.signs), the
           # shared fleet key before, whose private it then holds and no longer after. The fleet public stays trusted on
           # every machine. A mutant giving a machine that signs both keys must be caught.
+          # A guest that serves its own born key decrypts with it (sops.age.sshKeyPaths), and has no age file: its
+          # sops-install-secrets must not require the age-file bootstrap, which can only fail there (bioskop-nixos,
+          # 2026-10-26: no secret deployed, the linux builder down). Every guest whose current slot is serving/host,
+          # and one still on its placed identity, which keeps the bootstrap. The served key stays required: sops-nix
+          # reads it before decrypting, and a decryption with no identity fails the unit (main.go:1406-1446).
+          sops-own-key-no-bootstrap-unit =
+            let
+              lib = nixpkgs.lib;
+              withSlot =
+                slot:
+                (self.nixosConfigurations.bioskop-nixos.extendModules {
+                  modules = [ { ndh.hostKey.entry = lib.mkForce { slots."26-10-22" = slot; }; } ];
+                }).config;
+              own = withSlot {
+                state = "serving";
+                origin = "host";
+                public = "AAAAown";
+              };
+              placed = withSlot {
+                state = "serving";
+                origin = "keyring";
+                public = "AAAAplaced";
+              };
+              unit = c: "${c.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service";
+              has = c: c.systemd.services ? ${c.ndh.sopsAgeKeyBootstrap.systemdUnitName};
+              install = c: c.systemd.services.sops-install-secrets;
+            in
+            assert lib.assertMsg (
+              own.sops.age.keyFile == null
+            ) "sops-own-key-no-bootstrap-unit: an own key still has an age file";
+            assert lib.assertMsg (
+              !(has own)
+            ) "sops-own-key-no-bootstrap-unit: an own key still gets the age-file bootstrap unit";
+            assert lib.assertMsg (
+              !(lib.elem (unit own) ((install own).requires ++ (install own).after))
+            ) "sops-own-key-no-bootstrap-unit: sops-install-secrets still requires the bootstrap on an own key";
+            assert lib.assertMsg (
+              own.sops.age.sshKeyPaths == [ own.ndh.hostKey.servedKeyFile ]
+            ) "sops-own-key-no-bootstrap-unit: an own key does not decrypt with the served key";
+            assert lib.assertMsg (
+              !(lib.any (r: lib.hasInfix "sops" r && lib.hasPrefix "d " r) own.systemd.tmpfiles.rules)
+            ) "sops-own-key-no-bootstrap-unit: an own key still creates the age file's directory";
+            assert lib.assertMsg (
+              has placed && lib.elem (unit placed) (install placed).requires
+            ) "sops-own-key-no-bootstrap-unit: a placed identity lost its bootstrap unit";
+            pkgs.runCommand "sops-own-key-no-bootstrap-unit" { } "touch $out";
           nix-signing-one-key =
             let
               lib = nixpkgs.lib;
