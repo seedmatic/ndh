@@ -283,13 +283,19 @@ keys:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos
         nixSigning: seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54=
-        state: serving
+        state: retired
         origin: keyring
         age: age1s4n043p3h4hsxfee6g2p2at63szfslgpm54luyup6ucevjfzpfxq4m8h7x
         recipient: false
       26-10-22:
-        state: pending
+        state: serving
         origin: host
+        public: AAAAC3NzaC1lZDI1NTE5AAAAINjGWDdzFtyl/P5faIDV/CUYtYkD1Vj8k+4u1HeGpnGN
+        age: age1zyz3e3dk0yj69hrutzrqyv4xx2zrjm6hgkvcmrxcehs92ftqx3xqlq0w4d
+        certificates:
+          mammoth-skate:
+            ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIBygqyl6bPh6ladaFOk46nwIWeBSw6Cruo2/jOH1Cf5xAAAAINjGWDdzFtyl/P5faIDV/CUYtYkD1Vj8k+4u1HeGpnGNAAAAAAAAAAoAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTBaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABApGpkAJ3zhBRGyiGw1hBDYPHKASY8ep6jTTdgtjHUOjOOmlkoZ+nFCCqLzH14U9V/j9bkVDNgtJqJvuLuWPJJBA== host-bioskop-nixos
+        recipient: true
   vz-recover-nikopol:
     type: ssh-ed25519
     comment: vz-recover-nikopol
@@ -314,14 +320,20 @@ keys:
         certificates:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILx1y0F1PI2fR6n7VAR5T7xXeRGdiwwNLgurDv+/+kpfAAAAIHepa/fSAQbHiF3VvnFW0mdTzv2qD05cxtla+12d9SlfAAAAAAAAAAgAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABA2PMhrcI5Cu3ij3kAU5vYW+uRFAm45djCznEeTUyXispu4YWlwomev3spDFVqSGka/fwNXiMDe+UcefjTqEZ3Bg== host-nikopol-nixos
-        state: recorded
+        state: retired
         origin: keyring
         age: age18ufv8m967u84wsq4lrq8qeh5dgvzf7s0tczfckyuqk8x93kl0qxs7sdpdd
         recipient: false
       26-10-25:
-        state: pending
+        state: serving
         origin: host
         bootstrap: console
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIAcqYKxMTVzb7Wokby0qrMWpBdM/0AnAr10k0zWQyKZZ
+        age: age1952klh28ju3urhzpu3m7jye89zfcrcgzmznt069f7akpq56h8g9qq8l96e
+        certificates:
+          mammoth-skate:
+            ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO4V6oJBw3NcmwjtkUg3fYD6H55FLD7iPapqdQXO5ba0AAAAIAcqYKxMTVzb7Wokby0qrMWpBdM/0AnAr10k0zWQyKZZAAAAAAAAAAsAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTBaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABAnLSjiDShhnI62NiaiBSHrKgKDQhgeKNq+va8bne2VMHlJQILrBQbY0D4IpgoNcpzi8k4aBiq50NyYfjNfy4GAA== host-nikopol-nixos
+        recipient: true
   host-nikopol:
     type: ssh-ed25519
     comment: host-nikopol
@@ -337,14 +349,20 @@ keys:
         certificates:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIOSwv9Qugddzh0VmSvQBYvLmwA+1fzT8nQdB1Roq4jiTAAAAIKAEDgiY1JSMavOuGtyFc5b/1bjZrJnSGNrs7ayi6jdrAAAAAAAAAAkAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQPnt2iYjx5R8aQxoshwpowb55cXCsK/MvmEfCt3X0evb85ZoKs1ygt/XxRJAPeFOtQiR3DyoQg5gIWHWzU7jPQI= host-nikopol
-        state: recorded
+        state: retired
         origin: keyring
         age: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
         recipient: true
       26-10-25:
-        state: pending
+        state: serving
         origin: host
         bootstrap: console
+        public: AAAAC3NzaC1lZDI1NTE5AAAAIDfvn66YNMMKMSP/MaIiysnOKYy6ROsP5OlrjIueS6zA
+        age: age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
+        certificates:
+          mammoth-skate:
+            ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIIR1K+u5VTrCkNB7swLykk07jPLsksiBo/hkZ7VBd/UVAAAAIDfvn66YNMMKMSP/MaIiysnOKYy6ROsP5OlrjIueS6zAAAAAAAAAAAwAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTFaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQBIuHnOvfNgml6F55NKp+NpUp1BVEyuXn1nH/93bL3sDnhROSauIVHUcBAEiRuH+Aa68/IfkiEGbmNX4NCkpuw0= host-nikopol
+        recipient: true
   sshfs-nikopol-nixos:
     type: ssh-ed25519
     comment: sshfs-nikopol-nixos
@@ -452,50 +470,77 @@ sops:
   age:
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB1TVFBWEpwZHd5U1JCdDhk
-        QVltOFpmNkhqT0lEWWc2ZmYrdU9hUTRpK2xzCmYxOUZNWW8vc2hzSEczUDBWY2FU
-        Z0RQcWp3SGVCR3d2SGdWV1grMFFQdGMKLS0tIFUyQ3ZaTVJQWnkxaUVtV3BBVUE3
-        MDE5MEZGclhWNEMrZ3VIMWJrOVlVZVUK9/6/WgbEE18pE+4+n79O+YzsxQyzcg0Q
-        OR/qojRSHZk76+2bF/U7AccTd5DE3zIUqi/Jc3s890ppry0GFWj1SA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA3Vlp6SUErTXJEcVV2NzJZ
+        d2Qzck9CZ3owd0pDTXp3Z0pUOGZZSW50clU0ClVMZnl1SXZhdVlQR0tvNEw3cnZx
+        dmVWNkVrVldrU3hxSHRkbUZvWE9nTjAKLS0tIE05c01KWVdveFpjRTloRkJKSERV
+        SHQxcWx2VFVVc25wOUlLdW9qRFpYaGMK+4wKoVFvkM7LIvZq1EKjL8lwumEAATlG
+        Q7oHjRsv+tek1kaDTvh7FSn04MTNd8TbSqLWSVjCBn46H21RomBFDg==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBrU2cwdStjcHhWTVV2UW92
-        L3VZaHFzVFpWK21lYlhweS9Fdmk2QVZvbXlrCmJVRitpNGVrRHlVWm5URkIzRVhn
-        bTR0VW9aSXIzMmlLTTlRcjZIcmR4Zk0KLS0tICtTODgyNU9QYjJ5enZOMW5oZ3Nk
-        SmFRYnd2ekJ3Z0ZzRHZwRW9kQlUxVG8KoTtD9BJ+5Zoan5z3puxvdsvLU00V+s02
-        u9c454C+6kHvjk3Xya1+oEMRshFMvvvUlttT0KfOENQoRer8tNDqoQ==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBNa0o3NEpqTFZMNkFvUTBh
+        WTNnL1lVNk10cmVQbVFrUWpHWXhsWVJLMlR3CklTVStvc2Z4WXRsbGNkcjVvZGxI
+        ZVkyLzNyODJaeFNWODZCRDBFTmp5NUEKLS0tIGxiR3B2Q3RSSUtQcXEycWZCZDEv
+        R0lGMkhTYkRDdWxvM0hWNDAxYm5WRG8KnEP08i/WpxHPo2WrVfAm2avCc6aPIUwM
+        DHOuhM2UIyqiItMENlZRIedbk2wZuajrsH829MnSohVpBDUDU2RT0Q==
         -----END AGE ENCRYPTED FILE-----
       recipient: age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBWWFVNVFVQUFhjY0hPaWZG
-        OWRCOGNxNjVCallZRHZqYnZXOVVqMHZiTVVBCjZwRk5ldWIrUnFUNm5NeDNXUFVn
-        YjZlVzFEeUxXSVVpV21DR2E4UmozVU0KLS0tIG50NzZSZWc2QUwzR3ZlYTBSMW55
-        SWc3cFFkTTY5MDFVOStVNUJOWDdGT3cK4fUBAgXKdvEHZttl+a2ONXwsaFh+lpJx
-        x6+gl2EIaTjlqpBc4zrlax670hDIE6nDmol/HVAMMJ4ioCkqvbuVTw==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA5TWhTS0d3blBEbHpEcU1k
+        bDFWZUFlcmlIWWxTZWlmN05UZ2N0OTRDaVIwCkN0L1drUG9qbUNJN0E0RVdra3Jj
+        OFZ0MS84SmJ0MnZiM1M0aENBRWZwSlkKLS0tIEp4UTE3MzV6RzFFVk1zcWhtTDF1
+        TkhQWGtISGpGN2JMa0xMZkkvQk9FbEEKrn+Rrp9OW1gut65Tfb/Dg+WDWp7PQ7QB
+        SRgAfKU77ZRPuBqlibugsq4Smy8O0gt5R6sgOCGImNTFnVHGjzIK5A==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA1bUZoaitKek5CK0lob1Rh
-        QU1zeFZrSWRsS1R3RkF5eXZveFNZL040Ymk0CkM5WGJYM3B6R0E3SCt1RjNNU3R0
-        TE1TNDg4WkNpUkx6MVoxa2lQU29Ca1UKLS0tIGwrMktJTVI1OUJ4NSs0NER4QWJH
-        OGFWdWtOejlXYWovMlhOcVgwcWt1em8Kz1yz64aX1b6WYJ1+6wEyf2+1ISPlXq0G
-        Z/zuww26lr3QCQimKxz/Dc1dqsmrnKevT7ZU7WVFi/hBgOjMg/OCLQ==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBVTmpBemRCYXdBSDJtTno2
+        STlvb0hRbHFxQTZCM3hpNFlNeko2Y09GampJCkx5ODhxQy9Pczg0Yk1tcE5YaXFL
+        UmZWMUtNQW5DV0VSVzhpTWhFRzF0NEUKLS0tIFA0cEQzNUMxRy90WFlzd2lUMTJn
+        KzNyd2lBWWZLNHBla2pGeHNNSkVZME0KQVOKJRF3kq1noFgdguoJ0RrsL9lufq3b
+        aifkzoBA7LTCNiN4ZaaeOFE2j/sA1gzZUyW4Qz5PHSvUC3OR1ZwVPw==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m
     - enc: |
         -----BEGIN AGE ENCRYPTED FILE-----
-        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBXQysycWJDZTFZL3VnbUJq
-        RjMrN3lDYlc2Y3JLMyt2KzZieFVtNytGMEF3Cllpd0gvcmN3YnlXZWdiY1RsRlFT
-        QzU5M2ZNSUpOVXN3bWVFbitRRjBYU28KLS0tIDV1ZE5oM281eDFBTUtSVDRmUldF
-        ZEF4eUt2TzZxSWIxQ0NzZnY2cWJObmsK+09H2OC2pm6Cfgl5sjkX1XVTk11PbTA3
-        GG3FRHOtZJp/sWEdv4JSmpjT3pb6lvKjCZ+eR3MYjlBPjKkp+t2KXA==
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBLYkJNK2thYm5aSDhXdVNI
+        Y3BSTFh4ZExVUEI4VW53UWJmZEZqMkRWWWpRCkFRRW9GRjQzMGthaU05ZUtmSTE3
+        TzBnM25YMWRPcWJWcHlJQ0wwc3hrSnMKLS0tIDkvQkZBaVpBL0Q4VXErVCtsYmp6
+        NC9LSzVOemR4WG9CTzlLM2FBT3FOSDQKypqa/E1s+kD9TWBbEccZFWrhsT95TwWS
+        L7gogBuG2dL0ZziiD516HXbSYq//fMz8+m9ttnQyXEV5c7Ry2PleOg==
         -----END AGE ENCRYPTED FILE-----
       recipient: age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSB2bTl4Rk52dm5PQWxSWFB3
+        cW4vTzNtSm56N1lBRno0bkVONlhyMUJyU1U0CnVXYnZOWjNublFZUklOVUJ5blZw
+        K3JXN2Y3S0d3aVFNU0RlZjFwd1hWdXMKLS0tIGV4Z2RBdGsxVWlEL2V6aEZPcVZr
+        ZERsUFFnakpOV2JwVk1FdzRWbnBVeVUK9k/3VbfXYdZQU4e6Voa+Esp+ByVnhVBa
+        KhXlKrGvCvDfvPnpO/cYynLaoyEe+85aWiitIRBssNbOydf2bwYsPg==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1zyz3e3dk0yj69hrutzrqyv4xx2zrjm6hgkvcmrxcehs92ftqx3xqlq0w4d
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBSeFlWVjU4QnNaY2V1c0da
+        RTlzUTVTdmRFSG84c3JraVdGK3gyYVJXVURzCnVzQzgvaWpOL3dhT3cwbldrM2RR
+        dHgyS2NJOWZHMkpqYjA5aVhtd3lFOGMKLS0tIGY4dXRyZzZEdTVQWk5Pb3VicWx5
+        ZUc1cmk3WXZ1OER1ZG1TdWFOMXlHTE0KK0fVJJFosHoq1SrhcekPi9ui633NfFiK
+        3wwNaeG5XwddMubkc6Qx1gGkNY3+TusqthgkSD2/6517Fv2mTcdX2w==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1952klh28ju3urhzpu3m7jye89zfcrcgzmznt069f7akpq56h8g9qq8l96e
+    - enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBrSEttbGErWlhUYU93M0Zv
+        RTVMZHhFMzRNL25UeWcwOGNORzU0WnlQbHpZCjNWSm5qNlViZlp0U3dhM0Juazd4
+        Q1kvTWdsUDVTMlZQUkRTa1ZVNWxqQkUKLS0tIEUxalZjdDR4S3AyekZGRVliWW4y
+        c3gyTEg0djhvTEd2ejFPTm5vTXF3cTQK/9b3iBmAst6aB+CccDFSKkiK+DqCvU3C
+        zCcAEn/GqwsosKDtq4zk5AobzEN580F5U9PPuTEKNfkJxJMJqVbL1g==
+        -----END AGE ENCRYPTED FILE-----
+      recipient: age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-25T22:59:01Z"
-  mac: ENC[AES256_GCM,data:NcnaJIuIgmbbw/RFAjpjdvnFyVvhYG82Ja4Ze6UkxyfuYYs64MTA+Fz5KHKPPyJWbdIKGymbU3ejUV/Zug6/1N/WBgYt6bENkkVkVt+CUzmIUYnzZDV23WXsmkgoPkfGGb+VAf2fNBp+xKV10Scy96/lMTblOQjHQsk2MOdAIVw=,iv:F2iGbEDhN7mRMSr2b3sY6ts9WICHxtrun1ZA6GneEoI=,tag:SgRqTA3L8x0ZDWGkel59mg==,type:str]
+  lastmodified: "2026-10-26T09:13:51Z"
+  mac: ENC[AES256_GCM,data:Yr9Ex4aDUiDRzixHppn0gzlJ/KRjL0pKmsGb6b2/0OPDHsprK3gVPWHfYR0HteKh8f3Ct8iTPkMGXzN7W/gtczQV5jc66IgT5GM8wX1ulg6lsntVgBGtJlENdPvun9mNFBr85NBVZcUORvYJgWrvLtcVs0XtBHuUMkDLHxEiU20=,iv:vQmyZBsnf0WxmubwFqe44vf4s98U2W6fh7C7DBW5CBs=,tag:CV3JtDRaOpgsUOoYaGBf2A==,type:str]
   version: 3.13.3
