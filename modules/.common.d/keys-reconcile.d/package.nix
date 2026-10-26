@@ -120,6 +120,8 @@ ndh.store.installBinScript "keys-reconcile" (
     verify = ./verify.sh;
     declare = ./declare.sh;
     close = ./close.sh;
+    retire = ./retire.sh;
+    hostNamesJson = pkgs.writeText "keys-reconcile-host-names.json" (builtins.toJSON hostNames);
     write = ./write.sh;
     classes = ./classes;
     delegation = lib.escapeShellArg delegation;

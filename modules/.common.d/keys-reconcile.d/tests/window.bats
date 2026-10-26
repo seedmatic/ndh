@@ -14,7 +14,13 @@ setup() {
   age-keygen -o "$t/age.txt" 2>/dev/null
   export SOPS_AGE_KEY_FILE="$t/age.txt"
   operator=$(age-keygen -y "$SOPS_AGE_KEY_FILE")
-  for n in ca old new; do ssh-keygen -q -t ed25519 -N '' -C "$n" -f "$t/$n"; done
+  for n in ca old new shared; do ssh-keygen -q -t ed25519 -N '' -C "$n" -f "$t/$n"; done
+  : "a shared key (rdp-host's part) whose ssh-host certificate names the seat alone, with a known id: retire revokes it"
+  ssh-keygen -q -s "$t/ca" -I shared-host-cert -h -z 7 -n seat,seat.lan "$t/shared.pub"
+  mv "$t/shared-cert.pub" "$t/shared-host-cert.pub"
+  : "and a user certificate on the same key, another certificate that retire must leave byte-identical"
+  ssh-keygen -q -s "$t/ca" -I shared-user-cert -z 9 -n rdp "$t/shared.pub"
+  mv "$t/shared-cert.pub" "$t/shared-user-cert.pub"
 
   : "the fixture revision"
   src="$t/src"
@@ -30,6 +36,7 @@ creation_rules:
       - '$operator'
 EOF
   CAPUB="$(cut -d' ' -f2 "$t/ca.pub")" CAPRIV="$(<"$t/ca")" OLDPUB="$(cut -d' ' -f2 "$t/old.pub")" \
+    SHAREDPUB="$(cut -d' ' -f2 "$t/shared.pub")" SHAREDCERT="$(cut -d' ' -f1,2 "$t/shared-host-cert.pub")" SHAREDUSER="$(cut -d' ' -f1,2 "$t/shared-user-cert.pub")" \
     yq -n '
       .authorities.fabric.type = "ssh-ed25519" | .authorities.fabric.usage = ["ssh-authority"] |
       .authorities.fabric.slots."26-01-01".public = strenv(CAPUB) |
@@ -38,7 +45,11 @@ EOF
       .keys."host-seat".type = "ssh-ed25519" | .keys."host-seat".usage = ["ssh-host"] | .keys."host-seat".profiles = [] |
       .keys."host-seat".authority = "fabric" | .keys."host-seat".cert_usage = ["ssh-host"] |
       .keys."host-seat".slots."26-10-17" = {"public": strenv(OLDPUB), "state": "serving", "origin": "keyring"} |
-      .keys."host-seat".slots."26-11-01" = {"state": "pending", "origin": "host"}
+      .keys."host-seat".slots."26-11-01" = {"state": "pending", "origin": "host"} |
+      .keys."shared".type = "ssh-ed25519" | .keys."shared".usage = ["user-signing"] | .keys."shared".profiles = [] |
+      .keys."shared".slots."26-01-01".public = strenv(SHAREDPUB) |
+      .keys."shared".slots."26-01-01".certificates.fabric."ssh-host" = strenv(SHAREDCERT) |
+      .keys."shared".slots."26-01-01".certificates.fabric."ssh-user" = strenv(SHAREDUSER)
     ' >"$src/modules/home-manager/ssh.d/keys.yaml"
   printf 'caches:\n  k: v1\n  # sops:encrypted\n  s: secret\n' >"$src/catalog/cache-trust.yaml"
   printf '{}\n' >"$src/catalog/private-caches.json"
@@ -59,6 +70,7 @@ EOF
   printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' \
     "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/batch.json"
   arm "$(($(date +%s) + 600))" keys-reconcile
+  echo '{"seat": ["seat", "seat.lan"]}' >"$t/host-names.json"
   render
 }
 
@@ -77,7 +89,7 @@ arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the t
 
 render() {
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [retire]="$BATS_TEST_DIRNAME/../retire.sh" [hostNamesJson]="$t/host-names.json" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json" [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
   )
@@ -85,7 +97,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | declare | close | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | declare | close | retire | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
@@ -452,4 +464,144 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
   run --separate-stderr window oui
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
+}
+
+# keys-reconcile retire: the window's commit merged as 🧭 merges it, the tool re-rendered at that revision.
+merged() { # the window's branch becomes the remote's develop, and the tool reads that revision's keys.json
+  local wt
+  wt=$(tree)
+  git -C "$wt" push -q "$t/remote.git" "HEAD:refs/heads/develop"
+  rev=$(git -C "$wt" rev-parse HEAD)
+  yq -o json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {}), "revoked_certificates": (.revoked_certificates // {})} | del(.. | select(tag == "!!str" and test("^ENC\[")))' \
+    "$wt/modules/home-manager/ssh.d/keys.yaml" >"$t/keys.json"
+  render
+}
+retire() { # <answer> <machine>
+  printf '%s\n' "$1" >"$t/tty"
+  GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" retire "$2"
+}
+@test "retire: the retired slot deleted and revoked, the shared host cert removed and revoked by its id, in one commit" {
+  window oui
+  merged
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 0 ]
+  k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
+  [ "$(yq -r '.keys."host-seat".slots | has("26-10-17")' "$k")" = false ]
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
+  [ "$(yq -r '.revoked."host-seat@26-10-17".public' "$k")" = "$(cut -d' ' -f2 "$t/old.pub")" ]
+  [ "$(yq -r '.keys.shared.slots."26-01-01".certificates.fabric | has("ssh-host")' "$k")" = false ]
+  : "the shared key's user certificate is another certificate: byte-identical"
+  [ "$(yq -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-user"' "$k")" = "$(cut -d' ' -f1,2 "$t/shared-user-cert.pub")" ]
+  [ "$(yq -r '.revoked_certificates."shared@26-01-01/7".key_id' "$k")" = shared-host-cert ]
+  [ "$(yq -r '.revoked_certificates."shared@26-01-01/7".authority' "$k")" = fabric ]
+  [ "$(git -C "$(tree)" log -1 --format=%s)" = "keys-reconcile retire: seat, at ${rev:0:12}" ]
+}
+
+@test "retire: the KRL built from its result revokes the old key's certificate and the shared cert, not the new key's" {
+  window oui
+  merged
+  retire oui seat
+  k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
+  yq -o json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {}), "revoked_certificates": (.revoked_certificates // {})} | del(.. | select(tag == "!!str" and test("^ENC\[")))' "$k" >"$t/after.json"
+  run bash "$BATS_TEST_DIRNAME/../../keys-yaml.d/krl.sh" "$t/after.json" "$t/krl"
+  [ "$status" -eq 0 ]
+  : "a certificate over the revoked old key, valid forever: cut by the key's revocation"
+  ssh-keygen -q -s "$t/ca" -I old-host -h -n seat "$t/old.pub"
+  run ssh-keygen -Q -f "$t/krl" "$t/old-cert.pub"
+  [[ $output == *"REVOKED"* ]]
+  run ssh-keygen -Q -f "$t/krl" "$t/shared-host-cert.pub"
+  [[ $output == *"REVOKED"* ]]
+  yq -r '.keys."host-seat".slots."26-11-01".certificates.fabric."ssh-host"' "$k" >"$t/new-cert.pub"
+  run ssh-keygen -Q -f "$t/krl" "$t/new-cert.pub"
+  [[ $output == *": ok"* ]]
+  run ssh-keygen -Q -f "$t/krl" "$t/shared-user-cert.pub"
+  [[ $output == *": ok"* ]]
+}
+
+@test "retire: without « oui », nothing written" {
+  window oui
+  merged
+  run --separate-stderr retire non seat
+  [ "$status" -eq 5 ]
+  [ ! -e "$(tree)" ]
+}
+
+@test "retire: refused before the « oui » — the current slot not serving, an unknown machine, unarmed" {
+  yq -i -p json -o json '.keys."host-seat".slots."26-10-17".state = "recorded"' "$t/keys.json"
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"current slot is not serving"* ]]
+  run --separate-stderr retire oui nobody
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"not in the machine list"* ]]
+  rm -f "$t/delegation"
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"retire is not armed"* ]]
+  run grep -q 'retirer et révoquer' "$t/prompt"
+  [ "$status" -eq 1 ]
+}
+
+@test "retire: a certificate principal that maps to no machine is refused, nothing written" {
+  window oui
+  merged
+  echo '{"seat": ["seat"]}' >"$t/host-names.json"
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"names 'seat.lan', which maps to no machine"* ]]
+  [ ! -e "$(tree)" ]
+}
+
+@test "mutant: a retire that keeps the revoked slot in keys.yaml is refused by its postcondition" {
+  window oui
+  merged
+  grep -F -v 'sops unset --input-type yaml --output-type yaml "$keysYaml" "[\"keys\"][\"${keyName}\"][\"slots\"][\"${slot}\"]"' "$BATS_TEST_DIRNAME/../retire.sh" |
+    sed 's/^      reconcile::fail "sops unset failed on ${keyName}@${slot}" || return 1$/      :/' >"$t/retire.sh"
+  [ "$(grep -c -F '[\"slots\"][\"${slot}\"]" 2>/dev/null' "$t/retire.sh")" -eq 0 ]
+  bash -n "$t/retire.sh"
+  sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
+  grep -q "^source $t/retire.sh\$" "$t/keys-reconcile"
+  run --separate-stderr retire oui seat
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"keys.yaml changed more than the retired slots and certificates"* ]]
+}
+
+: "a principal that is a substring of another machine's name: the serving seat, listed first, must not stand for sea"
+substring_cert() {
+  ssh-keygen -q -s "$t/ca" -I sea-host-cert -h -z 11 -n sea "$t/shared.pub"
+  C="$(cut -d' ' -f1,2 "$t/shared-cert.pub")" yq -i -p json -o json '.keys.shared.slots."26-01-01".certificates.fabric."ssh-host" = strenv(C)' "$t/keys.json"
+  echo '{"seat": ["seat", "seat.lan"], "sea": ["sea"]}' >"$t/host-names.json"
+}
+
+@test "retire: a principal matched exactly, never as a substring of another machine's name: sea's cert is not revoked" {
+  window oui
+  merged
+  substring_cert
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 0 ]
+  [[ $output != *"shared@26-01-01 : certificat d'hôte retiré"* ]]
+  [ "$(yq -r '.revoked_certificates // {} | length' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = 0 ]
+}
+
+@test "mutant: retire matching principals by substring revokes sea's cert, so the exact-match case bites" {
+  window oui
+  merged
+  substring_cert
+  : "the code before the fix: a substring match, its first machine taken"
+  sed 's/any_c(\. == strenv(P))) | \.key'"'"' "\$hostNamesJson"$/contains([strenv(P)])) | .key'"'"' "$hostNamesJson" | head -1/' \
+    "$BATS_TEST_DIRNAME/../retire.sh" >"$t/retire.sh"
+  [ "$(grep -c -F 'contains([strenv(P)])) | .key'"'"' "$hostNamesJson" | head -1' "$t/retire.sh")" -eq 1 ]
+  sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
+  run --separate-stderr retire oui seat
+  [[ $output == *"shared@26-01-01 : certificat d'hôte retiré"* ]]
+}
+
+@test "retire: a principal that maps to more than one machine is refused, nothing written" {
+  window oui
+  merged
+  echo '{"seat": ["seat", "seat.lan"], "other": ["seat.lan"]}' >"$t/host-names.json"
+  run --separate-stderr retire oui seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"names 'seat.lan', which maps to more than one machine (seat other)"* ]]
+  [ ! -e "$(tree)" ]
 }
