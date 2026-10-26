@@ -386,9 +386,10 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "ok the ssh public key"                   { run hook 'cat ~/.ssh/id_ed25519.pub'; allowed; }
 @test "wake: ndh-claude-wake by name"             { run hook 'ndh-claude-wake --dry-run'; allowed; }
 @test "wake: a local ndh-claude-wake copy"        { run hook './ndh-claude-wake'; denied; }
-@test "fleet: fleet-switch by name"               { run hook 'fleet-switch --dry-run'; allowed; }
-@test "fleet: fleet-switch from the system profile" { run hook '/run/current-system/sw/bin/fleet-switch'; allowed; }
-@test "fleet: fleet-switch from a pushed revision" { run hook 'nix run github:seedmatic/ndh/0123abcd#fleet-switch -- --dry-run'; allowed; }
+@test "fleet: fleet-switch by name is an operator tool"        { run hook 'fleet-switch --dry-run'; denied; }
+@test "fleet: fleet-switch from the system profile, the same" { run hook '/run/current-system/sw/bin/fleet-switch'; denied; }
+@test "fleet: fleet-switch by nix run of any ref, the same"    { run hook 'nix run github:seedmatic/ndh/0123abcd#fleet-switch -- --dry-run'; denied; }
+@test "fleet: through ndh-ops, the tool decides"               { run hook 'ndh-ops fleet-switch --rev 0123456789abcdef0123456789abcdef01234567'; allowed; }
 @test "fleet: a local fleet-switch copy"          { run hook './fleet-switch'; denied; }
 @test "fleet: a fleet-switch under /tmp"          { run hook '/tmp/x/fleet-switch'; denied; }
 @test "fleet: raw rebuilds stay denied beside it" { run hook 'fleet-switch --dry-run && sudo darwin-rebuild switch --flake github:seedmatic/ndh/0123abcd#bioskop'; denied; }

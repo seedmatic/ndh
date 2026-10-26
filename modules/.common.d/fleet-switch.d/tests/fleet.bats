@@ -24,11 +24,15 @@ setup() {
 
   i=$FIX_INCUS yq '(.[] | select(.name == "incus-cluster-cert-renew") | .noDecryptFix) = strenv(i)' "$D/signers.yaml" >"$T/signers.yaml"
 
-  # ndh-switch: records its argv; $T/behave.<machine> scripts it (ok, fail N, unreachable, noreach, refused).
+  # ndh-switch: records its argv; $T/behave.<machine> scripts it (ok, fail N, unreachable, noreach, refused). Its merge
+# check is its own (ndh-switch.d/tests): here a revision listed in $T/unmerged is refused, as it would refuse it.
   cat >"$T/bin/ndh-switch" <<STUB
 #!$BASH
 printf '%s\n' "ndh-switch \$*" >>"$T/calls"
-if [ "\$1" = --dry-run ]; then echo "+ switch \$2"; exit 0; fi
+if [ "\$1" = --dry-run ]; then
+  if grep -qx "\$3" "$T/unmerged" 2>/dev/null; then echo "ndh-switch: refused: \$3 is not merged into develop or main" >&2; exit 3; fi
+  echo "+ switch \$2"; exit 0
+fi
 b=\$(cat "$T/behave.\$1" 2>/dev/null || echo ok)
 case \$b in
   refused) echo "ndh-switch: refused: no" >&2; exit 3 ;;
@@ -60,9 +64,18 @@ STUB
   chmod +x "$T/bin/ndh-switch" "$T/bin/nix"
   export PATH="$T/bin:$PATH"
 
-  { printf 'ndh_switch=%q\nmachines=%q\nsigners=%q\nremote=%q\nflake_base=%q\n' \
-      "$T/bin/ndh-switch" "$MACHINES" "$T/signers.yaml" "$T/github.git" github:seedmatic/ndh
-    cat "$D/fleet-switch.sh"; } >"$T/fleet-switch"
+  : "every run needs the operator's armed delegation (F3), the seat its own item; both by default, each case sets its own"
+  arm "$(($(date +%s) + 600))" fleet-switch,fleet-switch-seat
+  { printf 'ndh_switch=%q\nmachines=%q\nsigners=%q\nremote=%q\nflake_base=%q\ndelegation=%q\n' \
+      "$T/bin/ndh-switch" "$MACHINES" "$T/signers.yaml" "$T/github.git" github:seedmatic/ndh "$T/delegation"
+    : "the owner check reads uid 0: here the test's uid stands for root"
+    sed "s/ == 0 \]\] || return 1/ == $(id -u) ]] || return 1/" "$D/fleet-switch.sh"; } >"$T/fleet-switch"
+  grep -q " == $(id -u) ]] || return 1" "$T/fleet-switch"
+}
+
+arm() { # <expires> <tools>: the delegation as ndh-ops writes it
+  rm -rf "$T/delegation"
+  printf 'tools=%s\nexpires=%s\narmed_by=test\n' "$2" "$1" >"$T/delegation"
 }
 
 fs() { bash "$T/fleet-switch" "$@"; }
@@ -77,6 +90,145 @@ refute() {
   esac
 }
 switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print $2}' | tr '\n' ' '; }
+
+# A real run switches live machines: refused, before any evaluation, ndh-switch call or network, unless armed (F3).
+unarmed() { # [<fleet-switch arguments>…]: refused, exit 2, and nothing was called at all
+  run fs "$@" --rev "$MERGED"
+  [ "$status" -eq 2 ]
+  [[ $output == *"a switch of the fleet is not armed"* ]]
+  [ ! -e "$T/calls" ]
+}
+seat_unarmed() { # the seat named without its own item: refused, exit 2, nothing called
+  run fs --with-seat --rev "$MERGED"
+  [ "$status" -eq 2 ]
+  [[ $output == *"the seat is not armed"* ]]
+  [ ! -e "$T/calls" ]
+}
+
+@test "arming: absent → refused before anything runs" {
+  rm -f "$T/delegation"
+  unarmed
+}
+
+@test "arming: tools=fleet-switch,keys-reconcile → runs" {
+  arm "$(($(date +%s) + 600))" fleet-switch,keys-reconcile
+  run fs --rev "$MERGED"
+  [ "$status" -eq 0 ]
+  [ "$(switched)" = "bioskop-nixos nikopol-nixos nikopol " ]
+}
+
+@test "arming: expired, an expiry missing or not a number → refused" {
+  arm "$(($(date +%s) - 1))" fleet-switch
+  unarmed
+  printf 'tools=fleet-switch\narmed_by=test\n' >"$T/delegation"
+  unarmed
+  arm "soon" fleet-switch
+  unarmed
+}
+
+@test "arming: another tool only, or a name that merely contains fleet-switch → refused (whole-item match)" {
+  arm "$(($(date +%s) + 600))" keys-reconcile
+  unarmed
+  arm "$(($(date +%s) + 600))" fleet-switch-x
+  unarmed
+  arm "$(($(date +%s) + 600))" xfleet-switch
+  unarmed
+}
+
+@test "arming: a symlink to a valid file, a directory, a file not root's → refused" {
+  printf 'tools=fleet-switch\nexpires=%s\n' "$(($(date +%s) + 600))" >"$T/valid"
+  rm -f "$T/delegation" && ln -s "$T/valid" "$T/delegation"
+  unarmed
+  rm -f "$T/delegation" && mkdir "$T/delegation"
+  unarmed
+  rmdir "$T/delegation"
+  arm "$(($(date +%s) + 600))" fleet-switch
+  : "the owner check against an uid the test is not: the file is then not root's"
+  sed -i "s/ == $(id -u) ]] || return 1/ == 4294967294 ]] || return 1/" "$T/fleet-switch"
+  unarmed
+}
+
+@test "arming: checked BEFORE the machine list, the network and any switch (its line comes first)" {
+  armed=$(grep -n 'a switch of the fleet is not armed' "$D/fleet-switch.sh" | cut -d: -f1)
+  seat=$(grep -n 'the seat is not armed' "$D/fleet-switch.sh" | cut -d: -f1)
+  for later in 'yq -e' 'git ls-remote' 'mapfile -t order' '"$ndh_switch"'; do
+    first=$(grep -n -F "$later" "$D/fleet-switch.sh" | head -1 | cut -d: -f1)
+    [ -n "$first" ]
+    [ "$armed" -lt "$first" ]
+    [ "$seat" -lt "$first" ]
+  done
+}
+
+@test "seat: --with-seat armed for the fleet only → refused; both items → the seat runs, last" {
+  arm "$(($(date +%s) + 600))" fleet-switch
+  seat_unarmed
+  arm "$(($(date +%s) + 600))" fleet-switch,fleet-switch-seat
+  run fs --with-seat --only bioskop-nixos,bioskop --rev "$MERGED"
+  [ "$status" -eq 0 ]
+  [ "$(switched)" = "bioskop-nixos bioskop " ]
+}
+
+@test "seat: its item alone does not arm the fleet; a name that merely contains it does not arm the seat" {
+  arm "$(($(date +%s) + 600))" fleet-switch-seat
+  unarmed
+  unarmed --with-seat
+  arm "$(($(date +%s) + 600))" fleet-switch,fleet-switch-seatx
+  seat_unarmed
+}
+
+@test "mutant: without the seat check, --with-seat armed for the fleet only switches the seat" {
+  arm "$(($(date +%s) + 600))" fleet-switch
+  sed -i '/the seat is not armed/d; /armed fleet-switch-seat ||$/d' "$T/fleet-switch"
+  run grep -c -e 'the seat is not armed' -e 'armed fleet-switch-seat' "$T/fleet-switch"
+  [ "$output" = 0 ]
+  bash -n "$T/fleet-switch"
+  run fs --with-seat --only bioskop --rev "$MERGED"
+  [ "$status" -eq 0 ]
+  [ "$(switched)" = "bioskop " ]
+}
+
+# A --rev must be MERGED before any of its code is evaluated or run (🛡️): fleet-switch evaluates the signers before
+# its loop reaches a switch, and github: serves any pushed commit, a fork's included. So ndh-switch's own merge check,
+# the layer below, is asked first, by its dry run.
+@test "merge: a revision ndh-switch refuses is refused before any evaluation, real run or dry run" {
+  echo "$MERGED" >"$T/unmerged"
+  for mode in "" --dry-run; do
+    rm -f "$T/calls"
+    run fs $mode --with-seat --rev "$MERGED"
+    [ "$status" -eq 2 ]
+    [[ $output == *"is not merged into develop or main"* ]]
+    [[ $output == *"ndh-switch refused ${MERGED:0:12}"* ]]
+    : "ndh-switch's dry run asked once; no nix eval, no nix run --check, no switch"
+    [ "$(cat "$T/calls")" = "ndh-switch --dry-run bioskop-nixos $MERGED" ]
+  done
+}
+
+@test "mutant: without asking ndh-switch first, an unmerged --rev reaches the signers' evaluation" {
+  echo "$MERGED" >"$T/unmerged"
+  sed -i '/^"\$ndh_switch" --dry-run "\${plan\[0\]}" "\$rev"/d' "$T/fleet-switch"
+  run grep -c 'ndh-switch refused' "$T/fleet-switch"
+  [ "$output" = 0 ]
+  bash -n "$T/fleet-switch"
+  run fs --rev "$MERGED"
+  : "under the mutant the unmerged revision's code is evaluated: what the case above guards"
+  grep -q '^nix eval' "$T/calls"
+}
+
+@test "arming: --dry-run is armed like any run (its signers' --check is the revision's code)" {
+  rm -f "$T/delegation"
+  unarmed --dry-run
+}
+
+@test "mutant: without the arming check, an absent delegation switches the fleet" {
+  rm -f "$T/delegation"
+  sed -i '/a switch of the fleet is not armed/d' "$T/fleet-switch"
+  run grep -c -e 'a switch of the fleet is not armed' -e 'armed fleet-switch ||' "$T/fleet-switch"
+  [ "$output" = 0 ]
+  run fs --rev "$MERGED"
+  : "under the mutant the unarmed run switches: what the cases above guard"
+  [ "$status" -eq 0 ]
+  [ "$(switched)" = "bioskop-nixos nikopol-nixos nikopol " ]
+}
 
 @test "the order comes from the machine list: NixOS guests, the remote darwin host; the seat skipped without --with-seat" {
   run fs --rev "$MERGED"
@@ -193,7 +345,8 @@ switched() { grep '^ndh-switch ' "$T/calls" | grep -v -- --dry-run | awk '{print
   run fs --dry-run --with-seat --rev "$MERGED"
   [ "$status" -eq 0 ]
   [ -z "$(switched)" ]
-  [ "$(grep -c '^ndh-switch --dry-run ' "$T/calls")" -eq 4 ]
+  : "one per machine, and the merge's, asked first"
+  [ "$(grep -c '^ndh-switch --dry-run ' "$T/calls")" -eq 5 ]
   grep -qx "nix run github:seedmatic/ndh/$MERGED#incus-cluster-cert-renew -- --check" "$T/calls"
   [[ "$output" == *"bioskop: would switch (dry-run)"* ]]
   [[ "$output" == *"(dry-run)"* ]]
