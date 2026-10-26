@@ -63,12 +63,6 @@ in
         ];
       }
     ];
-    PreToolUse = [
-      {
-        matcher = "Bash";
-        hooks = [ (entry "leak-guard.sh" 5 "Checking for a working-tree evaluation...") ];
-      }
-    ];
     # A step taken without touching the live page gets a reminder in the tool's result: never a block.
     PostToolUse = [
       {

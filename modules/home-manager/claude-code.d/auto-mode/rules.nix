@@ -6,7 +6,7 @@
     "$defaults"
     "A single developer's personal lab on a trusted home LAN: the operator owns every seedmatic and nxmatic repository, worktree and machine a session touches."
     "Repositories are external git worktrees under /Volumes/git-worktree-store/<org>/<repo>.d/<namespace>/<branch>, their bares under /Volumes/git-bare-store. Session scratch lives in .scratchpad.d/ directories (inside a repository, or ~/.claude/.scratchpad.d), the project memory in /Volumes/git-worktree-store/seedmatic/rke2lab.d/memory."
-    "Local flakes are evaluated and built by revision (git+file://…?rev=<sha>). PreToolUse hooks refuse a working-tree evaluation (leak-guard), and a managed deny list with its own hook refuses the live-system verbs, host switches, binary publishing, keychain secrets, guard bypasses and forced pushes to develop or main, whatever this classifier decides."
+    "Local flakes are evaluated and built by revision (git+file://…?rev=<sha>). The managed deny hook refuses a working-tree evaluation, however it is wrapped, and with the deny list it also refuses the live-system verbs, host switches, binary publishing, keychain secrets, guard bypasses and forced pushes to develop or main, whatever this classifier decides."
     "Sessions can read the operator's employer's Confluence and Jira through the Atlassian plugin (Rovo). That content is corporate: it stays in private pages and private memory, never in a public repository."
     "The integration session assigns each session its branch, its worktree and the lead on it. Other sessions stacking their branches on that branch, or rebasing onto its heads, do not make the worktree a shared resource: the session holding the lead edits, builds and commits there as development work."
   ];
