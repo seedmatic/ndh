@@ -51,6 +51,13 @@ chmod 0600 "$tmp"
 mv "$tmp" "$anchor_file"
 trap - EXIT
 "$pfctl" -a "$anchor" -f "$anchor_file" || die "pfctl did not load the anchor"
-loaded=$("$pfctl" -a "$anchor" -s rules 2>/dev/null | grep -c '^block' || true)
-((loaded >= 3)) || die "the anchor holds $loaded block rules after loading"
-echo "[corp-egress-anchor] $anchor loaded: $loaded block rules"
+# Read back and compared with what was written, line for line, never counted: a count accepts a dropped rule
+# replaced by another, or a pass widened in place. Two blocks for v4, one for the /64, one per link-local address.
+expected=$((2 + 1 + ${#link_local[@]}))
+held=$("$pfctl" -a "$anchor" -s rules 2>/dev/null || true)
+loaded=$(grep -c '^block' <<<"$held" || true)
+((loaded == expected)) || die "the anchor holds $loaded block rules after loading, not $expected"
+[[ $held == "$(cat "$anchor_file")" ]] || die "the anchor pf holds is not the one written"
+# pfctl reports what the anchor holds, whether pf filters or not: say which, so the line is not read as protection.
+if "$pfctl" -s info 2>/dev/null | grep -q '^Status: Enabled'; then state="pf is enabled: filtering"; else state="pf is disabled: not filtering"; fi
+echo "[corp-egress-anchor] $anchor loaded, $loaded block rules; $state"
