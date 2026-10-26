@@ -459,9 +459,9 @@ def shell_stdin_literals(text):
                 files.append(target or None)
             if k > 0:
                 src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
-                remote = os.path.basename(next((w for w in stage if not ASSIGNMENT.match(w)), "")) == "ssh"
-                # A remote shell reads what the pipe carries, which the hook cannot see unless it is a literal.
-                if remote and not (src and os.path.basename(src[0]) in ("echo", "printf")):
+                # A shell, local or remote, root or not, reads what the pipe carries, which the hook cannot see unless it
+                # is a literal (security, 2026-10-26: a non-root shell still runs every command the hook refuses).
+                if not (src and os.path.basename(src[0]) in ("echo", "printf")):
                     files.append(None)
                 if src and os.path.basename(src[0]) in ("echo", "printf"):
                     # Every literal, a printf's format included: the code can sit in either.
