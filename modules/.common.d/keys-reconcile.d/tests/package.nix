@@ -7,6 +7,7 @@ pkgs.runCommand "keys-reconcile-bats"
       age
       bats
       bash
+      check-jsonschema
       coreutils
       gawk
       findutils
@@ -22,6 +23,7 @@ pkgs.runCommand "keys-reconcile-bats"
       yq-go
     ];
     NDH_TRAMPOLINE = trampoline;
+    KEYS_SCHEMA = ../../../home-manager/ssh.d/keys.schema.yaml;
     NDH_BOOTSTRAP_PROFILE_DIR = import ../../shell.d/tests/bootstrap-profile.nix { inherit pkgs; };
   }
   ''

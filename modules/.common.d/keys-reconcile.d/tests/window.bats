@@ -605,3 +605,21 @@ substring_cert() {
   [[ $stderr == *"names 'seat.lan', which maps to more than one machine (seat other)"* ]]
   [ ! -e "$(tree)" ]
 }
+
+: "the window's output holds to keys.schema.yaml: a bootstrap slot, declared so, keeps its bootstrap once recorded and"
+: "served (the record; the schema refused it before 2026-10-26, and window 1's merge left keys.yaml invalid)"
+@test "a bootstrap's window output validates against keys.schema.yaml, its declared bootstrap kept on the served slot" {
+  bootstrap_batch console
+  run --separate-stderr window yes
+  [ "$status" -eq 0 ]
+  k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
+  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
+  : "the fixture declares no bootstrap on the slot (the batch carries it): put it as declare writes it, then validate"
+  yq 'del(.sops) | .keys."host-seat".slots."26-11-01".bootstrap = "console"' "$k" >"$t/plain.yaml"
+  check-jsonschema --schemafile "$KEYS_SCHEMA" "$t/plain.yaml"
+  : "the control: the schema as it was, a bootstrap only while pending, refuses the same output"
+  yq '.["$defs"].machineSlots.additionalProperties.then.properties.state = {"const": "pending"}' "$KEYS_SCHEMA" >"$t/old.yaml"
+  run check-jsonschema --schemafile "$t/old.yaml" "$t/plain.yaml"
+  [ "$status" -ne 0 ]
+  [[ $output == *"'pending' was expected"* ]]
+}

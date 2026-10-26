@@ -203,8 +203,9 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "mutant: a key root left listable (0755) fails the case above" {
-  sed -i 's/install -d -m 0711 /install -d -m 0755 /; s/chmod 0711 /chmod 0755 /' "$t/generate"
-  ! grep -q '0711' "$t/generate"
+  sed -i '/^ *#/!s/0711/0755/g' "$t/generate"
+  run grep -c '^[^#]*0711' "$t/generate"
+  [ "$output" = 0 ]
   run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
   [ "$(mode "$t/var/host-key")" = 755 ]

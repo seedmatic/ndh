@@ -266,7 +266,9 @@ $defs:
             The machine serves no key of its own that could vouch for this one (it serves a shared key), so no F1
             statement binds the new key: its binding is the operator's offline witness, the layer below this one,
             which keys-reconcile trusts (each layer trusts the one below; the operator, 2026-10-26). Once, per
-            machine; only on a pending slot born on its machine. `console`: the operator's eyes at the machine's
+            machine; declared only on a pending slot born on its machine, and kept once the slot is recorded and
+            served, as the record of how its key was bound. Read only from the PENDING slot (the batch, the
+            activation's generate): a served slot's bootstrap binds nothing. `console`: the operator's eyes at the machine's
             console, or their tailnet's node list (both accepted for this value, the operator's call, 2026-10-26).
             `tailnet`: the operator's tailnet node list, checked in its console (the registration secret is shared
             per machine kind: an accepted risk).
@@ -306,8 +308,6 @@ $defs:
         required: [bootstrap]
       then:
         properties:
-          state:
-            const: pending
           origin:
             const: host
 
