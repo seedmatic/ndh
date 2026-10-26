@@ -1641,6 +1641,14 @@
                 inherit pkgs;
               };
           nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
+          corp-egress-anchor-bats = import ./modules/darwin/corp-egress-guard.d/tests/package.nix {
+            inherit pkgs;
+          };
+          # The seat's v4 anchor toward the corporate bare-metal against the corpus, and each mutant refused.
+          corp-egress-corpus = import ./modules/darwin/corp-egress-guard.d/tests/corpus.nix {
+            inherit pkgs;
+            inherit (catalogData) netplan;
+          };
           # The packaged program, built for this check's system: a darwin configuration's copy cannot run on linux.
           flox-config-bats = import ./modules/home-manager/flox-config.d/tests/package.nix {
             inherit pkgs;

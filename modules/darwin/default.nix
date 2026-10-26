@@ -18,6 +18,7 @@
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
     ./nfsd-off.nix
+    ./corp-egress-guard.nix
     ./tailnet-client.nix
     ./headscale-daemon.nix
     ./headscale-client-kind.nix
