@@ -85,9 +85,9 @@ reconcile::attic-tls-csr::measure() { # <batch index> <work dir>
   recorded=$(yq -r -p json -o json ".[$i].recordedLeaf" "$batch")
   : >"$work/why"
   NDH_RECONCILE_WHY="$work/why" reconcile::attic-tls-csr::authority "$work/ca.crt" >/dev/null ||
-    { printf '  ✗ %s — feuille TLS de %s : %s\n' "$machine" "$fqdn" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"; return 1; }
+    { printf '  ✗ %s — TLS leaf of %s: %s\n' "$machine" "$fqdn" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"; return 1; }
   if reconcile::attic-tls-csr::current "$recorded" "$fqdn" "$work/ca.crt"; then
-    printf '  = %s — feuille TLS de %s à jour\n' "$machine" "$fqdn"
+    printf '  = %s — TLS leaf of %s up to date\n' "$machine" "$fqdn"
     return 0
   fi
   [[ -z $recorded || ! -f $recorded ]] || recordedPublic="$(pubOf x509 "$recorded")"
@@ -95,11 +95,11 @@ reconcile::attic-tls-csr::measure() { # <batch index> <work dir>
   : >"$work/why"
   if NDH_RECONCILE_WHY="$work/why" reconcile::attic-tls-csr::verify "$work" "$machine" "$cache" "$fqdn" \
     "$(yq -r -p json -o json ".[$i].servingPublic" "$batch")" "$recordedPublic"; then
-    printf '  ✓ %s — feuille TLS de %s à signer (%s jours)\n' "$machine" "$fqdn" "$atticLeafDays"
+    printf '  ✓ %s — TLS leaf of %s to sign (%s days)\n' "$machine" "$fqdn" "$atticLeafDays"
     printf '%s\t%s\t%s\t%s\n' "$i" "$cache" "$fqdn" \
       "$(cat "$work/attic-${cache}".tls-csr.{csr,statement,statement.sig} | sha256sum | cut -d' ' -f1)" >>"$work/attic-tls-csr.measured"
   else
-    printf '  ✗ %s — feuille TLS de %s : %s\n' "$machine" "$fqdn" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
+    printf '  ✗ %s — TLS leaf of %s: %s\n' "$machine" "$fqdn" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
     return 1
   fi
 }
@@ -148,7 +148,7 @@ TPL
     cp "$work/attic-${cache}.tls-csr.statement.sig" "$leaves/${cache}.csr.statement.sig"
     cp "$work/attic-${cache}.tls-csr.csr" "$leaves/${cache}.csr"
     printf '%s\n' "catalog/attic-leaves/${cache}".{crt,csr,csr.statement,csr.statement.sig} >>"$work/staged"
-    printf '      feuille TLS de %s signée par %s@%s\n' "$fqdn" "$authority" "$slot"
+    printf '      TLS leaf of %s signed by %s@%s\n' "$fqdn" "$authority" "$slot"
   done <"$work/attic-tls-csr.measured"
   printf '\nkeys-reconcile: sign %s attic TLS leaf(s) at %s\n\n%s\n' "$(wc -l <"$work/attic-tls-csr.measured")" "${revision:0:12}" \
     "$(cut -f3 "$work/attic-tls-csr.measured")" >>"$work/summary"

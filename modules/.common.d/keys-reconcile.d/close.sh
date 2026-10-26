@@ -25,16 +25,16 @@ reconcile::close() { # <rev12>
       die "close: ${branch} (${head:0:12}) is already on ${ref}: nothing to discard"
   done
 
-  echo "fermer la fenêtre ${rev12} sans la fusionner : ${branch}, $(git -C "$tree" log -1 --format='%h %s')"
+  echo "close window ${rev12} without merging it: ${branch}, $(git -C "$tree" log -1 --format='%h %s')"
   local answer
-  printf 'supprimer cette fenêtre et sa branche ? [oui/non] ' >>"$ttyOut"
+  printf 'delete this window and its branch? [yes/no] ' >>"$ttyOut"
   exec 7<"$ttyIn"
   read -r answer <&7 || answer=""
   exec 7<&-
-  [[ $answer == oui ]] || { echo "rien supprimé : la réponse n'est pas « oui »"; return 5; }
+  [[ $answer == yes ]] || { echo "nothing deleted: the answer is not « yes »"; return 5; }
   git -C "$bare" worktree remove "$tree" || die "close: the worktree ${tree} could not be removed"
   git -C "$bare" branch -D "$branch" >/dev/null || die "close: the branch ${branch} could not be deleted"
   [[ ! -e $tree ]] || die "close: ${tree} is still there"
   ! git -C "$bare" rev-parse --verify -q "refs/heads/${branch}" >/dev/null || die "close: ${branch} is still there"
-  echo "fermée : ${branch} supprimée, rien n'a été fusionné."
+  echo "closed: ${branch} deleted, nothing was merged."
 }

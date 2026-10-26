@@ -18,6 +18,7 @@ source @nixBashTrampoline@
 
 readonly machine=@machine@ slot=@slot@ base=@base@ slotDir=@slotDir@ owner=@owner@
 readonly keyFile=@keyFile@ publishDir=@publishDir@ oldKey=@oldKey@ oldPublic=@oldPublic@
+readonly keyRoot="${publishDir%/*}"
 # `console` when the machine serves no key of its own to vouch for the new one (§o): the public goes out alone, and its
 # fingerprint to the console, for the operator to compare with what `ops next` shows. Empty otherwise.
 readonly bootstrap=@bootstrap@ console=@console@
@@ -30,6 +31,8 @@ die() {
 # owned_dirs <dir>…: from $base, every component down to each <dir> is a real directory owned by $owner, not a symlink
 # and not group- or world-writable; what is missing is created one component at a time (0700 from the slot
 # directory down, where the privates are; 0755 otherwise), so no `install -d` ever follows a link planted there.
+# The key root, publishDir's parent, is 0711 whether created or found (a pre-K5 machine made it 0700): the seat
+# collects a publication over ssh as the operator's user, and traversing it lists none of the privates below.
 owned_dirs() {
   local dir p c mode
   local -a rel
@@ -42,10 +45,12 @@ owned_dirs() {
       if [[ ! -e $p && ! -L $p ]]; then
         mode=0755
         [[ $p == "$slotDir" || $p == "$slotDir"/* ]] && mode=0700
+        [[ $p == "$keyRoot" ]] && mode=0711
         install -d -m "$mode" "$p" || die "creating ${p} failed"
       fi
       [[ -d $p && ! -L $p ]] || die "${p} is not a directory (a symlink?): nothing written"
       [[ "$(stat -c %u "$p" 2>/dev/null || stat -f %u "$p")" == "$owner" ]] || die "${p} is not owned by uid ${owner}: nothing written"
+      if [[ $p == "$keyRoot" ]]; then chmod 0711 "$p" || die "making ${p} 0711 failed"; fi
       mode="$(stat -c %a "$p" 2>/dev/null || stat -f %Lp "$p")"
       (((8#$mode & 8#022) == 0)) || die "${p} is group- or world-writable (${mode}): nothing written"
     done
@@ -91,7 +96,7 @@ main() {
     rm -rf "$work"
     trap - EXIT
     local line
-    line=$(printf '[ndh-host-key-generate] host-%s@%s born; tape-la à keys-reconcile window: %s' "$machine" "$slot" \
+    line=$(printf '[ndh-host-key-generate] host-%s@%s born; type it at keys-reconcile window: %s' "$machine" "$slot" \
       "$(ssh-keygen -lf "${publishDir}/host-${machine}@${slot}.public" | cut -d' ' -f2)")
     printf '%s\n' "$line" >&2
     : "the console line is a convenience for the operator's eyes; a console that refuses it changes nothing"

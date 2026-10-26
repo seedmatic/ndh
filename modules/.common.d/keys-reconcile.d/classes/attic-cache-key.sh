@@ -48,12 +48,12 @@ reconcile::attic-cache-key::measure() { # <batch index> <work dir>
   : >"$work/why"
   if public=$(NDH_RECONCILE_WHY="$work/why" reconcile::attic-cache-key::verify "$work" "$machine" "$cache" \
     "$(yq -r -p json -o json ".[$i].keyNameRegex" "$batch")" "$(yq -r -p json -o json ".[$i].servingPublic" "$batch")"); then
-    printf '  ✓ %s — cache %s : %s\n' "$machine" "$cache" "$public"
-    printf '      entrée privateCaches.%s à enregistrer (acceptée par darwin et nixos)\n' "$cache"
+    printf '  ✓ %s — cache %s: %s\n' "$machine" "$cache" "$public"
+    printf '      privateCaches.%s entry to record (accepted by darwin and nixos)\n' "$cache"
     printf '%s\t%s\t%s\t%s\n' "$i" "$cache" "$public" \
       "$(cat "$work/attic-${cache}".cache-key.{public,statement,statement.sig} | sha256sum | cut -d' ' -f1)" >>"$work/attic-cache-key.measured"
   else
-    printf '  ✗ %s — cache %s : %s\n' "$machine" "$cache" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
+    printf '  ✗ %s — cache %s: %s\n' "$machine" "$cache" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
     return 1
   fi
 }
@@ -92,7 +92,7 @@ reconcile::attic-cache-key::write() { # <work dir>
     cp "$work/attic-${cache}.cache-key.statement" "$work/attic-${cache}.cache-key.statement.sig" "$statements/"
     printf '%s\n' "catalog/private-caches.d/statements/attic-${cache}.cache-key.statement" \
       "catalog/private-caches.d/statements/attic-${cache}.cache-key.statement.sig" >>"$work/staged"
-    printf '      privateCaches.%s enregistrée : %s\n' "$cache" "$public"
+    printf '      privateCaches.%s recorded: %s\n' "$cache" "$public"
   done <"$work/attic-cache-key.measured"
 
   printf '%s\n' catalog/private-caches.json >>"$work/staged"

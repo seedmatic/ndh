@@ -20,8 +20,8 @@ render() { # <recorded old public> [bootstrap]
   : "${NDH_TRAMPOLINE:?the ndh bash trampoline}"
   local -A vars=(
     [nixBashTrampoline]="$NDH_TRAMPOLINE"
-    [machine]=m [slot]=26-11-01 [base]="$t/var" [slotDir]="$t/var/slots" [owner]="$(id -u)"
-    [keyFile]="$t/var/slots/26-11-01/ssh_host_ed25519_key" [publishDir]="$t/var/published"
+    [machine]=m [slot]=26-11-01 [base]="$t/var" [slotDir]="$t/var/host-key/slots" [owner]="$(id -u)"
+    [keyFile]="$t/var/host-key/slots/26-11-01/ssh_host_ed25519_key" [publishDir]="$t/var/host-key/published"
     [oldKey]="$t/old" [oldPublic]="$1" [bootstrap]="${2:-}" [console]="$t/console"
   )
   local text k
@@ -35,8 +35,8 @@ render() { # <recorded old public> [bootstrap]
 }
 
 mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
-key() { echo "$t/var/slots/26-11-01/ssh_host_ed25519_key"; }
-pub() { echo "$t/var/published/host-m@26-11-01.$1"; }
+key() { echo "$t/var/host-key/slots/26-11-01/ssh_host_ed25519_key"; }
+pub() { echo "$t/var/host-key/published/host-m@26-11-01.$1"; }
 
 verify() { # the statement against the OLD key's public, as the seat will
   printf 'host-m %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
@@ -46,9 +46,9 @@ verify() { # the statement against the OLD key's public, as the seat will
 @test "the key is born 0600 in a 0700 directory, and its public and F1 statement are published" {
   run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
-  [ "$(mode "$t/var/slots")" = 700 ]
+  [ "$(mode "$t/var/host-key/slots")" = 700 ]
   [ "$(mode "$(dirname "$(key)")")" = 700 ]
-  [ "$(mode "$t/var/published")" = 755 ]
+  [ "$(mode "$t/var/host-key/published")" = 755 ]
   [ "$(mode "$(key)")" = 600 ]
   [ "$(cat "$(pub public)")" = "$(ssh-keygen -y -f "$(key)" | cut -d' ' -f1,2)" ]
   grep -qxF "key $(cat "$(pub public)")" "$(pub statement)"
@@ -82,7 +82,7 @@ verify() { # the statement against the OLD key's public, as the seat will
 
 @test "a run that stopped after the key, before the publication, is completed by the next" {
   bash "$t/generate"
-  rm -f "$t/var/published/"*
+  rm -f "$t/var/host-key/published/"*
   before="$(sha256sum "$(key)")"
   bash "$t/generate"
   [ "$(sha256sum "$(key)")" = "$before" ]
@@ -101,19 +101,19 @@ verify() { # the statement against the OLD key's public, as the seat will
 }
 
 @test "a slot directory that is a symlink is refused before anything is written" {
-  mkdir -p "$t/elsewhere" "$t/var/slots"
-  chmod 0700 "$t/var/slots"
-  ln -s "$t/elsewhere" "$t/var/slots/26-11-01"
+  mkdir -p "$t/elsewhere" "$t/var/host-key/slots"
+  chmod 0700 "$t/var/host-key/slots"
+  ln -s "$t/elsewhere" "$t/var/host-key/slots/26-11-01"
   run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a directory (a symlink?)"* ]]
   [ -z "$(ls -A "$t/elsewhere")" ]
-  [ ! -e "$t/var/published" ]
+  [ ! -e "$t/var/host-key/published" ]
 }
 
 @test "a group- or world-writable directory on the way is refused" {
-  mkdir -p "$t/var/slots"
-  chmod 0777 "$t/var/slots"
+  mkdir -p "$t/var/host-key/slots"
+  chmod 0777 "$t/var/host-key/slots"
   run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is group- or world-writable"* ]]
@@ -122,7 +122,8 @@ verify() { # the statement against the OLD key's public, as the seat will
 
 @test "a published directory that is a symlink is refused" {
   mkdir -p "$t/elsewhere"
-  ln -s "$t/elsewhere" "$t/var/published"
+  install -d -m 0711 "$t/var/host-key"
+  ln -s "$t/elsewhere" "$t/var/host-key/published"
   run --separate-stderr bash "$t/generate"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a directory (a symlink?)"* ]]
@@ -165,7 +166,7 @@ verify() { # the statement against the OLD key's public, as the seat will
   [ ! -e "$(pub statement)" ]
   [ ! -e "$(pub statement.sig)" ]
   fp="$(ssh-keygen -lf "$(pub public)" | cut -d' ' -f2)"
-  grep -qF "tape-la à keys-reconcile window: $fp" "$t/console"
+  grep -qF "type it at keys-reconcile window: $fp" "$t/console"
   [[ $output$stderr != *"PRIVATE KEY"* ]]
 }
 
@@ -175,7 +176,7 @@ verify() { # the statement against the OLD key's public, as the seat will
   before="$(sha256sum "$(key)")"
   bash "$t/generate"
   [ "$(sha256sum "$(key)")" = "$before" ]
-  [ "$(grep -c "tape-la à keys-reconcile window" "$t/console")" = 2 ]
+  [ "$(grep -c "type it at keys-reconcile window" "$t/console")" = 2 ]
   [ "$(sort -u <(grep -o 'SHA256:[^ ]*' "$t/console") | wc -l)" = 1 ]
 }
 
@@ -185,4 +186,26 @@ verify() { # the statement against the OLD key's public, as the seat will
   run --separate-stderr bash "$t/generate"
   [ "$status" -eq 0 ]
   [ -s "$(pub public)" ]
+}
+
+# The key root (publishDir's parent, /var/lib/ndh/host-key) is traversable, never listable: the seat collects a
+# publication over ssh as the operator's user, while the privates below stay root's (🛡️, 2026-10-26).
+@test "the key root is 0711: created so, and an existing 0700 one (a pre-K5 machine's) is brought to it" {
+  run --separate-stderr bash "$t/generate"
+  [ "$status" -eq 0 ]
+  [ "$(mode "$t/var/host-key")" = 711 ]
+  rm -rf "$t/var/host-key"
+  install -d -m 0700 "$t/var/host-key"
+  run --separate-stderr bash "$t/generate"
+  [ "$status" -eq 0 ]
+  [ "$(mode "$t/var/host-key")" = 711 ]
+  [ "$(mode "$t/var/host-key/slots")" = 700 ]
+}
+
+@test "mutant: a key root left listable (0755) fails the case above" {
+  sed -i 's/install -d -m 0711 /install -d -m 0755 /; s/chmod 0711 /chmod 0755 /' "$t/generate"
+  ! grep -q '0711' "$t/generate"
+  run --separate-stderr bash "$t/generate"
+  [ "$status" -eq 0 ]
+  [ "$(mode "$t/var/host-key")" = 755 ]
 }

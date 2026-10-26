@@ -1878,6 +1878,93 @@
               ]
             ) "keys-reconcile-partial-batch: an entry's old public is not its own recorded serving one";
             pkgs.runCommand "keys-reconcile-partial-batch" { } "touch $out";
+          # A class entry waits for its guest's host key (window 1 → switch → window 2, the operator's order, 2026-10-26):
+          # attic material enters the batch only when its guest serves a host key and none is pending, predicted from
+          # keys.yaml. g1 serves with none pending: its cache key and leaf enter. g2 serves with a pending next key, g3
+          # serves none: theirs wait, and their host keys are the batch.
+          keys-reconcile-batch-waits-for-host-keys =
+            let
+              lib = nixpkgs.lib;
+              slot = state: origin: public: { inherit state origin public; };
+              keys = {
+                host-g1.slots."26-10-17" = slot "serving" "keyring" "AAAAg1";
+                host-g2.slots = {
+                  "26-10-17" = slot "serving" "keyring" "AAAAg2old";
+                  "26-11-01" = {
+                    state = "pending";
+                    origin = "host";
+                  };
+                };
+                host-g3.slots."26-11-01" = {
+                  state = "pending";
+                  origin = "host";
+                  bootstrap = "tailnet";
+                };
+                host-seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+              };
+              catalog = {
+                machines =
+                  map
+                    (name: {
+                      inherit name;
+                      kind = "nixos";
+                    })
+                    [
+                      "g1"
+                      "g2"
+                      "g3"
+                    ]
+                  ++ [
+                    {
+                      name = "seat";
+                      kind = "darwin";
+                      seat = true;
+                    }
+                  ];
+                privateCaches = {
+                  entries = { };
+                  keyNamePattern = ms: "^seedmatic-${ms}-attic-[0-9]+$";
+                };
+              };
+              batch =
+                (import ./modules/.common.d/keys-reconcile.d/package.nix {
+                  pkgs = pkgsForDarwin;
+                  ndh = {
+                    store.installBinScript = _: x: x;
+                    context.nixBashTrampoline = "/dev/null";
+                  };
+                  inherit catalog keys;
+                  revision = "";
+                  machines = "/dev/null";
+                  publishDir = "/var/lib/ndh/host-key/published";
+                  hostNames = lib.genAttrs [ "g1" "g2" "g3" "seat" ] (m: [ m ]);
+                  atticCaches =
+                    map
+                      (m: {
+                        machine = m;
+                        metalspace = m;
+                        fqdn = "attic.${m}";
+                        dir = "/var/lib/attic";
+                      })
+                      [
+                        "g1"
+                        "g2"
+                        "g3"
+                      ];
+                  keysJsonTool = "/dev/null";
+                  delegation = "/dev/null";
+                }).passthru.batch;
+              seen = map (e: "${e.class}:${e.machine}") batch;
+            in
+            assert lib.assertMsg (
+              lib.sort lib.lessThan seen == [
+                "attic-cache-key:g1"
+                "attic-tls-csr:g1"
+                "host-key:g2"
+                "host-key:g3"
+              ]
+            ) "keys-reconcile-batch-waits-for-host-keys: ${builtins.toJSON seen}";
+            pkgs.runCommand "keys-reconcile-batch-waits-for-host-keys" { } "touch $out";
           # tart:vm:recreate refuses when a data disk holds ZFS or cannot be read: the rm -rf takes them with it.
           tart-recreate-guard-bats = import ./modules/darwin/tart-config.d/tests/package.nix {
             inherit pkgs;

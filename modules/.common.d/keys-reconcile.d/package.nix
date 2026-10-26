@@ -6,7 +6,9 @@
 # metalspace the catalog records no key for, verified against the guest's RECORDED serving host key. Then the attic
 # TLS leaves (class attic-tls-csr): every declared cache, with its recorded leaf (catalog/attic-leaves/<ms>.crt) or
 # none; plan itself reads that leaf (no import-from-derivation) and measures only a cache whose leaf is missing, does
-# not chain to the authority, or expires within 30 days.
+# not chain to the authority, or expires within 30 days. Both attic classes wait for their guest's host key: a cache
+# enters only once its guest serves a host key and none is pending, so window 1 binds host keys and the next one, after
+# the switch, the attic material under the key now served.
 {
   pkgs,
   ndh,
@@ -31,6 +33,13 @@ let
     "catalog/cache-trust.yaml"
     "modules/home-manager/ssh.d/keys.yaml"
   ];
+  hostKeyReady =
+    machine:
+    let
+      r = roles (keys."host-${machine}" or { });
+    in
+    (r.current.state or "") == "serving" && r.pendingName == null;
+  readyCaches = lib.filter (c: hostKeyReady c.machine) atticCaches;
   batch =
     lib.concatMap (
       machine:
@@ -75,7 +84,7 @@ let
           else
             "";
       }
-    ) atticCaches
+    ) readyCaches
     ++ map (
       c:
       let
@@ -93,7 +102,7 @@ let
             "";
         recordedLeaf = if builtins.pathExists leaf then "${leaf}" else "";
       }
-    ) atticCaches;
+    ) readyCaches;
 in
 ndh.store.installBinScript "keys-reconcile" (
   pkgs.replaceVars ./keys-reconcile.sh {

@@ -1,7 +1,7 @@
 # keys-reconcile retire <machine> (roles × keys, design « ending a host key's retirement »): end the retirement of a
 # machine's host key once its new key serves, in ONE change, as keys.schema.yaml's `revoked` rule has it (« a
 # generation enters it in the same change that deletes its slot »). Sourced by keys-reconcile.sh; armed (F3), its
-# « oui » on the tty, in the window's worktree discipline.
+# « yes » on the tty, in the window's worktree discipline.
 #
 # For host-<machine>: every `retired` slot is DELETED and its `revoked` entry written from that slot's own public.
 # And a host certificate recorded on another key (the shared rdp-host's) whose principals name ONLY machines that now
@@ -9,7 +9,7 @@
 # (krl.sh never revokes by serial). krl.sh refuses a revoked id a recorded certificate still shares, so the record
 # leaves in the same change.
 #
-# Refused before the « oui »: host-<machine>'s current slot is not `serving`, or not newer than a retired one; no
+# Refused before the « yes »: host-<machine>'s current slot is not `serving`, or not newer than a retired one; no
 # retired slot and no such certificate (nothing to do); a certificate principal that maps to no machine.
 # Not checked here, and the operator's step before it: the new key seen served live (keys.yaml cannot know it).
 
@@ -65,14 +65,14 @@ reconcile::retire() { # <machine>
 
   [[ -n $retiredSlots || ${#certs[@]} -gt 0 ]] || die "retire: ${keyName} has no retired slot and no certificate to revoke"
 
-  echo "retirer à la révision ${revision:0:12}, en un seul changement :"
-  for slot in $retiredSlots; do echo "  ${keyName}@${slot} : créneau supprimé, sa publique révoquée (revoked)"; done
-  for k in "${certs[@]}"; do echo "  ${k} : certificat d'hôte retiré, révoqué par son key id (revoked_certificates)"; done
-  printf 'retirer et révoquer ? [oui/non] ' >>"$ttyOut"
+  echo "retire at revision ${revision:0:12}, in one change:"
+  for slot in $retiredSlots; do echo "  ${keyName}@${slot}: slot deleted, its public revoked (revoked)"; done
+  for k in "${certs[@]}"; do echo "  ${k}: host certificate removed, revoked by its key id (revoked_certificates)"; done
+  printf 'retire and revoke? [yes/no] ' >>"$ttyOut"
   exec 7<"$ttyIn"
   read -r answer <&7 || answer=""
   exec 7<&-
-  [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
+  [[ $answer == yes ]] || { echo "nothing written: the answer is not « yes »"; return 5; }
 
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT

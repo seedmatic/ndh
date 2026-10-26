@@ -9,7 +9,7 @@
 #   current `recorded`, origin host                  → serve    (M5: switch the machine, it serves the new slot)
 # A slot never rests between generate and the window: keys.yaml cannot learn that a machine generated (the machine
 # commits nothing), so the batch stays at `generate` until keys-reconcile plan measures every machine's publication
-# (F1-verified), and the window's « oui » takes the slots from pending to recorded at once (K4, design §k).
+# (F1-verified), and the window's « yes » takes the slots from pending to recorded at once (K4, design §k).
 # An entry is { step, key, machine, slot, checked, unchecked, does }: `checked` = the preconditions K2 reads in the
 # declaration and found unmet (empty: met), `unchecked` = those it cannot measure, shown as « non vérifié ».
 {
@@ -64,10 +64,10 @@ let
         slot = r.pendingName;
         checked = [ ];
         unchecked = [
-          "${k.machine} joignable"
-          "la publique de ${k.key}@${r.pendingName} publiée et vérifiée (keys-reconcile plan)"
+          "${k.machine} reachable"
+          "${k.key}@${r.pendingName}'s public published and verified (keys-reconcile plan)"
         ];
-        does = "basculer ${k.machine} : son activation génère la clé ${k.key}@${r.pendingName} et publie sa publique ; puis la fenêtre (keys-reconcile)";
+        does = "switch ${k.machine}: its activation generates the key ${k.key}@${r.pendingName} and publishes its public; then the window (keys-reconcile)";
       }
     else if (cur.state or "") == "recorded" && origin == "host" then
       {
@@ -75,8 +75,8 @@ let
         inherit (k) key machine;
         slot = r.currentName;
         checked = [ ];
-        unchecked = [ "${k.machine} joignable" ];
-        does = "basculer ${k.machine} : il sert ${k.key}@${r.currentName}";
+        unchecked = [ "${k.machine} reachable" ];
+        does = "switch ${k.machine}: it serves ${k.key}@${r.currentName}";
       }
     else
       null;
@@ -122,7 +122,7 @@ assert lib.assertMsg (lib.all (
     e:
     e
     // {
-      checked = e.checked ++ [ "le pas précédent n'est pas fini sur toute la flotte" ];
+      checked = e.checked ++ [ "the previous step is not done on the whole fleet" ];
     }
   ) later;
 }
