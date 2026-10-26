@@ -371,6 +371,11 @@ def stdin_shell(stage):
     """The shell a pipeline stage runs on its stdin, behind its wrappers, as (shell, its words), or None. An ssh whose
     remote command is such a shell counts too: the stage's stdin is the remote shell's program."""
     words = [w for w in stage if not ASSIGNMENT.match(w)]
+    # Stdin by fd number is stdin: `0<` folds into `<`.
+    words = [w for j, w in enumerate(words) if not (w == "0" and j + 1 < len(words) and words[j + 1] == "<")]
+    # A redirect may come before the program (`< f bash`): move it after.
+    while len(words) >= 2 and REDIRECTS.match(words[0]):
+        words = words[2:] + words[:2]
     while words and os.path.basename(words[0]) in STDIN_WRAPPERS:
         words = words[1:]
         # The wrapper's own options, an env's assignments, timeout's duration, nice's -n value.
@@ -380,6 +385,9 @@ def stdin_shell(stage):
         rest = words[1:]
         i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
         remote = rest[i + 1:] if i < len(rest) else []
+        # `ssh host -- cmd`: the `--` only ends ssh's options.
+        if remote[:1] == ["--"]:
+            remote = remote[1:]
         # The remote command is one word or many; its own redirects stay with this stage.
         cut = next((j for j, w in enumerate(remote) if REDIRECTS.match(w)), len(remote))
         try:
@@ -451,6 +459,10 @@ def shell_stdin_literals(text):
                 files.append(target or None)
             if k > 0:
                 src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
+                remote = os.path.basename(next((w for w in stage if not ASSIGNMENT.match(w)), "")) == "ssh"
+                # A remote shell reads what the pipe carries, which the hook cannot see unless it is a literal.
+                if remote and not (src and os.path.basename(src[0]) in ("echo", "printf")):
+                    files.append(None)
                 if src and os.path.basename(src[0]) in ("echo", "printf"):
                     # Every literal, a printf's format included: the code can sit in either.
                     lit = [w.replace("\\n", "\n") for w in src[1:] if not w.startswith("-")]
