@@ -7,6 +7,14 @@
 # The seat's activation may sign with the TLS authority (signers.yaml): before the seat, each signer its target
 # config enables is asked `--check`, which classifies and never decrypts, but only on a revision that carries that
 # signer's no-decrypt fix. Anything but "nothing due" stops before the seat: a signature is the operator's gesture.
+#
+# Every run, --dry-run included (it runs each signer's --check, code taken from the revision), runs only inside a window
+# the operator armed (F3: `ndh-ops arm --tools fleet-switch`), checked HERE, as keys-reconcile checks its own: nobody is
+# asked « oui », the arming is the go. The seat is the operator's own: --with-seat needs a second item,
+# `fleet-switch-seat`, in the same arming.
+#
+# The revision must be merged before any of its code is evaluated or run: ndh-switch's own check, the layer below, is
+# asked first (`ndh-switch --dry-run` on the plan's first machine, which evaluates and runs nothing).
 set -euo pipefail
 
 state="${XDG_CACHE_HOME:-$HOME/.cache}/fleet-switch/ndh.git"
@@ -15,6 +23,16 @@ dry=0 with_seat=0 only="" rev=""
 die() {
   echo "fleet-switch: refused: $*" >&2
   exit 2
+}
+
+armed() { # <item>
+  : "F3: an unexpired delegation the operator armed, naming <item> (ndh-ops's file, root's own), as keys-reconcile"
+  local expires
+  [[ -f $delegation && ! -L $delegation ]] || return 1
+  [[ "$(stat -c %u "$delegation" 2>/dev/null || stat -f %u "$delegation")" == 0 ]] || return 1
+  expires=$(sed -n 's/^expires=//p' "$delegation")
+  [[ $expires =~ ^[0-9]+$ ]] && (($(date +%s) < expires)) || return 1
+  [[ ",$(sed -n 's/^tools=//p' "$delegation")," == *",$1,"* ]]
 }
 
 usage() {
@@ -32,6 +50,10 @@ while (($#)); do
   esac
   shift
 done
+
+armed fleet-switch || die "a switch of the fleet is not armed: ndh-ops arm --tools fleet-switch (the operator's gesture)"
+((!with_seat)) || armed fleet-switch-seat ||
+  die "the seat is not armed: ndh-ops arm --tools fleet-switch,fleet-switch-seat (the operator's gesture)"
 
 yq -e '([.[] | select(.kind != "nixos" and .kind != "darwin")] | length) == 0 and
   ([.[] | select(.kind == "darwin" and .ssh == "")] | length) == 1' "$machines" >/dev/null ||
@@ -135,6 +157,10 @@ guard_seat() { # the seat's activation must sign nothing: every enabled signer, 
   done
   return 0
 }
+
+((${#plan[@]})) || finish 0
+: "merged, before any of the revision's code is evaluated or run: ndh-switch's check, which a dry run evaluates nothing past"
+"$ndh_switch" --dry-run "${plan[0]}" "$rev" >&2 || die "ndh-switch refused ${rev:0:12} (above): nothing evaluated, nothing switched"
 
 for m in "${plan[@]}"; do
   if [[ $m != "$seat" ]] && [[ $(m=$m yq -r '.[] | select(.name == strenv(m)) | .kind' "$machines") == darwin ]]; then

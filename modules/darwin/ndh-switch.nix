@@ -74,6 +74,7 @@ in
           incus-cluster-cert-renew = "${config.ndh.incusClusterCert.package}/bin/incus-cluster-cert-renew";
           ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
           keys-reconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
+          fleet-switch = "${cfg.fleetSwitch}/bin/fleet-switch";
         };
       };
       description = "ndh-ops, on this seat's PATH: runs one of the operator's tools on the delegation they armed.";
