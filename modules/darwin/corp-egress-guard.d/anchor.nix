@@ -13,14 +13,15 @@ let
     # The operator's ssh and vz-recover, on the LAN address only and from the operator's own sockets.
     "pass out quick inet proto tcp to ${lanAddress} port 22 user ${user} keep state"
   ];
+  blocks = [
+    "block out quick log inet to ${lanAddress}"
+    "block out quick log inet to ${linkAddress}"
+  ];
 in
 {
   inherit allows;
-  text = builtins.concatStringsSep "\n" (
-    allows
-    ++ [
-      "block out quick log inet to ${lanAddress}"
-      "block out quick log inet to ${linkAddress}"
-    ]
-  );
+  text = builtins.concatStringsSep "\n" (allows ++ blocks);
+  # What pf loads at boot before any activation has read the secret: the two v4 blocks, no allow and no v6. It fails
+  # closed on v4 and is replaced whole by the full anchor at the next activation.
+  floor = builtins.concatStringsSep "\n" blocks + "\n";
 }

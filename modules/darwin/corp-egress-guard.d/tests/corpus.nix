@@ -74,10 +74,18 @@ let
       )
     );
   };
+  # The boot floor: exactly the two v4 blocks, no allow, nothing else.
+  floorLines = lib.filter (x: x != "") (lib.splitString "\n" render.floor);
   failures =
     lib.optional (
       broken render != [ ]
     ) "the rendered anchor: ${lib.concatStringsSep "; " (broken render)}"
+    ++ lib.optional (
+      floorLines != [
+        "block out quick log inet to ${lanAddress}"
+        "block out quick log inet to ${linkAddress}"
+      ]
+    ) "the boot floor is not exactly the two v4 blocks"
     ++ lib.concatLists (
       lib.mapAttrsToList (n: m: lib.optional (broken m == [ ]) "mutant passed: ${n}") mutants
     );

@@ -49,9 +49,17 @@ in
       mode = "0600";
     };
 
-    # macOS's pf.conf, with the one anchor line added after Apple's own. pf reads it only when enabled. The hash is
-    # Apple's stock file, measured on darwin.bioskop (macOS 27.0.1): nix-darwin moves it aside as
-    # *.before-nix-darwin rather than abort on an unexpected /etc file.
+    # macOS's pf.conf, with the anchor added after Apple's own. pf reads it only when enabled. The hash is Apple's stock
+    # file, measured on darwin.bioskop (macOS 27.0.1): nix-darwin moves it aside as *.before-nix-darwin rather than
+    # abort on an unexpected /etc file.
+    #
+    # `load anchor` is what survives a reboot: nix-darwin's boot daemon runs no postActivation, and Apple's
+    # com.apple.pfctl only runs `pfctl -f /etc/pf.conf` (❄️, measured 2026-10-26), so without it the anchor is empty
+    # until the next activation. The file it names always exists: the activation keeps a v4-only floor there before any
+    # secret is read, so a missing file can never fail the whole pf.conf, Apple's anchors included.
+    #
+    # Turned off, nix-darwin removes this link and does not restore Apple's file: put it back with
+    # `mv /etc/pf.conf.before-nix-darwin /etc/pf.conf`, the operator's gesture.
     environment.etc."pf.conf" = {
       text = ''
         scrub-anchor "com.apple/*"
@@ -61,12 +69,23 @@ in
         anchor "com.apple/*"
         load anchor "com.apple" from "/etc/pf.anchors/com.apple"
         anchor "${anchor}"
+        load anchor "${anchor}" from "${anchorFile}"
       '';
       knownSha256Hashes = [ "6fb5b260918922ca5ca4dfb296967d8edb9c12f2c043f26b64590758441d682d" ];
     };
 
-    system.activationScripts.postActivation.text = lib.mkOrder order.corpEgressAnchor ''
-      ${loader}/bin/corp-egress-anchor ${pkgs.writeText "${anchor}.v4" rules.text} ${secretPath} ${anchorFile} /sbin/pfctl ${anchor}
-    '';
+    # The floor first, at the secrets' own slot or earlier: blocks both v4 addresses, needs no secret, never overwrites
+    # a full anchor already in place. Then the full anchor, after the secrets are installed.
+    system.activationScripts.postActivation.text = lib.mkMerge [
+      (lib.mkOrder (order.secretsInstalled - 1) ''
+        if [ ! -s ${anchorFile} ]; then
+          install -d -m 0755 /etc/pf.anchors
+          install -m 0600 ${pkgs.writeText "${anchor}.floor" rules.floor} ${anchorFile}
+        fi
+      '')
+      (lib.mkOrder order.corpEgressAnchor ''
+        ${loader}/bin/corp-egress-anchor ${pkgs.writeText "${anchor}.v4" rules.text} ${secretPath} ${anchorFile} /sbin/pfctl ${anchor}
+      '')
+    ];
   };
 }
