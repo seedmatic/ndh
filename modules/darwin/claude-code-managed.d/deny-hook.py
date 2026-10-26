@@ -363,10 +363,27 @@ def simple_commands(text):
     return commands
 
 
+# The wrappers that leave their command's stdin alone: a shell behind them still reads the pipe.
+STDIN_WRAPPERS = {"env", "nice", "nohup", "time", "command", "stdbuf", "timeout", "sudo", "doas", "exec"}
+
+
+def stdin_shell(stage):
+    """The shell a pipeline stage runs on its stdin, behind its wrappers, as (shell, its words), or None."""
+    words = [w for w in stage if not ASSIGNMENT.match(w)]
+    while words and os.path.basename(words[0]) in STDIN_WRAPPERS:
+        words = words[1:]
+        # The wrapper's own options, an env's assignments, timeout's duration, nice's -n value.
+        while words and (words[0].startswith("-") or ASSIGNMENT.match(words[0]) or re.fullmatch(r"\d+[smhd]?", words[0])):
+            words = words[1:]
+    if words and os.path.basename(words[0]) in SHELLS:
+        return words[0], words[1:]
+    return None
+
+
 def shell_stdin_literals(text):
-    """The text a shell reads on stdin when the command line spells it out: `sh <<<'…'`, or `echo|printf '…' | sh`.
-    Like a heredoc fed to a shell, it is code. A stdin the text does not hold (a file, a pipe from any other program)
-    stays unseen."""
+    """The text a shell reads on stdin when the command line spells it out: `sh <<<'…'`, or `echo|printf … | sh`, the
+    shell behind its wrappers. Like a heredoc fed to a shell, it is code. A stdin the text does not hold (a file, a pipe
+    from any other program) stays unseen."""
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     lexer.commenters = ""
@@ -389,19 +406,20 @@ def shell_stdin_literals(text):
                 cur.append(t)
         stages.append(cur)
         for k, stage in enumerate(stages):
-            words = [w for w in stage if not ASSIGNMENT.match(w)]
-            if not words or os.path.basename(words[0]) not in SHELLS:
+            shell = stdin_shell(stage)
+            if shell is None:
                 continue
+            _, words = shell
             if "<<<" in words and words.index("<<<") + 1 < len(words):
                 found.append(words[words.index("<<<") + 1])
             if k > 0:
                 src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
                 if src and os.path.basename(src[0]) in ("echo", "printf"):
-                    lit = [w for w in src[1:] if not w.startswith("-")]
+                    # Every literal, a printf's format included: the code can sit in either.
+                    lit = [w.replace("\\n", "\n") for w in src[1:] if not w.startswith("-")]
                     if lit:
-                        found.append(lit[0].replace("\\n", "\n") if src[0].endswith("printf") else " ".join(lit))
+                        found.append("\n".join(lit) if os.path.basename(src[0]) == "printf" else " ".join(lit))
     return found
-
 
 def positionals(args, value_opts, arity=None):
     arity = arity or {}
@@ -520,6 +538,7 @@ class Analyzer:
             self.check_system_switch(prog, rest, argv)
             self.check_namespace_doors(prog, rest, argv)
             self.check_nix_leak(prog, rest, argv)
+            self.check_legacy_nix(prog, rest, argv)
             nxt = self.peel(prog, rest, depth)
             if nxt is not None:
                 # A launcher (bash -c, sudo, env, ssh, nix run…) is not a plain removal either.
@@ -878,15 +897,23 @@ class Analyzer:
                 "\"git+file://$PWD?rev=$(git rev-parse HEAD)#<attr>\", or a pushed github: ref. A shell variable is "
                 "opaque to this hook: \"$R#attr\" is refused even when it holds a revision, so write the "
                 "git+file://…?rev=$(git rev-parse HEAD) form out literally, and a store path as itself")
-    LEAK_SUBCOMMANDS = {"build", "run", "develop", "shell", "eval", "fmt", "bundle", "print-dev-env", "path-info",
-                        "why-depends", "search", "edit", "repl", "copy"}
-    LEAK_FLAKE_SUBCOMMANDS = {"check", "show", "metadata", "info", "lock", "update", "archive", "prefetch"}
-    # Mostly given store paths: only a flake-looking positional matters, and none means none.
-    LEAK_STORE_SUBCOMMANDS = {"copy", "path-info", "why-depends", "search"}
+    # The subcommands whose bare form evaluates `.`. Any other subcommand is judged on its arguments alone: every
+    # argument that names a working tree is refused, so the safe ones (a store path, a pinned ref) need no list.
+    LEAK_DEFAULTS_TO_DOT = {"build", "run", "develop", "shell", "eval", "fmt", "bundle", "print-dev-env", "edit", "repl",
+                            "flake check", "flake show", "flake metadata", "flake info", "flake lock", "flake update",
+                            "flake archive", "flake prefetch"}
+    # Words that are a subcommand's own verb, not an installable (`nix profile install X`, `nix store add-path X`).
+    LEAK_SUBVERBS = {"flake", "profile", "store", "derivation", "registry", "hash", "key", "nar", "realisation",
+                     "config", "daemon", "doctor"}
+    # Options whose next word is a value, global ones included: the subcommand is found after them.
     LEAK_VALUE = {"--arg", "--argstr", "--option", "--override-input", "--inputs-from", "--profile", "-o",
                   "--out-link", "--apply", "--system", "--max-jobs", "-j", "--to", "--from", "--store", "--eval-store",
                   "--cores", "--keep-failed-in", "--log-format", "--builders", "--reference-lock-file",
-                  "--output-lock-file", "--update-input", "-I", "--include", "--flake"}
+                  "--output-lock-file", "--update-input", "-I", "--include", "--flake", "-f", "--file",
+                  "--extra-experimental-features", "--experimental-features", "--extra-substituters", "--substituters",
+                  "--extra-trusted-public-keys", "--trusted-public-keys", "--extra-trusted-substituters",
+                  "--access-tokens", "--expr", "--impure-expr", "--priority", "--hash-algo", "--type", "--mode",
+                  "--name", "-n"}
     LEAK_ARITY = {"--override-input": 2, "--option": 2, "--arg": 2, "--argstr": 2}
     REBUILDERS = ("nixos-rebuild", "darwin-rebuild", "home-manager")
 
@@ -897,11 +924,18 @@ class Analyzer:
         scheme = ref.split(":", 1)[0].lower() if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", ref) else ""
         query = ref.split("?", 1)[1] if "?" in ref else ""
         # `rev=$(git rev-parse HEAD)` reaches here as the substitution's placeholder; the substitution itself is
-        # analysed as a command of its own.
-        pinned = any(re.fullmatch(r"rev=(?:[0-9a-fA-F]+| __subst__ )", p) for p in query.split("&"))
-        # A revision pins a git ref only: to `path:`, a bare path or another vcs, it means nothing.
+        # analysed as a command of its own. A single variable is a revision too: nix refuses any rev that is not a
+        # full sha before it fetches, so an empty, unset or bogus one errors and never reads the working tree
+        # (security, 2026-10-26, measured on a throwaway repo with a dirty working tree).
+        pinned = any(re.fullmatch(r"rev=(?:[0-9a-fA-F]+| __subst__ |\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})", p)
+                     for p in query.split("&"))
+        # A revision pins a git ref only: to `path:`, a bare path or another vcs, it means nothing. Pinned so, a
+        # substitution in its path is harmless: the revision is read from the object database wherever it is.
         if scheme in ("git+file", "git+https", "git+ssh", "git") and pinned:
             return False
+        # Anywhere else, a substitution is opaque: `"$(pwd)#foo"` could be any tree.
+        if "__subst__" in ref:
+            return True
         if ref.startswith("/nix/store/") or (scheme == "path" and ref[5:].startswith("/nix/store/")):
             return False
         if scheme in ("path", "file", "git+file") or scheme.endswith("+file"):
@@ -925,13 +959,14 @@ class Analyzer:
         for flag in ("-c", "--command", "--"):
             if flag in words:
                 words = words[:words.index(flag)]
-        if any(w in ("--expr", "-f", "--file", "--impure-expr") for w in words):
+        if any(w in ("--expr", "--impure-expr") for w in words):
             return
         for i, tok in enumerate(words):
             if tok == "--override-input" and i + 2 < len(words) and self.unsafe_ref(words[i + 2]):
                 self.deny(f"{self.LEAK_WHY}. Offending reference: --override-input {words[i + 1]} {words[i + 2]}", argv)
                 return
-            if tok in ("--inputs-from", "--reference-lock-file") and i + 1 < len(words) \
+            # A file to evaluate is a ref like any other.
+            if tok in ("--inputs-from", "--reference-lock-file", "-f", "--file") and i + 1 < len(words) \
                     and self.unsafe_ref(words[i + 1]):
                 self.deny(f"{self.LEAK_WHY}. Offending reference: {tok} {words[i + 1]}", argv)
                 return
@@ -939,24 +974,50 @@ class Analyzer:
         if not pos:
             return
         sub, args = pos[0], pos[1:]
-        if sub == "flake":
-            if not args or args[0] not in self.LEAK_FLAKE_SUBCOMMANDS:
-                return
-            sub, args = f"flake {args[0]}", args[1:]
+        if sub in self.LEAK_SUBVERBS and args:
+            sub, args = f"{sub} {args[0]}", args[1:]
+        if sub.startswith("flake "):
             flake_ref = next((rest[i + 1] for i, t in enumerate(rest) if t == "--flake" and i + 1 < len(rest)), None)
             if flake_ref is not None:
                 args = args + [flake_ref]
-        elif sub not in self.LEAK_SUBCOMMANDS:
-            return
         if not args:
-            if sub in self.LEAK_STORE_SUBCOMMANDS:
-                return
-            self.deny(f"{self.LEAK_WHY}. Offending reference: none (nix {sub} defaults to the current directory)", argv)
+            if sub in self.LEAK_DEFAULTS_TO_DOT:
+                self.deny(f"{self.LEAK_WHY}. Offending reference: none (nix {sub} defaults to the current directory)",
+                          argv)
             return
         if sub in ("run", "eval", "fmt"):
             args = args[:1]
         for ref in args:
             if self.unsafe_ref(ref):
+                self.deny(f"{self.LEAK_WHY}. Offending reference: {ref}", argv)
+                return
+
+    # The legacy CLIs: with no argument nix-build and nix-instantiate read ./default.nix, nix-shell ./shell.nix; a path
+    # argument is the tree; nix-store --add copies a local file into the store. `<nixpkgs>` and `nix-shell -p` read no
+    # working tree.
+    LEGACY_VALUE = {"-A", "--attr", "-I", "--arg", "--argstr", "-o", "--out-link", "--run", "--command", "-p",
+                    "--packages", "--option", "--expr", "-E"}
+    LEGACY_ARITY = {"--arg": 2, "--argstr": 2, "--option": 2}
+
+    def check_legacy_nix(self, prog, rest, argv):
+        if prog == "nix-store":
+            if any(a in ("--add", "--add-fixed") for a in rest):
+                paths = [a for a in rest if not a.startswith("-")]
+                if "--add-fixed" in rest:
+                    paths = paths[1:]
+                if any(self.unsafe_ref(a) for a in paths):
+                    self.deny(f"{self.LEAK_WHY}. Offending reference: nix-store --add of a local path", argv)
+            return
+        if prog not in ("nix-build", "nix-shell", "nix-instantiate"):
+            return
+        if any(a in ("-p", "--packages", "--expr", "-E") for a in rest):
+            return
+        pos = positionals(rest, self.LEGACY_VALUE, self.LEGACY_ARITY)
+        if not pos:
+            self.deny(f"{self.LEAK_WHY}. Offending reference: none ({prog} reads the current directory)", argv)
+            return
+        for ref in pos:
+            if not (ref.startswith("<") and ref.endswith(">")) and self.unsafe_ref(ref):
                 self.deny(f"{self.LEAK_WHY}. Offending reference: {ref}", argv)
                 return
 
