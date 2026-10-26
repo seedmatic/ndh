@@ -134,3 +134,14 @@ DENY	ALLOW	-	echo 'nix build .#x' | nice bash
 DENY	ALLOW	-	printf '%s\n' 'nix build .#x' | bash
 DENY	DENY	-	echo nix build .#x | bash
 DENY	DENY	-	bash -s <<<'nix build .#x'
+
+# A git ref whose rev is a VARIABLE is pinned (🛡️, 2026-10-26): nix refuses any rev that is not a full sha before it
+# fetches, so an empty, unset or bogus one errors and never reads the working tree (probe-empty-rev.sh, a throwaway repo
+# with a dirty worktree). An empty rev, another parameter, `path:` or a variable as the whole ref stay refused.
+# The today column is measured on develop 5ecc1cbb's two hooks (the deny hook and leak-guard.sh): DENY if either refuses.
+ALLOW	ALLOW	-	nix flake metadata --json "git+file:///Volumes/git-bare-store/seedmatic/rke2lab.git?rev=$sha"
+ALLOW	ALLOW	-	nix run "git+file://$PWD?rev=${sha}#formatter.aarch64-darwin" -- --fail-on-change
+DENY	ALLOW	-	nix build "git+file:///tmp/w?rev=#x"
+DENY	ALLOW	-	nix build "git+file:///tmp/w?prev=$sha#x"
+DENY	DENY	-	nix build "path:/tmp/w?rev=$sha#x"
+DENY	DENY	-	nix build "$R#checks.x"
