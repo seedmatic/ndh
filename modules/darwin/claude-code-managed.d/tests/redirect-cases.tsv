@@ -1,0 +1,31 @@
+# A redirected local file fed to something that runs it (a shell on stdin, ssh to a remote shell) is CODE: the hook
+# reads it and judges each line as if typed. What the hook cannot read is refused. Fed to something that does not run
+# it, it stays data. Columns, tab-separated: want, today (cea94b1f, measured), cwd (@fixtures = the redirect fixtures
+# directory), cmd. Fixtures: ok.sh (ls, uname), bad.sh (ls, then incus exec), nsenter.sh (sudo nsenter -a sh),
+# switch.sh (sudo activate), nest.sh (uname, then bash -s < bad.sh). A case is loosened only with 🛡️'s review.
+# A readable file: its lines are judged.
+ALLOW	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < ok.sh
+ALLOW	ALLOW	@fixtures	bash < ok.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < bad.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos bash -s < bad.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos sh < bad.sh
+DENY	ALLOW	@fixtures	bash < bad.sh
+DENY	ALLOW	@fixtures	bash -s arg < bad.sh
+DENY	DENY	@fixtures	ssh nikopol-nixos 'sudo bash -s' < nsenter.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < switch.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < nest.sh
+# One refused line refuses the whole command, wherever it is in the file.
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < bad.sh && echo done
+# What the hook cannot read is refused.
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < missing.sh
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' < <(cat ok.sh)
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' <<< "$SCRIPT"
+DENY	ALLOW	@fixtures	bash < "$F"
+# A literal here-string is read like a file.
+ALLOW	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' <<< 'ls /tmp'
+DENY	ALLOW	@fixtures	ssh nikopol-nixos 'bash -s' <<< 'incus exec attic-nikopol -- ls'
+# Fed to something that does not run it, a file is data.
+ALLOW	ALLOW	@fixtures	cat < bad.sh
+ALLOW	ALLOW	@fixtures	grep incus < bad.sh
+ALLOW	ALLOW	@fixtures	ssh nikopol-nixos 'cat > /tmp/bad.sh' < bad.sh
+ALLOW	ALLOW	@fixtures	wc -l < missing.sh
