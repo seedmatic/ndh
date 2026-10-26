@@ -351,3 +351,23 @@ seat_unarmed() { # the seat named without its own item: refused, exit 2, nothing
   [[ "$output" == *"bioskop: would switch (dry-run)"* ]]
   [[ "$output" == *"(dry-run)"* ]]
 }
+
+# End to end with ndh-ops (2026-10-26: `arm` refused fleet-switch-seat, so --with-seat could never be armed): the
+# delegation the REAL `ndh-ops arm` writes is the one fleet-switch accepts, the seat item included.
+real_arm() { # <tools>: ndh-ops's own arm, into this test's delegation directory, no sudo
+  mkdir -p "$T/ops"
+  { printf 'dir=%q\nsudo=\nmax_hours=72\n' "$T/ops"
+    printf 'declare -A tools=([fleet-switch]=%q)\n' "$T/fleet-switch"
+    printf 'items=(%s)\n' "${ARMING_ITEMS:?ndh-ops.d/paths.nix armingItems, from the flake check}"
+    cat "$D/../ndh-ops.d/ndh-ops.sh"; } >"$T/ndh-ops"
+  XDG_STATE_HOME="$T/state" bash "$T/ndh-ops" arm --hours 1 --tools "$1"
+  rm -rf "$T/delegation" && cp "$T/ops/delegation" "$T/delegation"
+}
+
+@test "end to end: ndh-ops arm --tools fleet-switch,fleet-switch-seat arms the seat for fleet-switch --with-seat" {
+  run real_arm fleet-switch,fleet-switch-seat
+  [ "$status" -eq 0 ]
+  run fs --with-seat --only bioskop-nixos,bioskop --rev "$MERGED"
+  [ "$status" -eq 0 ]
+  [ "$(switched)" = "bioskop-nixos bioskop " ]
+}

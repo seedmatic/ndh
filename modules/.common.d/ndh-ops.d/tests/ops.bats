@@ -12,6 +12,7 @@ setup() {
   done
   { printf 'dir=%q\nsudo=\nmax_hours=72\n' "$T/db"
     printf 'declare -A tools=([ssh-keys-renew]=%q [ndh-keyring]=%q)\n' "$T/bin/ssh-keys-renew" "$T/bin/ndh-keyring"
+    printf 'items=(%s)\n' "${ARMING_ITEMS:?ndh-ops.d/paths.nix armingItems, from the flake check}"
     cat "$D/ndh-ops.sh"; } >"$T/ndh-ops"
 }
 
@@ -98,4 +99,31 @@ ops() { bash "$T/ndh-ops" "$@"; }
   ops arm --hours 1 --tools ndh-keyring
   grep -q "^armed_by=$(id -un)$" "$T/db/delegation"
   grep -q '^armed_at=20' "$T/db/delegation"
+}
+
+# An arming item names a permission a tool checks itself, not a program: fleet-switch requires fleet-switch-seat beside
+# fleet-switch for --with-seat (the operator's decision, 2026-10-26). arm writes it; nobody runs it.
+@test "arm: an arming item is accepted beside its tool, and written into the delegation" {
+  run ops arm --hours 1 --tools fleet-switch-seat,ssh-keys-renew
+  [ "$status" -eq 0 ]
+  grep -qx 'tools=fleet-switch-seat,ssh-keys-renew' "$T/db/delegation"
+}
+@test "an arming item is not a tool: running it is refused, even armed" {
+  ops arm --hours 1 --tools fleet-switch-seat
+  run ops fleet-switch-seat
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"fleet-switch-seat is not an operator tool"* ]]
+}
+@test "arm: a name that only contains an item is refused" {
+  run ops arm --hours 1 --tools fleet-switch-seatx
+  [ "$status" -eq 3 ]
+  [ ! -e "$T/db/delegation" ]
+}
+@test "mutant: without the item list, arm refuses the item (the 2026-10-26 refusal)" {
+  sed -i '/^items=(/d' "$T/ndh-ops"
+  run grep -c '^items=' "$T/ndh-ops"
+  [ "$output" = 0 ]
+  run ops arm --hours 1 --tools fleet-switch-seat
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"arm: fleet-switch-seat is not one of"* ]]
 }
