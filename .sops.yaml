@@ -58,6 +58,9 @@ creation_rules:
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
       - 'age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf'
+      - age1zyz3e3dk0yj69hrutzrqyv4xx2zrjm6hgkvcmrxcehs92ftqx3xqlq0w4d
+      - age1952klh28ju3urhzpu3m7jye89zfcrcgzmznt069f7akpq56h8g9qq8l96e
+      - age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
   - path_regex: '(^|/)\.secrets$'
     age:
       - 'age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk'
@@ -65,6 +68,9 @@ creation_rules:
       - 'age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j'
       - 'age1avmcejlekelhkm02v3algs9z37fsp27658zpjagkr5w7uxhqguesdmmz0m'
       - 'age1wenvxmefp705lmg2qkf0mrpvp6mv7z560r4pklfz3hzkz3e5xacsxnfctf'
+      - age1zyz3e3dk0yj69hrutzrqyv4xx2zrjm6hgkvcmrxcehs92ftqx3xqlq0w4d
+      - age1952klh28ju3urhzpu3m7jye89zfcrcgzmznt069f7akpq56h8g9qq8l96e
+      - age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
 stores:
   json:
     indent: 2
