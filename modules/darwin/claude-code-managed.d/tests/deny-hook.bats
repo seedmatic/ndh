@@ -543,10 +543,14 @@ mkstate() {
 
 # --- security's refusal corpora: one case per line, want, today, cwd (- for the test's), the command as typed ---
 corpus() {
-  local want today cwd cmd bad=""
+  local want today cwd cmd bad="" fx="$BATS_TEST_TMPDIR/redirect-fixtures"
+  # A writable copy, symlinks kept: big.sh, over the hook's 256 KiB cap, is generated rather than committed.
+  cp -R "$BATS_TEST_DIRNAME/redirect-fixtures" "$fx"
+  head -c 300000 /dev/zero | tr '\0' '#' >"$fx/big.sh"
   while IFS=$'\t' read -r want today cwd cmd; do
     case "$want" in '' | '#'*) continue ;; esac
-    case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$BATS_TEST_DIRNAME/redirect-fixtures" ;; esac
+    case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$fx" ;; esac
+    cmd="${cmd//@fixtures/$fx}"
     run hook "$cmd" "$cwd"
     if [ "$want" = DENY ]; then [ "$status" -eq 2 ] || bad+="  want DENY, got status=$status: $cmd"$'\n'
     else [ "$status" -eq 0 ] && [ -z "$output" ] || bad+="  want ALLOW, got status=$status $output: $cmd"$'\n'; fi
