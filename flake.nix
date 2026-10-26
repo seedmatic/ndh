@@ -1253,6 +1253,11 @@
             certify = ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh;
             renew = ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh;
           };
+          keys-yaml-schema = import ./modules/.common.d/keys-yaml.d/tests/keys-yaml-schema.nix {
+            inherit pkgs;
+            keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
+            keysSchema = ./modules/home-manager/ssh.d/keys.schema.yaml;
+          };
           keys-json-fresh = import ./modules/.common.d/keys-yaml.d/tests/keys-json-fresh.nix {
             inherit pkgs;
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
@@ -1878,6 +1883,89 @@
               ]
             ) "keys-reconcile-partial-batch: an entry's old public is not its own recorded serving one";
             pkgs.runCommand "keys-reconcile-partial-batch" { } "touch $out";
+          # A slot's `bootstrap` past pending is a record (the schema keeps it, 2026-10-26), never a binding: both its
+          # readers take it from the PENDING slot alone. g serves a slot recorded with `bootstrap: console` and has a
+          # pending successor without one, so both must give "" (F1 required). The mutant, the batch reading the newest
+          # bootstrap any slot carries, must give "console": what this guards.
+          bootstrap-read-from-pending-only =
+            let
+              lib = nixpkgs.lib;
+              entry = {
+                type = "ssh-ed25519";
+                slots = {
+                  "26-10-25" = {
+                    state = "serving";
+                    origin = "host";
+                    bootstrap = "console";
+                    public = "AAAAgserving";
+                  };
+                  "26-11-20" = {
+                    state = "pending";
+                    origin = "host";
+                  };
+                };
+              };
+              keys.host-g = entry;
+              catalog.machines = [
+                {
+                  name = "g";
+                  kind = "nixos";
+                }
+                {
+                  name = "seat";
+                  kind = "darwin";
+                  seat = true;
+                }
+              ];
+              batchOf =
+                file:
+                (import file {
+                  pkgs = pkgsForDarwin;
+                  ndh = {
+                    store.installBinScript = _: x: x;
+                    context.nixBashTrampoline = "/dev/null";
+                  };
+                  inherit catalog keys;
+                  revision = "";
+                  machines = "/dev/null";
+                  publishDir = "/var/lib/ndh/host-key/published";
+                  hostNames = {
+                    g = [ "g" ];
+                    seat = [ "seat" ];
+                  };
+                  atticCaches = [ ];
+                  keysJsonTool = "/dev/null";
+                  delegation = "/dev/null";
+                }).passthru.batch;
+              batch = batchOf ./modules/.common.d/keys-reconcile.d/package.nix;
+              mutantText =
+                builtins.replaceStrings
+                  [ "bootstrap = entry.slots.\${r.pendingName}.bootstrap or \"\";" ]
+                  [
+                    "bootstrap = lib.last ([ \"\" ] ++ lib.filter (b: b != \"\") (lib.mapAttrsToList (_: s: s.bootstrap or \"\") entry.slots));"
+                  ]
+                  (builtins.readFile ./modules/.common.d/keys-reconcile.d/package.nix);
+              mutantDir = pkgs.runCommand "keys-reconcile-bootstrap-mutant" { } ''
+                mkdir -p $out/keys-reconcile.d && cp -r ${./modules/.common.d}/. $out/ && chmod -R u+w $out
+                cp ${pkgs.writeText "package.nix" mutantText} $out/keys-reconcile.d/package.nix
+              '';
+              mutant = batchOf "${mutantDir}/keys-reconcile.d/package.nix";
+              # The activation's generate, on a real guest given this entry, as host-key.d/tests/checks.nix does.
+              hostKey =
+                (self.nixosConfigurations.bioskop-nixos.extendModules {
+                  modules = [ { ndh.hostKey.entry = lib.mkForce entry; } ];
+                }).config.ndh.hostKey.generateVars;
+            in
+            assert lib.assertMsg (map (e: e.bootstrap) batch == [ "" ])
+              "bootstrap-read-from-pending-only: the batch took a served slot's bootstrap: ${builtins.toJSON batch}";
+            assert lib.assertMsg (
+              mutantText != builtins.readFile ./modules/.common.d/keys-reconcile.d/package.nix
+            ) "bootstrap-read-from-pending-only: the mutant changed nothing";
+            assert lib.assertMsg (map (e: e.bootstrap) mutant == [ "console" ])
+              "bootstrap-read-from-pending-only: the mutant (any slot's bootstrap) still gives \"\": the case proves nothing";
+            assert lib.assertMsg (hostKey.bootstrap == "''")
+              "bootstrap-read-from-pending-only: the activation's generate took a served slot's bootstrap: ${hostKey.bootstrap}";
+            pkgs.runCommand "bootstrap-read-from-pending-only" { } "touch $out";
           # A class entry waits for its guest's host key (window 1 → switch → window 2, the operator's order, 2026-10-26):
           # attic material enters the batch only when its guest serves a host key and none is pending, predicted from
           # keys.yaml. g1 serves with none pending: its cache key and leaf enter. g2 serves with a pending next key, g3
