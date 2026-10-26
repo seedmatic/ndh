@@ -543,10 +543,14 @@ mkstate() {
 
 # --- security's refusal corpora: one case per line, want, today, cwd (- for the test's), the command as typed ---
 corpus() {
-  local want today cwd cmd bad=""
+  local want today cwd cmd bad="" fx="$BATS_TEST_TMPDIR/redirect-fixtures"
+  # A writable copy, symlinks kept: big.sh, over the hook's 256 KiB cap, is generated rather than committed.
+  cp -R "$BATS_TEST_DIRNAME/redirect-fixtures" "$fx"
+  head -c 300000 /dev/zero | tr '\0' '#' >"$fx/big.sh"
   while IFS=$'\t' read -r want today cwd cmd; do
     case "$want" in '' | '#'*) continue ;; esac
-    case "$cwd" in -) cwd=/tmp/work ;; esac
+    case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$fx" ;; esac
+    cmd="${cmd//@fixtures/$fx}"
     run hook "$cmd" "$cwd"
     if [ "$want" = DENY ]; then [ "$status" -eq 2 ] || bad+="  want DENY, got status=$status: $cmd"$'\n'
     else [ "$status" -eq 0 ] && [ -z "$output" ] || bad+="  want ALLOW, got status=$status $output: $cmd"$'\n'; fi
@@ -556,10 +560,12 @@ corpus() {
 @test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
 @test "namespaces: every corpus case gets its verdict" { corpus nsenter-cases.tsv; }
 @test "leak: every corpus case gets its verdict" { corpus leak-cases.tsv; }
+@test "redirects: every corpus case gets its verdict" { corpus redirect-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
-@test "ok a shell on stdin after a sudo, in its own command" { run hook 'sudo -v; bash < /tmp/x.sh'; allowed; }
+# Its stdin is a readable, harmless file: since redirected scripts are read, a missing one would be refused for that.
+@test "ok a shell on stdin after a sudo, in its own command" { run hook "sudo -v; bash < $BATS_TEST_DIRNAME/redirect-fixtures/ok.sh"; allowed; }
 @test "leak: a refusal says a variable is opaque and gives the literal form" {
   run hook 'nix build "$R#checks.x"'
   denied

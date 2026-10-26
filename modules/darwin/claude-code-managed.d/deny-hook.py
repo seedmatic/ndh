@@ -368,30 +368,68 @@ STDIN_WRAPPERS = {"env", "nice", "nohup", "time", "command", "stdbuf", "timeout"
 
 
 def stdin_shell(stage):
-    """The shell a pipeline stage runs on its stdin, behind its wrappers, as (shell, its words), or None."""
+    """The shell a pipeline stage runs on its stdin, behind its wrappers, as (shell, its words), or None. An ssh whose
+    remote command is such a shell counts too: the stage's stdin is the remote shell's program."""
     words = [w for w in stage if not ASSIGNMENT.match(w)]
+    # Stdin by fd number is stdin: `0<` folds into `<`.
+    words = [w for j, w in enumerate(words) if not (w == "0" and j + 1 < len(words) and words[j + 1] == "<")]
+    # A redirect may come before the program (`< f bash`): move it after.
+    while len(words) >= 2 and REDIRECTS.match(words[0]):
+        words = words[2:] + words[:2]
     while words and os.path.basename(words[0]) in STDIN_WRAPPERS:
         words = words[1:]
         # The wrapper's own options, an env's assignments, timeout's duration, nice's -n value.
         while words and (words[0].startswith("-") or ASSIGNMENT.match(words[0]) or re.fullmatch(r"\d+[smhd]?", words[0])):
             words = words[1:]
+    if words and os.path.basename(words[0]) == "ssh":
+        rest = words[1:]
+        i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
+        remote = rest[i + 1:] if i < len(rest) else []
+        # `ssh host -- cmd`: the `--` only ends ssh's options.
+        if remote[:1] == ["--"]:
+            remote = remote[1:]
+        # The remote command is one word or many; its own redirects stay with this stage.
+        cut = next((j for j, w in enumerate(remote) if REDIRECTS.match(w)), len(remote))
+        try:
+            inner = shlex.split(" ".join(remote[:cut]))
+        except ValueError:
+            return None
+        shell = stdin_shell(inner)
+        return (shell[0], shell[1] + remote[cut:]) if shell else None
     if words and os.path.basename(words[0]) in SHELLS:
-        return words[0], words[1:]
+        # A -c string is its program, judged elsewhere; a script argument is a file, judged by name.
+        args = words[1:]
+        for j, w in enumerate(args):
+            if w.startswith("-") and not w.startswith("--") and "c" in w[1:]:
+                return None
+            if w.startswith("-") and not w.startswith("--") and "s" in w[1:]:
+                break
+            if REDIRECTS.match(w):
+                break
+            if not w.startswith("-"):
+                return None
+        return words[0], args
     return None
 
 
+# A redirected script larger than this is refused, not read: the hook judges what it can read whole.
+REDIRECT_CAP = 256 * 1024
+OPAQUE = re.compile(r"[$`]|__subst__")
+
+
 def shell_stdin_literals(text):
-    """The text a shell reads on stdin when the command line spells it out: `sh <<<'…'`, or `echo|printf … | sh`, the
-    shell behind its wrappers. Like a heredoc fed to a shell, it is code. A stdin the text does not hold (a file, a pipe
-    from any other program) stays unseen."""
+    """What a shell reads on stdin as code when the command line says where it comes from: a here-string, an echo or
+    printf piped in, or a redirected file. Returns (texts, files): the texts are code to analyse; the files are the raw
+    redirect targets, resolved and read by the caller; an unreadable source is returned as None in files. A stdin the
+    text does not hold (a pipe from any other program) stays unseen."""
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     lexer.commenters = ""
     try:
         tokens = list(lexer)
     except ValueError:
-        return []
-    found, start = [], 0
+        return [], []
+    found, files, start = [], [], 0
     for i, tok in enumerate(tokens + [";"]):
         if tok not in SEPARATORS or tok == "|":
             continue
@@ -411,15 +449,26 @@ def shell_stdin_literals(text):
                 continue
             _, words = shell
             if "<<<" in words and words.index("<<<") + 1 < len(words):
-                found.append(words[words.index("<<<") + 1])
+                here = words[words.index("<<<") + 1]
+                if OPAQUE.search(here):
+                    files.append(None)
+                else:
+                    found.append(here)
+            if "<" in words:
+                target = words[words.index("<") + 1] if words.index("<") + 1 < len(words) else ""
+                files.append(target or None)
             if k > 0:
                 src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
+                remote = os.path.basename(next((w for w in stage if not ASSIGNMENT.match(w)), "")) == "ssh"
+                # A remote shell reads what the pipe carries, which the hook cannot see unless it is a literal.
+                if remote and not (src and os.path.basename(src[0]) in ("echo", "printf")):
+                    files.append(None)
                 if src and os.path.basename(src[0]) in ("echo", "printf"):
                     # Every literal, a printf's format included: the code can sit in either.
                     lit = [w.replace("\\n", "\n") for w in src[1:] if not w.startswith("-")]
                     if lit:
                         found.append("\n".join(lit) if os.path.basename(src[0]) == "printf" else " ".join(lit))
-    return found
+    return found, files
 
 def positionals(args, value_opts, arity=None):
     arity = arity or {}
@@ -488,13 +537,32 @@ class Analyzer:
         if depth > MAX_DEPTH:
             raise Refused("wrapping nested deeper than the hook follows")
         outer, bodies = extract_substitutions(text)
-        bodies = bodies + shell_stdin_literals(outer)
+        texts, files = shell_stdin_literals(outer)
+        bodies = bodies + texts + [self.read_redirected(f, outer) for f in files]
         # A substitution runs a command of its own: never beside an owned removal.
         self.other_commands += len(bodies)
         for body in bodies:
             self.analyze(body, depth + 1)
         for argv in simple_commands(outer):
             self.unwrap(argv, depth)
+
+    def read_redirected(self, target, text):
+        """The text of a file redirected into a shell, to analyse as code; refused when the hook cannot read it whole
+        (security, 2026-10-26): an opaque target, a missing file, one over REDIRECT_CAP, or a relative one in a command
+        that changes directory, whose resolution would come before the cd is followed."""
+        if target is None:
+            raise Refused("a shell reads its program from a source the hook cannot read; give it the commands with -c "
+                          "or redirect a file by its literal path")
+        if not os.path.isabs(target) and re.search(r"(?:^|[;&|(]\s*)(?:cd|pushd|popd)\b", text):
+            raise Refused(f"a relative script redirected after a cd: {target}; name its absolute path")
+        path = self.resolve(target)
+        try:
+            if path is None or os.path.getsize(path) > REDIRECT_CAP:
+                raise OSError
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                return fh.read()
+        except OSError:
+            raise Refused(f"a script redirected into a shell that the hook cannot read whole: {target}") from None
 
     # The sessions' gated verbs: a copy outside the store could run anything under their name.
     NDH_VERBS = ("ndh-switch", "fleet-switch", "ndh-ops", "ndh-claude-wake")
