@@ -47,6 +47,9 @@ let
     };
   };
   fixtureJson = pkgs.writeText "hidden-slots.json" (builtins.toJSON fixture);
+  # Commit dates as self.lastModified carries them: 26-05-10 inside the serving slot's 14-day overlap, 26-05-20 past it.
+  self.lastModified = 1778371200;
+  past.lastModified = 1779235200;
 
   # The nix projection: keys-yaml.nix evaluated on the fixture, as its consumers read it.
   evaluated =
@@ -55,7 +58,7 @@ let
         keysYamlModule
         {
           _module.args = {
-            inherit pkgs lib;
+            inherit pkgs lib self;
             worktreePath.of = _: fixtureJson;
           };
         }
@@ -74,13 +77,64 @@ let
           (import mutantModule)
           {
             _module.args = {
-              inherit pkgs lib;
+              inherit pkgs lib self;
               worktreePath.of = _: fixtureJson;
             };
           }
         ];
       }).config.ndh.keysYaml.keys.host-x.slots;
   all = lib.attrNames evaluated.allSlots.host-x.slots;
+
+  # A key revoked while a RETIRED slot still carries it: keys-yaml.nix must refuse it, retired slots included in what
+  # it guards (`keys-reconcile retire` deletes the slot in the same change). Forced through krlFile, where the guard
+  # throws (forcing `.keys` would reach no guard and prove nothing).
+  revokedWhileRetired = fixture // {
+    revoked."host-x@26-01-01" = {
+      type = "ssh-ed25519";
+      public = "AAAAretired";
+      reason = "fixture";
+    };
+  };
+  krlEvaluates =
+    {
+      module ? keysYamlModule,
+      keys,
+      at ? self,
+    }:
+    (builtins.tryEval (
+      builtins.deepSeq
+        (lib.evalModules {
+          modules = [
+            module
+            {
+              _module.args = {
+                inherit pkgs lib;
+                self = at;
+                worktreePath.of = _: pkgs.writeText "keys.json" (builtins.toJSON keys);
+              };
+            }
+          ];
+        }).config.ndh.keysYaml.krlFile.drvPath
+        true
+    )).success;
+  refusedWith =
+    module:
+    !(krlEvaluates {
+      inherit module;
+      keys = revokedWhileRetired;
+    });
+  # The guard's mutant: livePublics read from the projection that hides retired slots, as before the fix. Built beside a
+  # copy of keys-yaml.d, so its relative imports (trust.nix, krl.sh) resolve as the original's do.
+  guardMutantText =
+    builtins.replaceStrings
+      [ "        allSlotsJson\n        authoritiesJson" ]
+      [ "        keysJson\n        authoritiesJson" ]
+      (builtins.readFile keysYamlModule);
+  guardMutantDir = pkgs.runCommand "keys-yaml-guard-mutant" { } ''
+    mkdir -p $out && cp -r ${builtins.dirOf keysYamlModule}/keys-yaml.d $out/keys-yaml.d
+    cp ${pkgs.writeText "keys-yaml.nix" guardMutantText} $out/keys-yaml.nix
+  '';
+  guardMutant = "${guardMutantDir}/keys-yaml.nix";
 in
 assert lib.assertMsg (
   seen == [ "26-05-01" ]
@@ -98,6 +152,24 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   lib.length mutantSeen == 3
 ) "hidden-slots: the projection's mutant still hides slots: ${builtins.toJSON mutantSeen}";
+assert lib.assertMsg (refusedWith keysYamlModule)
+  "hidden-slots: a key revoked while a retired slot still carries it was accepted";
+assert lib.assertMsg (
+  guardMutantText != builtins.readFile keysYamlModule
+) "hidden-slots: the guard's mutant changed nothing";
+assert lib.assertMsg (!(refusedWith (import guardMutant)))
+  "hidden-slots: the guard's mutant (livePublics without retired slots) still refused it: the case proves nothing";
+# The overlap: a retired host slot is accepted 9 days after its successor, refused 19 days after; both sides, so the
+# check neither refuses everything nor nothing.
+assert lib.assertMsg (krlEvaluates {
+  keys = fixture;
+}) "hidden-slots: a retired slot inside its 14-day overlap was refused";
+assert lib.assertMsg (
+  !(krlEvaluates {
+    keys = fixture;
+    at = past;
+  })
+) "hidden-slots: a retired slot 19 days past its successor was accepted";
 pkgs.runCommand "keys-yaml-hidden-slots"
   {
     nativeBuildInputs = with pkgs; [

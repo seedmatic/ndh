@@ -11,6 +11,10 @@
 #   keys-reconcile declare <machine>
 #                          (armed) declares that machine's next host key, a pending slot born on it, in the same
 #                          worktree discipline (declare.sh), after its « oui »: no session's sops set (design §p).
+#   keys-reconcile retire <machine>
+#                          (armed) once its new key serves, deletes the machine's retired slots and revokes them, and
+#                          revokes a host certificate whose every principal's machine serves its own key, in one change
+#                          (retire.sh), after its « oui ».
 #   keys-reconcile close <rev12>
 #                          (armed) removes one window left open, unmerged: its worktree and its branch, after checking
 #                          it is a keys-reconcile window, clean and unpushed. The only way to discard one (write.sh).
@@ -24,7 +28,7 @@ PATH="@toolPath@:/usr/bin:/bin"
 export LC_ALL=C
 
 readonly revision=@revision@ remote=@remote@ batch=@batch@ machines=@machines@ keysJson=@keysJson@ publishDir=@publishDir@
-readonly delegation=@delegation@ keysJsonTool=@keysJsonTool@
+readonly delegation=@delegation@ keysJsonTool=@keysJsonTool@ hostNamesJson=@hostNamesJson@
 # The bare plan and the window fetch the remote into, and the window adds its worktree to: never a session's checkout.
 readonly bare="${XDG_CACHE_HOME:-$HOME/.cache}/keys-reconcile/ndh.git"
 readonly ttyIn=@ttyIn@ ttyOut=@ttyOut@
@@ -32,6 +36,7 @@ source @verify@
 source @write@
 source @declare@
 source @close@
+source @retire@
 source @classes@/attic-cache-key.sh
 source @classes@/attic-tls-csr.sh
 
@@ -236,11 +241,16 @@ main() {
       pushed
       reconcile::declare "$2"
       ;;
+    retire:2)
+      armed || die "retire is not armed: ndh-ops arm --tools keys-reconcile (the operator's gesture)"
+      pushed
+      reconcile::retire "$2"
+      ;;
     close:2)
       armed || die "close is not armed: ndh-ops arm --tools keys-reconcile (the operator's gesture)"
       reconcile::close "$2"
       ;;
-    *) die "usage: keys-reconcile plan | window | declare <machine> | close <rev12> (no other argument: the revision is this closure's)" ;;
+    *) die "usage: keys-reconcile plan | window | declare <machine> | retire <machine> | close <rev12> (no other argument: the revision is this closure's)" ;;
   esac
 }
 

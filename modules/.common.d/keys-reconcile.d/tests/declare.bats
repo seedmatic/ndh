@@ -53,13 +53,14 @@ EOF
   printf -- '- {name: own, kind: nixos, ssh: x, ssh_opts: []}\n- {name: shared, kind: nixos, ssh: x, ssh_opts: []}\n- {name: busy, kind: darwin, ssh: x, ssh_opts: []}\n' >"$t/machines.yaml"
   echo '[]' >"$t/batch.json"
   printf 'tools=keys-reconcile\nexpires=%s\narmed_by=test\n' "$(($(date +%s) + 600))" >"$t/delegation"
+  echo '{}' >"$t/host-names.json"
   render
 }
 
 render() {
   local -A vars=(
     [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh"
-    [write]="$BATS_TEST_DIRNAME/../write.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [write]="$BATS_TEST_DIRNAME/../write.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [retire]="$BATS_TEST_DIRNAME/../retire.sh" [hostNamesJson]="$t/host-names.json" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json"
     [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
@@ -68,7 +69,7 @@ render() {
   text="$(cat "$BATS_TEST_DIRNAME/../keys-reconcile.sh")"
   for k in "${!vars[@]}"; do
     case $k in
-      nixBashTrampoline | toolPath | verify | write | declare | close | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
+      nixBashTrampoline | toolPath | verify | write | declare | close | retire | classes | machines | batch | keysJson) text="${text//@$k@/${vars[$k]}}" ;;
       *) text="${text//@$k@/$(printf '%q' "${vars[$k]}")}" ;;
     esac
   done
