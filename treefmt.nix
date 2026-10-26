@@ -18,7 +18,12 @@
   # rewrites a derived copy: the change is lost at the next `subtree pull` and
   # until then shows up as permanent drift against fleet's split. nixfmt claimed
   # one of its flakes on the very first commit, which is how this was found.
-  settings.global.excludes = [ ".flox-envs.d/**" ];
+  settings.global.excludes = [
+    ".flox-envs.d/**"
+    # The deny hook's redirect fixtures are scripts kept malformed on purpose (CRLF, no final newline, a continued
+    # line): data its corpus reads byte for byte, never code to lint.
+    "modules/darwin/claude-code-managed.d/tests/redirect-fixtures/**"
+  ];
 
   settings.formatter.shellcheck.options = [
     "-s"
