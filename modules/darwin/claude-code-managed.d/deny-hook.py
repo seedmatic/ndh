@@ -459,11 +459,14 @@ def shell_stdin_literals(text):
                 files.append(target or None)
             if k > 0:
                 src = [w for w in stages[k - 1] if not ASSIGNMENT.match(w)]
-                # A shell, local or remote, root or not, reads what the pipe carries, which the hook cannot see unless it
-                # is a literal (security, 2026-10-26: a non-root shell still runs every command the hook refuses).
-                if not (src and os.path.basename(src[0]) in ("echo", "printf")):
+                # A shell, local or remote, root or not, reads what the pipe carries. The hook reads it only from an echo
+                # or printf of literals, the here-string's test: a variable, $(…) or a backtick in any argument is code
+                # it cannot read (security, 2026-10-26).
+                literal = bool(src) and os.path.basename(src[0]) in ("echo", "printf") and \
+                    not any(OPAQUE.search(w) for w in src[1:])
+                if not literal:
                     files.append(None)
-                if src and os.path.basename(src[0]) in ("echo", "printf"):
+                else:
                     # Every literal, a printf's format included: the code can sit in either.
                     lit = [w.replace("\\n", "\n") for w in src[1:] if not w.startswith("-")]
                     if lit:
