@@ -15,7 +15,7 @@ setup() {
 [ -e "$t/refuse" ] && [ "\$3" = -n ] && exit 1
 case "\$3 \$4" in
   "-n -f") exit 0 ;;
-  "-f "*) cp "\$4" "$t/loaded"; [ -e "$t/mutant" ] && sed -i.bak -f "$t/mutant" "$t/loaded" ;;
+  "-f "*) cp "\$4" "$t/loaded"; if [ -e "$t/mutant" ]; then sed -i.bak -f "$t/mutant" "$t/loaded"; fi ;;
   "-s rules") cat "$t/loaded" 2>/dev/null ;;
 esac
 EOF
@@ -147,21 +147,23 @@ mutant() { printf '%s\n' "$1" >"$t/mutant"; run load_anchor; }
 @test "mutant: the /64 block dropped after loading is caught" {
   mutant '\|^block out quick log inet6 to 2001:db8:1:2::/64$|d'
   [ "$status" -ne 0 ]
-  [[ $output == *"block rules after loading, not 6"* ]]
+  [[ $output == *"holds 4 block rules after loading, not 5"* ]]
 }
 
 @test "mutant: a link-local block dropped after loading is caught" {
   mutant '\|^block out quick log inet6 to fe80::cccc:dddd$|d'
   [ "$status" -ne 0 ]
-  [[ $output == *"not 6"* ]]
+  [[ $output == *"not 5"* ]]
 }
 
 @test "mutant: the /64 block replaced by a second link-local block keeps the count, and is caught" {
   mutant 's|^block out quick log inet6 to 2001:db8:1:2::/64$|block out quick log inet6 to fe80::aaaa:bbbb|'
   [ "$status" -ne 0 ]
+  [[ $output == *"the anchor pf holds is not the one written"* ]]
 }
 
 @test "mutant: the router's pass widened to the /64 is caught" {
   mutant 's|^pass out quick inet6 to 2001:db8:1:2::1$|pass out quick inet6 to 2001:db8:1:2::/64|'
   [ "$status" -ne 0 ]
+  [[ $output == *"the anchor pf holds is not the one written"* ]]
 }
