@@ -18,6 +18,9 @@ let
   );
   bootstrapRequiredMountPaths = lib.unique ([ config.sops.age.keyFile ] ++ importCandidateDirs);
   bootstrapUnit = "${bootstrapCfg.systemdUnitName}.service";
+  # The age-file bootstrap guards an age file: a machine that decrypts with its own served host key has none, and the
+  # bootstrap could only fail there (bioskop-nixos, 2026-10-26: sops-install-secrets never ran).
+  ageFileBootstrap = (config.sops.useSystemdActivation or false) && config.sops.age.keyFile != null;
   # Every unit that reads a secret, computed from the configuration rather than listed: those ordered
   # after or requiring sops-install-secrets, and those a secret names in its restartUnits.
   secretReaders = lib.unique (
@@ -68,50 +71,43 @@ in
     };
 
     # NixOS-only systemd ordering for SOPS key bootstrap before secret installation.
-    systemd.services.${config.ndh.sopsAgeKeyBootstrap.systemdUnitName} =
-      lib.mkIf (config.sops.useSystemdActivation or false)
-        {
-          description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
-          requires = [ keysTargetUnit ] ++ localFsUnitDeps;
-          # The runtime profile (age-keygen) is seeded by activation and by the
-          # tmpfiles `L+` rule; tmpfiles-setup runs before sysinit, so ordering
-          # on it keeps this unit inside the early-boot phase.
-          after = [
-            keysTargetUnit
-            "systemd-tmpfiles-setup.service"
-          ]
-          ++ localFsUnitDeps;
-          before = [ "sops-install-secrets.service" ];
-          wantedBy = [ "sops-install-secrets.service" ];
-          # sops-nix runs sops-install-secrets before sysinit.target with
-          # DefaultDependencies=no; default dependencies here would order this
-          # unit after sysinit/basic and close a cycle that systemd breaks by
-          # dropping jobs, leaving /run/secrets empty.
-          unitConfig = {
-            DefaultDependencies = false;
-          }
-          // lib.optionalAttrs bootstrapCfg.nixosHostKeyImport.enable {
-            RequiresMountsFor = bootstrapRequiredMountPaths;
-          };
-          serviceConfig = {
-            Type = "oneshot";
-            ExecStart = config.ndh.sopsAgeKeyBootstrap.systemdExecStartScript;
-          };
-        };
+    systemd.services.${config.ndh.sopsAgeKeyBootstrap.systemdUnitName} = lib.mkIf ageFileBootstrap {
+      description = "Ensure SOPS age key is available before sops-install-secrets (@codebase)";
+      requires = [ keysTargetUnit ] ++ localFsUnitDeps;
+      # The runtime profile (age-keygen) is seeded by activation and by the
+      # tmpfiles `L+` rule; tmpfiles-setup runs before sysinit, so ordering
+      # on it keeps this unit inside the early-boot phase.
+      after = [
+        keysTargetUnit
+        "systemd-tmpfiles-setup.service"
+      ]
+      ++ localFsUnitDeps;
+      before = [ "sops-install-secrets.service" ];
+      wantedBy = [ "sops-install-secrets.service" ];
+      # sops-nix runs sops-install-secrets before sysinit.target with
+      # DefaultDependencies=no; default dependencies here would order this
+      # unit after sysinit/basic and close a cycle that systemd breaks by
+      # dropping jobs, leaving /run/secrets empty.
+      unitConfig = {
+        DefaultDependencies = false;
+      }
+      // lib.optionalAttrs bootstrapCfg.nixosHostKeyImport.enable {
+        RequiresMountsFor = bootstrapRequiredMountPaths;
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = config.ndh.sopsAgeKeyBootstrap.systemdExecStartScript;
+      };
+    };
 
     systemd.services.sops-install-secrets =
       lib.mkIf ((config.sops.useSystemdActivation or false) && hasManagedSecrets)
         {
-          requires = [
-            keysTargetUnit
-            "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
-          ];
-          after = [
-            keysTargetUnit
-            "${config.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service"
-          ];
-          # Not gated on the key file's existence: the bootstrap unit before it fails loudly when the identity
-          # is missing.
+          requires = [ keysTargetUnit ] ++ lib.optional ageFileBootstrap bootstrapUnit;
+          after = [ keysTargetUnit ] ++ lib.optional ageFileBootstrap bootstrapUnit;
+          # Not gated on the identity's existence: with an age file, the bootstrap unit before it fails loudly when
+          # it is missing; with the served host key, sops-nix reads it before decrypting, and a secret it cannot
+          # decrypt fails this unit.
         };
 
     # Born on the machine and served: sops opens its files with that key, the files' recipients name its age (R1).
