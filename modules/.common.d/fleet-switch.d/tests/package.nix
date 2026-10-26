@@ -24,10 +24,11 @@ pkgs.runCommand "fleet-switch-bats"
       yq-go
     ];
     MACHINES = ndhSwitch.machines;
+    ARMING_ITEMS = builtins.concatStringsSep " " (import ../../ndh-ops.d/paths.nix).armingItems;
   }
   ''
     test -x ${package}/bin/fleet-switch
-    cp -r ${../.} fleet-switch.d && chmod -R u+w fleet-switch.d
+    cp -r ${../.} fleet-switch.d && cp -r ${../../ndh-ops.d} ndh-ops.d && chmod -R u+w fleet-switch.d ndh-ops.d
     cd fleet-switch.d/tests && HOME=$TMPDIR bats .
     touch $out
   ''

@@ -3,6 +3,7 @@
 #   ndh-ops status | disarm             anyone: neither grants anything
 #   ndh-ops <tool> [args…]              refused unless an unexpired delegation names <tool>
 # The tools are the store paths fixed at build time (tools[]), never a PATH lookup, and every attempt is logged.
+# An arming item (items[]) is a permission a tool checks itself in the delegation: arm writes it, nobody runs it.
 set -euo pipefail
 
 delegation="$dir/delegation"
@@ -21,6 +22,12 @@ refuse() {
 }
 
 known() { [[ -n ${tools[$1]:-} ]]; }
+
+item() { # $1 = a name: whether it is an arming item, matched whole
+  local i
+  for i in "${items[@]}"; do [[ $i == "$1" ]] && return 0; done
+  return 1
+}
 
 field() { sed -n "s/^$1=//p" "$delegation"; }
 
@@ -52,7 +59,7 @@ case ${1:-} in
     fi
     [[ -n $list ]] || refuse "arm: --tools is required"
     IFS=, read -ra wanted <<<"$list"
-    for t in "${wanted[@]}"; do known "$t" || refuse "arm: $t is not one of: ${!tools[*]}"; done
+    for t in "${wanted[@]}"; do known "$t" || item "$t" || refuse "arm: $t is not one of: ${!tools[*]} ${items[*]}"; done
     expires=$(($(date +%s) + hours * 3600))
     body="tools=$list
 expires=$expires

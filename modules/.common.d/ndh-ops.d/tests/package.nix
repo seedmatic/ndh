@@ -21,6 +21,7 @@ pkgs.runCommand "ndh-ops-bats"
       gnugrep
       gnused
     ];
+    ARMING_ITEMS = builtins.concatStringsSep " " (import ../paths.nix).armingItems;
   }
   ''
     test -x ${package}/bin/ndh-ops
