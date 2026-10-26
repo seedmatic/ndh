@@ -166,7 +166,7 @@ verify() { # the statement against the OLD key's public, as the seat will
   [ ! -e "$(pub statement)" ]
   [ ! -e "$(pub statement.sig)" ]
   fp="$(ssh-keygen -lf "$(pub public)" | cut -d' ' -f2)"
-  grep -qF "tape-la à keys-reconcile window: $fp" "$t/console"
+  grep -qF "type it at keys-reconcile window: $fp" "$t/console"
   [[ $output$stderr != *"PRIVATE KEY"* ]]
 }
 
@@ -176,7 +176,7 @@ verify() { # the statement against the OLD key's public, as the seat will
   before="$(sha256sum "$(key)")"
   bash "$t/generate"
   [ "$(sha256sum "$(key)")" = "$before" ]
-  [ "$(grep -c "tape-la à keys-reconcile window" "$t/console")" = 2 ]
+  [ "$(grep -c "type it at keys-reconcile window" "$t/console")" = 2 ]
   [ "$(sort -u <(grep -o 'SHA256:[^ ]*' "$t/console") | wc -l)" = 1 ]
 }
 

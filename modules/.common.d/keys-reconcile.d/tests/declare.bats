@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # keys-reconcile declare <machine> (design §p) against a real sops and a throwaway age key: a fixture revision with
 # three machines — `own` serves its own key, `shared` serves the shared key (its pushed slot never served), `busy`
-# has a born key not yet served — pushed to a local bare that stands for the remote. The « oui » comes from a file
+# has a born key not yet served — pushed to a local bare that stands for the remote. The « yes » comes from a file
 # standing for the tty. Each refusal has its case; the written slot is checked field by field; no private printed.
 
 bats_require_minimum_version 1.5.0
@@ -93,7 +93,7 @@ tree() { echo "$t/state/keys-reconcile/${rev:0:12}"; }
 keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 
 @test "a machine serving its own key: the slot is declared pending, born on it, with no bootstrap" {
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -eq 0 ]
   [[ $output == *"host-own.slots.\"$today\".state = pending"* ]]
   [[ $output == *"host-own.slots.\"$today\".origin = host"* ]]
@@ -107,89 +107,89 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 }
 
 @test "a machine on the shared key: the console bootstrap is derived, and its recorded keyring slot does not block" {
-  run --separate-stderr declare_ oui shared
+  run --separate-stderr declare_ yes shared
   [ "$status" -eq 0 ]
   [[ $output == *"host-shared.slots.\"$today\".bootstrap = console"* ]]
-  [[ $output == *"liée par ton témoin, sa console ou la liste des nœuds de ton tailnet"* ]]
+  [[ $output == *"bound by your witness, its console or your tailnet's node list"* ]]
   [ "$(yq -r ".keys.\"host-shared\".slots.\"$today\".bootstrap" "$(keys)")" = console ]
 }
 
-@test "the fields are shown before the « oui », and nothing is written without it" {
-  run --separate-stderr declare_ non own
+@test "the fields are shown before the « yes », and nothing is written without it" {
+  run --separate-stderr declare_ no own
   [ "$status" -eq 5 ]
   [[ $output == *"host-own.slots.\"$today\".state = pending"* ]]
-  [[ $output == *"rien écrit"* ]]
+  [[ $output == *"nothing written"* ]]
   [ ! -e "$(tree)" ]
 }
 
 @test "refused: a born key recorded but not yet served (a rotation in flight)" {
-  run --separate-stderr declare_ oui busy
+  run --separate-stderr declare_ yes busy
   [ "$status" -eq 3 ]
   [[ $stderr == *"has a rotation in flight"* ]]
   [ ! -e "$(tree)" ]
 }
 
 @test "refused: a machine that already has a pending slot" {
-  declare_ oui own
+  declare_ yes own
   rm -rf "$t/state"
   yq -i ".keys.\"host-own\".slots.\"$today\" = {\"state\": \"pending\", \"origin\": \"host\"}" "$t/keys.json"
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -eq 3 ]
   [[ $stderr == *"has a rotation in flight"* ]]
 }
 
-@test "a window of this revision still open: refused BEFORE the « oui », on the terminal, nothing asked" {
+@test "a window of this revision still open: refused BEFORE the « yes », on the terminal, nothing asked" {
   : "the operator's case (2026-10-25): a first declare left its window open; the second must say so before asking"
-  declare_ oui own
+  declare_ yes own
   : >"$t/prompt"
-  run --separate-stderr declare_ oui shared
+  run --separate-stderr declare_ yes shared
   [ "$status" -ne 0 ]
   [[ $stderr == *"is still open"* ]]
-  grep -q "refusé : .*is still open: read it, then close it" "$t/prompt"
-  run grep -q 'déclarer ces champs' "$t/prompt"
+  grep -q "refused: .*is still open: read it, then close it" "$t/prompt"
+  run grep -q 'declare these fields' "$t/prompt"
   [ "$status" -eq 1 ]
 }
 
-@test "mutant: a declare that checks the open window only after its « oui » asks first" {
-  declare_ oui own
+@test "mutant: a declare that checks the open window only after its « yes » asks first" {
+  declare_ yes own
   : >"$t/prompt"
   grep -F -v 'reconcile::tree::free || return 1' "$BATS_TEST_DIRNAME/../declare.sh" >"$t/declare.sh"
   [ "$(grep -c -F 'reconcile::tree::free' "$t/declare.sh")" -eq 0 ]
   sed -i "s|^source .*/declare.sh\$|source $t/declare.sh|" "$t/keys-reconcile"
   grep -q "^source $t/declare.sh\$" "$t/keys-reconcile"
-  run --separate-stderr declare_ oui shared
+  run --separate-stderr declare_ yes shared
   : "still refused, by tree::open's own check, but only after the operator was asked: what the case above guards"
   [ "$status" -ne 0 ]
-  grep -q 'déclarer ces champs' "$t/prompt"
+  grep -q 'declare these fields' "$t/prompt"
 }
 
 @test "refused: a slot that would not sort after the newest one" {
   yq -i ".keys.\"host-own\".slots.\"99-01-01\" = {\"state\": \"serving\", \"origin\": \"keyring\"}" "$t/keys.json"
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -eq 3 ]
   [[ $stderr == *"would not sort after its newest slot 99-01-01"* ]]
 }
 
 @test "refused: an unknown machine, a name that is not one, a machine with no host entry" {
-  run --separate-stderr declare_ oui nobody
+  run --separate-stderr declare_ yes nobody
   [ "$status" -eq 3 ]
   [[ $stderr == *"is not in the machine list"* ]]
-  run --separate-stderr declare_ oui 'own;rm -rf /'
+  run --separate-stderr declare_ yes 'own;rm -rf /'
   [ "$status" -eq 3 ]
   [[ $stderr == *"is not a machine name"* ]]
   printf -- '- {name: ghost, kind: nixos, ssh: x, ssh_opts: []}\n' >>"$t/machines.yaml"
-  run --separate-stderr declare_ oui ghost
+  run --separate-stderr declare_ yes ghost
   [ "$status" -eq 3 ]
   [[ $stderr == *"has no host-ghost entry"* ]]
 }
 
 @test "refused: unarmed, or a second argument" {
   rm -f "$t/delegation"
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -eq 3 ]
   [[ $stderr == *"declare is not armed"* ]]
   printf 'tools=keys-reconcile\nexpires=%s\n' "$(($(date +%s) + 600))" >"$t/delegation"
-  run --separate-stderr declare_ oui own extra
+  run --separate-stderr declare_ yes own extra
   [ "$status" -eq 3 ]
   [[ $stderr == *"usage"* ]]
 }
@@ -199,7 +199,7 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
   sed -i 's|^  reconcile::tree::check \|\| return 1$|  (cd "$tree" \&\& sops rotate -i --input-type yaml --output-type yaml .secrets >/dev/null 2>\&1)\n&|' "$t/declare.sh"
   grep -q 'sops rotate -i' "$t/declare.sh"
   sed -i "s|^source .*/declare.sh\$|source $t/declare.sh|" "$t/keys-reconcile"
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -ne 0 ]
   [[ $stderr == *".secrets: an encrypted value changed"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
@@ -210,13 +210,13 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
   sed -i 's|^  : "postconditions: exactly these fields added|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"host-own\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/declare.sh"
   grep -q 'host-own\\"\]\[\\"comment' "$t/declare.sh"
   sed -i "s|^source .*/declare.sh\$|source $t/declare.sh|" "$t/keys-reconcile"
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [ "$status" -ne 0 ]
   [[ $stderr == *"keys.yaml changed more than the declared slot"* ]]
 }
 
 @test "no private is ever printed" {
-  run --separate-stderr declare_ oui own
+  run --separate-stderr declare_ yes own
   [[ $output$stderr != *"PRIVATE KEY"* ]]
   [[ $output$stderr != *"$(sed -n 2p "$t/ca")"* ]]
   [[ $output$stderr != *"AGE-SECRET-KEY"* ]]

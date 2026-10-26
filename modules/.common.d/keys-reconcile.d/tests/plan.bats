@@ -66,8 +66,8 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
   [[ $output == *"✓ seat — host-seat@26-11-01 $(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2)"* ]]
-  [[ $output == *"destinataire $(ssh-to-age <"$t/new.pub") ajouté à : .secrets"* ]]
-  [[ $output == *"prêt : la fenêtre (ops next) les enregistrera"* ]]
+  [[ $output == *"recipient $(ssh-to-age <"$t/new.pub") added to: .secrets"* ]]
+  [[ $output == *"ready: the window (ops next) will record them"* ]]
 }
 
 @test "mutant: a statement signed by another key is refused (F1 against the RECORDED public)" {
@@ -75,8 +75,8 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   publish "$t/new.pub" "$t/forger"
   run --separate-stderr kr plan
   [ "$status" -eq 4 ]
-  [[ $output == *"✗ seat — host-seat@26-11-01 : host-seat@26-11-01: its statement is not signed by the old public keys.yaml records"* ]]
-  [[ $output == *"rien ne sera écrit"* ]]
+  [[ $output == *"✗ seat — host-seat@26-11-01: host-seat@26-11-01: its statement is not signed by the old public keys.yaml records"* ]]
+  [[ $output == *"nothing will be written"* ]]
 }
 
 @test "mutant: a .public replaced after signing is refused (the statement names another public)" {
@@ -114,7 +114,7 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
     "$old" "$(cut -d' ' -f1,2 "$t/old2.pub")" >"$t/batch.json"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"2 clé(s)"* ]]
+  [[ $output == *"2 key(s)"* ]]
   [[ $output == *"✓ seat — host-seat@26-11-01"* ]]
   [[ $output == *"✓ mate — host-mate@26-11-01"* ]]
   [[ $output != *"other"* ]]
@@ -140,11 +140,11 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   [[ $stderr == *"no other argument"* ]]
 }
 
-@test "an empty batch: « rien à faire », nothing fetched" {
+@test "an empty batch: « nothing to do », nothing fetched" {
   echo '[]' >"$t/batch.json"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"rien à faire"* ]]
+  [[ $output == *"nothing to do"* ]]
   [ ! -e "$t/cache/keys-reconcile" ]
 }
 
@@ -181,8 +181,8 @@ attic() { # <signing private> [public]: the guest's attic publication (publish.s
   attic "$t/old"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"✓ seat — cache m1 : seedmatic-m1-attic-1:"* ]]
-  [[ $output == *"entrée privateCaches.m1 à enregistrer"* ]]
+  [[ $output == *"✓ seat — cache m1: seedmatic-m1-attic-1:"* ]]
+  [[ $output == *"privateCaches.m1 entry to record"* ]]
 }
 
 @test "attic-cache-key mutant: a statement signed by another key than the recorded serving one is refused" {

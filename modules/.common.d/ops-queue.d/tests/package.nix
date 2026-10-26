@@ -132,8 +132,8 @@ let
       (lib.all (
         e:
         e.unchecked == [
-          "${e.machine} joignable"
-          "la publique de host-${e.machine}@26-11-01 publiée et vérifiée (keys-reconcile plan)"
+          "${e.machine} reachable"
+          "host-${e.machine}@26-11-01's public published and verified (keys-reconcile plan)"
         ]
       ) q.generate.head)
       true;
@@ -141,7 +141,7 @@ let
       "generate:g2"
     ];
     assert expect "the later step names why" (map (e: lib.last e.checked) q.mixed.blocked) [
-      "le pas précédent n'est pas fini sur toute la flotte"
+      "the previous step is not done on the whole fleet"
     ];
     assert expect "serve: host keys and sshfs keys alike, in order" (steps q.serve.head) [
       "serve:g2"

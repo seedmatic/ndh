@@ -5,16 +5,16 @@
 #
 #   keys-reconcile plan    reads no secret: collects each pending slot's publication over the seat's certified ssh,
 #                          verifies it (F1, F2) and prints what the window would write. A session may run it.
-#   keys-reconcile window  (armed through ndh-ops) measures the same way, shows it, asks ONE « oui » on the terminal,
+#   keys-reconcile window  (armed through ndh-ops) measures the same way, shows it, asks ONE « yes » on the terminal,
 #                          re-verifies that very measure and writes it into a clean worktree at the revision
 #                          (write.sh): one local commit, never pushed. The measure lives in this process only.
 #   keys-reconcile declare <machine>
 #                          (armed) declares that machine's next host key, a pending slot born on it, in the same
-#                          worktree discipline (declare.sh), after its « oui »: no session's sops set (design §p).
+#                          worktree discipline (declare.sh), after its « yes »: no session's sops set (design §p).
 #   keys-reconcile retire <machine>
 #                          (armed) once its new key serves, deletes the machine's retired slots and revokes them, and
 #                          revokes a host certificate whose every principal's machine serves its own key, in one change
-#                          (retire.sh), after its « oui ».
+#                          (retire.sh), after its « yes ».
 #   keys-reconcile close <rev12>
 #                          (armed) removes one window left open, unmerged: its worktree and its branch, after checking
 #                          it is a keys-reconcile window, clean and unpushed. The only way to discard one (write.sh).
@@ -43,7 +43,7 @@ source @classes@/attic-tls-csr.sh
 # A refusal goes to the operator's terminal as well: the logger sends stderr to the unified log, where nobody reads it.
 say_refused() { # <message>
   printf '[keys-reconcile] refused: %s\n' "$1" >&2
-  { printf 'refusé : %s\n' "$1" >>"$ttyOut"; } 2>/dev/null || true
+  { printf 'refused: %s\n' "$1" >>"$ttyOut"; } 2>/dev/null || true
 }
 
 die() {
@@ -142,15 +142,15 @@ reconcile::host-key::measure() { # <batch index> <work dir>: collect and verify 
     printf '  ✓ %s — %s@%s %s\n' "$machine" "$keyName" "$slot" "$(ssh-keygen -lf <(printf '%s\n' "$public") | cut -d' ' -f2)"
     : "a bootstrap's binding is the operator's witness layer, outside this tool: each layer trusts the one below it"
     case $bootstrap in
-      console) printf '      témoin : toi, à la console de %s, ou la liste des nœuds de ton tailnet\n' "$machine" ;;
-      tailnet) printf '      témoin : la liste des nœuds de ton tailnet (%s y est seul sous son nom)\n' "$machine" ;;
+      console) printf '      witness: you, at the console of %s, or the node list of your tailnet\n' "$machine" ;;
+      tailnet) printf '      witness: the node list of your tailnet (%s alone under its name)\n' "$machine" ;;
     esac
-    printf '      certificat ssh-host à signer ; destinataire %s ajouté à : %s\n' \
+    printf '      ssh-host certificate to sign; recipient %s added to: %s\n' \
       "$(printf '%s\n' "$public" | ssh-to-age)" "$files"
     known+=$'\n'"${public#ssh-ed25519 }"
     printf '%s\t%s\t%s\t%s\t%s\n' "$i" "$keyName" "$slot" "$public" "$(reconcile::host-key::hash "$i" "$work")" >>"$work/measured"
   else
-    printf '  ✗ %s — %s@%s : %s\n' "$machine" "$keyName" "$slot" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
+    printf '  ✗ %s — %s@%s: %s\n' "$machine" "$keyName" "$slot" "$(sed 's/^\[keys-reconcile\] refused: //' "$work/why")"
     return 1
   fi
 }
@@ -169,7 +169,7 @@ measure() { # <work dir>: collect and verify every entry of the batch into <work
   n=$(yq -p json -o json 'length' "$batch")
   known=$(yq -r -p json -o json '[(.keys, .authorities)[].slots[].public, (.revoked // {})[].public] | .[] | select(. != null)' "$keysJson")
   present=()
-  echo "plan de ${revision:0:12}, ${n} clé(s), dans l'ordre de fleet-switch :"
+  echo "plan of ${revision:0:12}, ${n} key(s), in fleet-switch's order:"
   : >"$work/measured"
   for ((i = 0; i < n; i++)); do
     class=$(class_of "$i") || die "batch entry ${i}: no artifact class '$(yq -r -p json -o json ".[$i].class" "$batch")' in keys-reconcile"
@@ -177,14 +177,14 @@ measure() { # <work dir>: collect and verify every entry of the batch into <work
     "reconcile::${class}::measure" "$i" "$work" || bad=$((bad + 1))
   done
   if ((bad > 0)); then
-    echo "refusé : ${bad} clé(s) sur ${n} ne sont pas prêtes ; rien ne sera écrit."
+    echo "refused: ${bad} of ${n} key(s) are not ready; nothing will be written."
     return 4
   fi
 }
 
 batch_empty() {
   [[ $(yq -p json -o json 'length' "$batch") == 0 ]] || return 1
-  echo "rien à faire : aucune clé en attente dans la déclaration de ${revision:0:12}"
+  echo "nothing to do: no key pending in the declaration of ${revision:0:12}"
 }
 
 plan() {
@@ -196,11 +196,11 @@ plan() {
   measure "$work" || rc=$?
   rm -rf "$work"
   ((rc == 0)) || return "$rc"
-  echo "prêt : la fenêtre (ops next) les enregistrera, à la révision ${revision:0:12}."
+  echo "ready: the window (ops next) will record them, at revision ${revision:0:12}."
 }
 
 window() {
-  : "the window: measure, show, ONE « oui », re-verify the same measure, then write it into a clean worktree"
+  : "the window: measure, show, ONE « yes », re-verify the same measure, then write it into a clean worktree"
   armed || die "the window is not armed: ndh-ops arm --tools keys-reconcile (the operator's gesture)"
   batch_empty && return 0
   pushed
@@ -212,11 +212,11 @@ window() {
   : "the operator's terminal, opened once for every answer of this window"
   exec 7<"$ttyIn"
   local answer
-  : "the « oui » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
-  printf 'enregistrer, signer et re-chiffrer ces %s clé(s) à la révision %s ? [oui/non] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >>"$ttyOut"
+  : "the « yes » is the operator's, on the terminal: the logger owns stdin's neighbours (fd 2 and 3), not the tty"
+  printf 'record, sign and re-encrypt these %s key(s) at revision %s? [yes/no] ' "$(cat "$work/measured" "$work"/*.measured 2>/dev/null | wc -l)" "${revision:0:12}" >>"$ttyOut"
   read -r answer <&7 || answer=""
   exec 7<&-
-  [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
+  [[ $answer == yes ]] || { echo "nothing written: the answer is not « yes »"; return 5; }
 
   : "the same measure, re-collected and re-verified seconds later: a publication changed since is refused"
   local again class

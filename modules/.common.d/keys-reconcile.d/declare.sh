@@ -1,5 +1,5 @@
 # keys-reconcile declare <machine> (roles × keys, design §p): declare a machine's next host key — a pending slot, born
-# on it — without a session's `sops set`. Sourced by keys-reconcile.sh; armed (F3), its « oui » on the tty.
+# on it — without a session's `sops set`. Sourced by keys-reconcile.sh; armed (F3), its « yes » on the tty.
 #
 # Its one argument is a MACHINE NAME, checked against the frozen machine list; everything else is derived from the
 # revision's keys.yaml: the slot is today's date and must sort after every slot the key has; `origin: host`;
@@ -36,18 +36,18 @@ reconcile::declare() { # <machine>
   local -a fields=("state=pending" "origin=host")
   [[ $current == serving ]] || fields+=("bootstrap=console")
 
-  : "refused BEFORE the operator is asked: a window of this revision still open would only refuse after their « oui »"
+  : "refused BEFORE the operator is asked: a window of this revision still open would only refuse after their « yes »"
   reconcile::tree::free || return 1
-  echo "déclarer ${keyName}@${today} dans keys.yaml (révision ${revision:0:12}), les champs :"
+  echo "declare ${keyName}@${today} in keys.yaml (revision ${revision:0:12}), the fields:"
   for field in "${fields[@]}"; do printf '  %s.slots."%s".%s = %s\n' "$keyName" "$today" "${field%%=*}" "${field#*=}"; done
   [[ $current == serving ]] ||
-    echo "  ${machine} ne sert pas de clé à lui : sa première clé née sera liée par ton témoin, sa console ou la liste des nœuds de ton tailnet."
+    echo "  ${machine} serves no key of its own: its first born key will be bound by your witness, its console or your tailnet's node list."
   local answer
-  printf 'déclarer ces champs ? [oui/non] ' >>"$ttyOut"
+  printf 'declare these fields? [yes/no] ' >>"$ttyOut"
   exec 7<"$ttyIn"
   read -r answer <&7 || answer=""
   exec 7<&-
-  [[ $answer == oui ]] || { echo "rien écrit : la réponse n'est pas « oui »"; return 5; }
+  [[ $answer == yes ]] || { echo "nothing written: the answer is not « yes »"; return 5; }
 
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT

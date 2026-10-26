@@ -100,7 +100,7 @@ render() {
 }
 
 kr() { # <verb> [answer]
-  printf '%s\n' "${2:-oui}" >"$t/tty"
+  printf '%s\n' "${2:-yes}" >"$t/tty"
   GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" \
     bash "$t/keys-reconcile" "$1"
 }
@@ -114,7 +114,7 @@ pub() { # <x509|key> <file> → the sha256 of its public key
 @test "plan: a guest's CSR verified against its RECORDED serving key, a leaf to sign" {
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"✓ g1 — feuille TLS de attic.m1 à signer (3650 jours)"* ]]
+  [[ $output == *"✓ g1 — TLS leaf of attic.m1 to sign (3650 days)"* ]]
 }
 
 @test "window: the leaf is signed by the authority, chains, names the cache alone, carries the CSR's key, recorded" {
@@ -139,7 +139,7 @@ pub() { # <x509|key> <file> → the sha256 of its public key
   render
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"= g1 — feuille TLS de attic.m1 à jour"* ]]
+  [[ $output == *"= g1 — TLS leaf of attic.m1 up to date"* ]]
 }
 
 @test "mutant: a statement signed by another key than the guest's recorded one is refused" {
@@ -168,14 +168,14 @@ pub() { # <x509|key> <file> → the sha256 of its public key
   [[ $output == *"its CSR's key is not the recorded leaf's key"* ]]
 }
 
-@test "no « oui »: nothing signed, nothing written" {
-  run --separate-stderr kr window non
+@test "no « yes »: nothing signed, nothing written" {
+  run --separate-stderr kr window no
   [ "$status" -eq 5 ]
   [ ! -e "$(tree)" ]
 }
 
 @test "traced on request, no byte of the authority's private reaches stdout, stderr or the trace" {
-  printf '%s\n' oui >"$t/tty"
+  printf '%s\n' yes >"$t/tty"
   GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" \
     NDH_LOGGER_XTRACE=1 bash -x "$t/keys-reconcile" window >"$t/out" 2>"$t/trace" || true
   [ -s "$t/trace" ]

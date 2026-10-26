@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # keys-reconcile window (roles × keys K4) against a real sops and a throwaway age key: a fixture ndh revision (an
 # authority, one machine's host key with a pending slot, three sops files) pushed to a local bare that stands for the
-# remote; the seat as the machine, its publication made as K3 makes it. The « oui » comes on fd 3, as on a terminal.
+# remote; the seat as the machine, its publication made as K3 makes it. The « yes » comes on fd 3, as on a terminal.
 # It writes into its own worktree and commits there; every postcondition has a mutant. No private is printed.
 
 bats_require_minimum_version 1.5.0
@@ -119,9 +119,9 @@ tree() { echo "$t/state/keys-reconcile/${rev:0:12}"; }
 encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))' "$1" | sort; }
 
 @test "the window records, certifies and re-keys the batch, the born key serving and the old one retired, in one local commit" {
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 0 ]
-  [[ $output == *"écrit dans $(tree)"* ]]
+  [[ $output == *"written in $(tree)"* ]]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
   [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$k")" = retired ]
@@ -137,7 +137,7 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
 }
 
 @test "after the window, every value it did not set is byte-identical; the new recipient opens the files" {
-  window oui
+  window yes
   for f in .secrets catalog/cache-trust.yaml; do
     [ "$(git -C "$t/src" show "HEAD:$f" | yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))' | sort)" = "$(encrypted "$(tree)/$f")" ]
   done
@@ -151,39 +151,39 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   [ "$(grep -c -F '"retired"' "$BATS_TEST_DIRNAME/../write.sh")" -gt "$(grep -c -F '"retired"' "$t/write.sh")" ]
   sed -i "s|^source .*/write.sh\$|source $t/write.sh|" "$t/keys-reconcile"
   grep -q "^source $t/write.sh\$" "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"keys.yaml changed more than the fields this window set"* ]]
 }
 
-@test "no « oui », nothing written" {
-  run --separate-stderr window non
+@test "no « yes », nothing written" {
+  run --separate-stderr window no
   [ "$status" -eq 5 ]
-  [[ $output == *"rien écrit"* ]]
+  [[ $output == *"nothing written"* ]]
   [ ! -e "$(tree)" ]
 }
 
 @test "unarmed, expired, or armed for another tool: refused before anything is measured" {
   for case in "$(($(date +%s) - 1)) keys-reconcile" "$(($(date +%s) + 600)) ndh-keyring"; do
     arm ${case}
-    run --separate-stderr window oui
+    run --separate-stderr window yes
     [ "$status" -eq 3 ]
     [[ $stderr == *"the window is not armed"* ]]
   done
   rm -f "$t/delegation"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 3 ]
   [ ! -e "$(tree)" ]
 }
 
 @test "mutant: a public swapped between the measure and the write is refused" {
   ssh-keygen -q -t ed25519 -N '' -C other -f "$t/other"
-  : "a writer racing the window: the publication changes right after the « oui » (injected into a test copy)"
+  : "a writer racing the window: the publication changes right after the « yes » (injected into a test copy)"
   printf 'swap() { cut -d" " -f1,2 %q >%q; }\n' "$t/other.pub" "$t/published/host-seat@26-11-01.public" >"$t/swap.sh"
   sed -i -e "s|^source .*/write.sh\$|&\nsource $t/swap.sh|" \
     -e 's|^  local again class$|  swap\n&|' "$t/keys-reconcile"
   grep -q '^  swap$' "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"its publication changed since it was measured"* ]]
   [ ! -e "$(tree)" ]
@@ -192,7 +192,7 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
 @test "mutant: a forged statement is refused, nothing written" {
   ssh-keygen -q -t ed25519 -N '' -C forger -f "$t/forger"
   publish "$t/new.pub" "$t/forger"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"not signed by the old public keys.yaml records"* ]]
   [ ! -e "$(tree)" ]
@@ -205,7 +205,7 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   sed -i 's|sops updatekeys -y --input-type yaml "\$f"|sops updatekeys -y --input-type yaml "$f" \&\& { [[ $f != .secrets ]] \|\| sops rotate -i --input-type yaml --output-type yaml "$f"; }|' "$t/write.sh"
   grep -q 'sops rotate -i' "$t/write.sh"
   sed -i "s|^source .*/write.sh\$|source $t/write.sh|" "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *".secrets: an encrypted value changed (a whole-file re-encryption?)"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
@@ -216,21 +216,21 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   sed -i 's|^  kill "\$agentPid" 2>/dev/null \|\| true$|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"host-seat\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/write.sh"
   grep -q 'host-seat\\"\]\[\\"comment' "$t/write.sh"
   sed -i "s|^source .*/write.sh\$|source $t/write.sh|" "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"keys.yaml changed more than the fields this window set"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
 }
 
 @test "a window left open is refused BEFORE any question, on the terminal too, not overwritten" {
-  window oui
+  window yes
   : >"$t/prompt"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"is still open"* ]]
   : "the operator's terminal says it, and was asked nothing"
-  grep -q "refusé : .*is still open: read it, then close it (ndh-ops keys-reconcile close ${rev:0:12})" "$t/prompt"
-  run grep -q '\[oui/non\]' "$t/prompt"
+  grep -q "refused: .*is still open: read it, then close it (ndh-ops keys-reconcile close ${rev:0:12})" "$t/prompt"
+  run grep -q '\[yes/no\]' "$t/prompt"
   [ "$status" -eq 1 ]
 }
 
@@ -239,59 +239,59 @@ close() { # <answer> <rev12>
   GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" close "$2"
 }
 
-@test "close: an open, unmerged window is removed after « oui », its worktree and its branch, and a new window opens" {
-  window oui
+@test "close: an open, unmerged window is removed after « yes », its worktree and its branch, and a new window opens" {
+  window yes
   [ -d "$(tree)" ]
-  run --separate-stderr close oui "${rev:0:12}"
+  run --separate-stderr close yes "${rev:0:12}"
   [ "$status" -eq 0 ]
-  [[ $output == *"fermée : keys-reconcile/${rev:0:12} supprimée"* ]]
+  [[ $output == *"closed: keys-reconcile/${rev:0:12} deleted"* ]]
   [ ! -e "$(tree)" ]
   run git -C "$t/cache/keys-reconcile/ndh.git" rev-parse --verify -q "refs/heads/keys-reconcile/${rev:0:12}"
   [ "$status" -ne 0 ]
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 0 ]
 }
 
-@test "close: without « oui », nothing removed" {
-  window oui
-  run --separate-stderr close non "${rev:0:12}"
+@test "close: without « yes », nothing removed" {
+  window yes
+  run --separate-stderr close no "${rev:0:12}"
   [ "$status" -eq 5 ]
   [ -d "$(tree)" ]
 }
 
 @test "close: refused, nothing removed — a path, an unknown window, uncommitted changes, unarmed" {
-  window oui
-  run --separate-stderr close oui "../../etc"
+  window yes
+  run --separate-stderr close yes "../../etc"
   [ "$status" -eq 3 ]
   [[ $stderr == *"is not a revision's 12-character prefix"* ]]
-  grep -q "refusé : close: '../../etc' is not a revision's 12-character prefix" "$t/prompt"
-  run --separate-stderr close oui "0123456789ab"
+  grep -q "refused: close: '../../etc' is not a revision's 12-character prefix" "$t/prompt"
+  run --separate-stderr close yes "0123456789ab"
   [ "$status" -eq 3 ]
   [[ $stderr == *"no window"* ]]
   printf 'x\n' >>"$(tree)/.secrets"
-  run --separate-stderr close oui "${rev:0:12}"
+  run --separate-stderr close yes "${rev:0:12}"
   [ "$status" -eq 3 ]
   [[ $stderr == *"has uncommitted changes"* ]]
   [ -d "$(tree)" ]
   git -C "$(tree)" checkout -q -- .secrets
   rm -f "$t/delegation"
-  run --separate-stderr close oui "${rev:0:12}"
+  run --separate-stderr close yes "${rev:0:12}"
   [ "$status" -eq 3 ]
   [[ $stderr == *"close is not armed"* ]]
   [ -d "$(tree)" ]
 }
 
 @test "close: a window already merged into develop is refused, nothing removed" {
-  window oui
+  window yes
   git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
-  run --separate-stderr close oui "${rev:0:12}"
+  run --separate-stderr close yes "${rev:0:12}"
   [ "$status" -eq 3 ]
   [[ $stderr == *"is already on develop: nothing to discard"* ]]
   [ -d "$(tree)" ]
 }
 
 @test "mutant: a close that skips the merged check removes a merged window" {
-  window oui
+  window yes
   git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
   : "the mutant keeps the loop and empties its body"
   sed -e 's|^    ! git -C "\$bare" merge-base --is-ancestor "\$head" "refs/heads/\$ref" 2>/dev/null \|\||    :|' \
@@ -300,7 +300,7 @@ close() { # <answer> <rev12>
   bash -n "$t/close.sh"
   sed -i "s|^source .*/close.sh\$|source $t/close.sh|" "$t/keys-reconcile"
   grep -q "^source $t/close.sh\$" "$t/keys-reconcile"
-  run --separate-stderr close oui "${rev:0:12}"
+  run --separate-stderr close yes "${rev:0:12}"
   : "under the mutant the merged window is deleted: what the case above guards"
   [ "$status" -eq 0 ]
   [ ! -e "$(tree)" ]
@@ -310,7 +310,7 @@ close() { # <answer> <rev12>
   if (source "$NDH_TRAMPOLINE" >/dev/null 2>&1; declare -F ndh::secret:begin >/dev/null); then
     skip "this trampoline has the secret window"
   fi
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"has no ndh::secret window"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
@@ -331,7 +331,7 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
 
 @test "a window holding a host key and an attic cache key: one worktree, one commit, both recorded" {
   attic
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 0 ]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
   [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
@@ -353,7 +353,7 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   grep -q 'sops rotate -i' "$t/attic-cache-key.sh"
   sed -i "s|^source .*/attic-cache-key.sh\$|source $t/attic-cache-key.sh|" "$t/keys-reconcile"
   grep -q "^source $t/attic-cache-key.sh\$" "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *".secrets: an encrypted value changed (a whole-file re-encryption?)"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
@@ -365,7 +365,7 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   sed -i 's|^    cp "\$work/attic-\${cache}.cache-key.statement" "\$work/attic-\${cache}.cache-key.statement.sig" "\$statements/"$|    :|' "$t/attic-cache-key.sh"
   ! grep -q 'cache-key.statement.sig" "$statements/"' "$t/attic-cache-key.sh" || false
   sed -i "s|^source .*/attic-cache-key.sh\$|source $t/attic-cache-key.sh|" "$t/keys-reconcile"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"privateCaches.m1 has no statement pair beside it"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
@@ -379,14 +379,14 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   rev=$(git -C "$t/src" rev-parse HEAD)
   git -C "$t/src" push -q -f "$t/remote.git" HEAD:refs/heads/develop HEAD:refs/heads/main
   render
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -ne 0 ]
   [[ $stderr == *"privateCaches.m1 already records a key"* ]]
   [ "$(git -C "$(tree)" rev-parse HEAD)" = "$rev" ]
 }
 
 @test "no private is ever printed" {
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [[ $output$stderr != *"PRIVATE KEY"* ]]
   [[ $output$stderr != *"$(sed -n 2p "$t/ca")"* ]]
   [[ $output$stderr != *"AGE-SECRET-KEY"* ]]
@@ -398,31 +398,31 @@ bootstrap_batch() { # <console|tailnet|…>: the slot as a bootstrap: no old pub
 }
 fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 
-@test "a console bootstrap: ONE « oui », nothing typed, the key recorded with no statement; the full fingerprint and the witness shown" {
+@test "a console bootstrap: ONE « yes », nothing typed, the key recorded with no statement; the full fingerprint and the witness shown" {
   bootstrap_batch console
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 0 ]
   [[ $output == *"host-seat@26-11-01 $(fp)"* ]]
-  [[ $output == *"témoin : toi, à la console de seat, ou la liste des nœuds de ton tailnet"* ]]
+  [[ $output == *"witness: you, at the console of seat, or the node list of your tailnet"* ]]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
   [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
-  : "no question but the « oui »: each layer trusts the one below (the operator, 2026-10-26)"
-  [ "$(grep -o '\[oui/non\]' "$t/prompt" | wc -l)" -eq 1 ]
+  : "no question but the « yes »: each layer trusts the one below (the operator, 2026-10-26)"
+  [ "$(grep -o '\[yes/no\]' "$t/prompt" | wc -l)" -eq 1 ]
   run grep -q '8 premiers' "$t/prompt"
   [ "$status" -eq 1 ]
 }
 
 @test "a tailnet bootstrap: the same, its witness the tailnet's node list" {
   bootstrap_batch tailnet
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 0 ]
-  [[ $output == *"témoin : la liste des nœuds de ton tailnet (seat y est seul sous son nom)"* ]]
+  [[ $output == *"witness: the node list of your tailnet (seat alone under its name)"* ]]
   [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
 }
 
-@test "a bootstrap without « oui » writes nothing" {
+@test "a bootstrap without « yes » writes nothing" {
   bootstrap_batch console
-  run --separate-stderr window non
+  run --separate-stderr window no
   [ "$status" -eq 5 ]
   [ ! -e "$(tree)" ]
 }
@@ -430,14 +430,14 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 @test "a bootstrap still refuses a reused public (F2)" {
   bootstrap_batch tailnet
   cut -d' ' -f1,2 "$t/old.pub" >"$t/published/host-seat@26-11-01.public"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"already in keys.yaml"* ]]
 }
 
 @test "an unknown bootstrap value is refused, never taken for a bootstrap: F1 is not skipped" {
   bootstrap_batch somethingelse
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"unknown bootstrap 'somethingelse'"* ]]
   [ ! -e "$(tree)" ]
@@ -461,7 +461,7 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 
 @test "a normal slot never takes the bootstrap path: its statement stays required" {
   rm -f "$t/published/host-seat@26-11-01.statement.sig"
-  run --separate-stderr window oui
+  run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
 }
@@ -481,9 +481,9 @@ retire() { # <answer> <machine>
   GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" retire "$2"
 }
 @test "retire: the retired slot deleted and revoked, the shared host cert removed and revoked by its id, in one commit" {
-  window oui
+  window yes
   merged
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 0 ]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
   [ "$(yq -r '.keys."host-seat".slots | has("26-10-17")' "$k")" = false ]
@@ -498,9 +498,9 @@ retire() { # <answer> <machine>
 }
 
 @test "retire: the KRL built from its result revokes the old key's certificate and the shared cert, not the new key's" {
-  window oui
+  window yes
   merged
-  retire oui seat
+  retire yes seat
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
   yq -o json '{"keys": .keys, "authorities": .authorities, "revoked": (.revoked // {}), "revoked_certificates": (.revoked_certificates // {})} | del(.. | select(tag == "!!str" and test("^ENC\[")))' "$k" >"$t/after.json"
   run bash "$BATS_TEST_DIRNAME/../../keys-yaml.d/krl.sh" "$t/after.json" "$t/krl"
@@ -518,42 +518,42 @@ retire() { # <answer> <machine>
   [[ $output == *": ok"* ]]
 }
 
-@test "retire: without « oui », nothing written" {
-  window oui
+@test "retire: without « yes », nothing written" {
+  window yes
   merged
-  run --separate-stderr retire non seat
+  run --separate-stderr retire no seat
   [ "$status" -eq 5 ]
   [ ! -e "$(tree)" ]
 }
 
-@test "retire: refused before the « oui » — the current slot not serving, an unknown machine, unarmed" {
+@test "retire: refused before the « yes » — the current slot not serving, an unknown machine, unarmed" {
   yq -i -p json -o json '.keys."host-seat".slots."26-10-17".state = "recorded"' "$t/keys.json"
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 3 ]
   [[ $stderr == *"current slot is not serving"* ]]
-  run --separate-stderr retire oui nobody
+  run --separate-stderr retire yes nobody
   [ "$status" -eq 3 ]
   [[ $stderr == *"not in the machine list"* ]]
   rm -f "$t/delegation"
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 3 ]
   [[ $stderr == *"retire is not armed"* ]]
-  run grep -q 'retirer et révoquer' "$t/prompt"
+  run grep -q 'retire and revoke' "$t/prompt"
   [ "$status" -eq 1 ]
 }
 
 @test "retire: a certificate principal that maps to no machine is refused, nothing written" {
-  window oui
+  window yes
   merged
   echo '{"seat": ["seat"]}' >"$t/host-names.json"
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 3 ]
   [[ $stderr == *"names 'seat.lan', which maps to no machine"* ]]
   [ ! -e "$(tree)" ]
 }
 
 @test "mutant: a retire that keeps the revoked slot in keys.yaml is refused by its postcondition" {
-  window oui
+  window yes
   merged
   grep -F -v 'sops unset --input-type yaml --output-type yaml "$keysYaml" "[\"keys\"][\"${keyName}\"][\"slots\"][\"${slot}\"]"' "$BATS_TEST_DIRNAME/../retire.sh" |
     sed 's/^      reconcile::fail "sops unset failed on ${keyName}@${slot}" || return 1$/      :/' >"$t/retire.sh"
@@ -561,7 +561,7 @@ retire() { # <answer> <machine>
   bash -n "$t/retire.sh"
   sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
   grep -q "^source $t/retire.sh\$" "$t/keys-reconcile"
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -ne 0 ]
   [[ $stderr == *"keys.yaml changed more than the retired slots and certificates"* ]]
 }
@@ -574,17 +574,17 @@ substring_cert() {
 }
 
 @test "retire: a principal matched exactly, never as a substring of another machine's name: sea's cert is not revoked" {
-  window oui
+  window yes
   merged
   substring_cert
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 0 ]
-  [[ $output != *"shared@26-01-01 : certificat d'hôte retiré"* ]]
+  [[ $output != *"shared@26-01-01: host certificate removed"* ]]
   [ "$(yq -r '.revoked_certificates // {} | length' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = 0 ]
 }
 
 @test "mutant: retire matching principals by substring revokes sea's cert, so the exact-match case bites" {
-  window oui
+  window yes
   merged
   substring_cert
   : "the code before the fix: a substring match, its first machine taken"
@@ -592,15 +592,15 @@ substring_cert() {
     "$BATS_TEST_DIRNAME/../retire.sh" >"$t/retire.sh"
   [ "$(grep -c -F 'contains([strenv(P)])) | .key'"'"' "$hostNamesJson" | head -1' "$t/retire.sh")" -eq 1 ]
   sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
-  run --separate-stderr retire oui seat
-  [[ $output == *"shared@26-01-01 : certificat d'hôte retiré"* ]]
+  run --separate-stderr retire yes seat
+  [[ $output == *"shared@26-01-01: host certificate removed"* ]]
 }
 
 @test "retire: a principal that maps to more than one machine is refused, nothing written" {
-  window oui
+  window yes
   merged
   echo '{"seat": ["seat", "seat.lan"], "other": ["seat.lan"]}' >"$t/host-names.json"
-  run --separate-stderr retire oui seat
+  run --separate-stderr retire yes seat
   [ "$status" -eq 3 ]
   [[ $stderr == *"names 'seat.lan', which maps to more than one machine (seat other)"* ]]
   [ ! -e "$(tree)" ]

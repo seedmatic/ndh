@@ -1,5 +1,5 @@
 # keys-reconcile's write (roles × keys K4, design §k2), sourced by keys-reconcile.sh and run only by its window, after
-# the « oui » and the re-verification of the measure. It writes into a clean worktree of the bare at the revision,
+# the « yes » and the re-verification of the measure. It writes into a clean worktree of the bare at the revision,
 # never into a checkout a session works in, and commits there once; it pushes nothing.
 #
 #   reconcile::host-key::write <work>   <work>/measured: one line per slot, `<batch index>\t<key>\t<slot>\t<public>\t<hash>`
@@ -78,7 +78,7 @@ reconcile::tree::commit() {
   mapfile -t paths < <(sort -u "$work/staged")
   git -C "$tree" add -- "${paths[@]}"
   git -C "$tree" commit -q -F "$work/summary" || reconcile::fail "the commit failed" || return 1
-  echo "écrit dans ${tree}, branche ${branch} (locale, non poussée) : à relire puis à fusionner, avec ton feu vert."
+  echo "written in ${tree}, branch ${branch} (local, not pushed): to review, then merge with your go."
 }
 
 reconcile::host-key::write() {
@@ -148,8 +148,8 @@ reconcile::host-key::write() {
 
     : "${keyName}@${slot}: its age joins every rule of .sops.yaml"
     A="$age" yq -i '.creation_rules[].age += [strenv(A)]' "$sopsYaml"
-    printf '      %s@%s en service à la prochaine bascule, certifiée (série %s), destinataire %s%s\n' "$keyName" "$slot" \
-      "$((serial - 1))" "$age" "${replaced:+ ; ${keyName}@${replaced} retirée}"
+    printf '      %s@%s serving at the next switch, certified (serial %s), recipient %s%s\n' "$keyName" "$slot" \
+      "$((serial - 1))" "$age" "${replaced:+; ${keyName}@${replaced} retired}"
   done <"$work/measured"
   kill "$agentPid" 2>/dev/null || true
 

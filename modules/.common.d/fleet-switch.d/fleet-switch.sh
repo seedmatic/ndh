@@ -10,7 +10,7 @@
 #
 # Every run, --dry-run included (it runs each signer's --check, code taken from the revision), runs only inside a window
 # the operator armed (F3: `ndh-ops arm --tools fleet-switch`), checked HERE, as keys-reconcile checks its own: nobody is
-# asked « oui », the arming is the go. The seat is the operator's own: --with-seat needs a second item,
+# asked to confirm, the arming is the go. The seat is the operator's own: --with-seat needs a second item,
 # `fleet-switch-seat`, in the same arming.
 #
 # The revision must be merged before any of its code is evaluated or run: ndh-switch's own check, the layer below, is
