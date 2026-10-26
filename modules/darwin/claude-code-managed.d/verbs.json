@@ -66,7 +66,7 @@
   },
   "operator_tools": {
     "programs": ["ssh-keys-certify", "ssh-keys-renew", "attic-leaf-sign", "incus-cluster-cert-renew", "ndh-keyring",
-                 "ndh-ceremony-vm", "pass-seedmatic-publish", "keys-reconcile"],
+                 "ndh-ceremony-vm", "pass-seedmatic-publish", "keys-reconcile", "fleet-switch"],
     "session_forms": {"ndh-ceremony-vm": [["--smoke"]], "keys-reconcile": [["plan"]]},
     "never_delegated": ["ndh-ceremony-vm", "pass-seedmatic-publish", "attic-leaf-sign"],
     "why": "reads or makes the operator's secrets (keys.yaml, an authority's signing slot, the keyring, the root's ceremony): the operator runs it. attic-leaf-sign is retired (F2, 2026-10-22) and stays denied while old store paths hold it; removed on the measure that none is left in any seat's or guest's store"
