@@ -1,0 +1,8 @@
+# ndh-ops grow reads the cluster-age identity from pass ITSELF and runs rke2lab's grow (pulumi): the operator's
+# gesture, like `ndh-ops arm`. A session runs it in no form, preview included (🛡️, 2026-10-26).
+# Columns, tab-separated: want, today (develop 4f5d7ba5, measured), cwd (- for /tmp/work), cmd.
+DENY	ALLOW	-	ndh-ops grow dev up
+DENY	ALLOW	-	ndh-ops grow dev preview
+DENY	ALLOW	-	/run/current-system/sw/bin/ndh-ops grow dev up
+DENY	ALLOW	-	sudo ndh-ops grow dev up
+ALLOW	ALLOW	-	ndh-ops status
