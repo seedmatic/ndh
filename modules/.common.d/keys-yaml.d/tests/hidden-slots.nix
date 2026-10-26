@@ -47,9 +47,6 @@ let
     };
   };
   fixtureJson = pkgs.writeText "hidden-slots.json" (builtins.toJSON fixture);
-  # Commit dates as self.lastModified carries them: 26-05-10 inside the serving slot's 14-day overlap, 26-05-20 past it.
-  self.lastModified = 1778371200;
-  past.lastModified = 1779235200;
 
   # The nix projection: keys-yaml.nix evaluated on the fixture, as its consumers read it.
   evaluated =
@@ -58,7 +55,7 @@ let
         keysYamlModule
         {
           _module.args = {
-            inherit pkgs lib self;
+            inherit pkgs lib;
             worktreePath.of = _: fixtureJson;
           };
         }
@@ -77,7 +74,7 @@ let
           (import mutantModule)
           {
             _module.args = {
-              inherit pkgs lib self;
+              inherit pkgs lib;
               worktreePath.of = _: fixtureJson;
             };
           }
@@ -99,7 +96,6 @@ let
     {
       module ? keysYamlModule,
       keys,
-      at ? self,
     }:
     (builtins.tryEval (
       builtins.deepSeq
@@ -109,7 +105,6 @@ let
             {
               _module.args = {
                 inherit pkgs lib;
-                self = at;
                 worktreePath.of = _: pkgs.writeText "keys.json" (builtins.toJSON keys);
               };
             }
@@ -159,17 +154,6 @@ assert lib.assertMsg (
 ) "hidden-slots: the guard's mutant changed nothing";
 assert lib.assertMsg (!(refusedWith (import guardMutant)))
   "hidden-slots: the guard's mutant (livePublics without retired slots) still refused it: the case proves nothing";
-# The overlap: a retired host slot is accepted 9 days after its successor, refused 19 days after; both sides, so the
-# check neither refuses everything nor nothing.
-assert lib.assertMsg (krlEvaluates {
-  keys = fixture;
-}) "hidden-slots: a retired slot inside its 14-day overlap was refused";
-assert lib.assertMsg (
-  !(krlEvaluates {
-    keys = fixture;
-    at = past;
-  })
-) "hidden-slots: a retired slot 19 days past its successor was accepted";
 pkgs.runCommand "keys-yaml-hidden-slots"
   {
     nativeBuildInputs = with pkgs; [

@@ -1,5 +1,4 @@
 {
-  self,
   worktreePath,
   lib,
   pkgs,
@@ -54,40 +53,6 @@ let
 
   phase2Gaps = trust.phase2Gaps authoritiesJson revokedJson;
 
-  # A host key's retired slot outlives its overlap window: the new slot's age, counted to the commit's own date
-  # (self.lastModified, the same on every system and pure), not to the clock. `keys-reconcile retire` ends it.
-  overlapDays = 14;
-  daysOf =
-    slot:
-    let
-      p = map lib.toIntBase10 (lib.splitString "-" slot);
-      m = lib.elemAt p 1;
-      y = 2000 + lib.elemAt p 0 - (if m <= 2 then 1 else 0);
-      era = y / 400;
-      yoe = y - era * 400;
-      doy = (153 * (lib.mod (m + 9) 12) + 2) / 5 + lib.elemAt p 2 - 1;
-    in
-    era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
-  today = self.lastModified / 86400;
-  overdue = lib.concatLists (
-    lib.mapAttrsToList (
-      name: key:
-      let
-        states = lib.mapAttrs (_: s: s.state or "") (key.slots or { });
-        current = lib.last (
-          [ null ]
-          ++ lib.sort lib.lessThan (lib.attrNames (lib.filterAttrs (_: st: !(lib.elem st hidden)) states))
-        );
-        retired = lib.attrNames (lib.filterAttrs (_: st: st == "retired") states);
-      in
-      lib.optionals (current != null && today - daysOf current > overlapDays) (
-        map (
-          slot: "${name}@${slot} (${name}@${current} is ${toString (today - daysOf current)} days old)"
-        ) retired
-      )
-    ) (lib.filterAttrs (name: _: lib.hasPrefix "host-" name) allSlotsJson)
-  );
-
   # Roles × keys 6a: every SSH certificate (ssh-host, ssh-user) is signed on the operator seat and recorded
   # in keys.yaml; the activation only installs it and signs nothing. So a generation of a key with an
   # SSH cert_usage must carry its recorded public AND its recorded certificate — otherwise its host
@@ -122,11 +87,6 @@ let
         ndh.keysYaml: SSH certificates not recorded: ${lib.concatStringsSep ", " uncertified}
         Record the material on the operator seat (ssh-keys-renew), sign it (ssh-keys-certify --apply), and commit
         keys.yaml (roles × keys 6a).''
-    else if overdue != [ ] then
-      throw ''
-        ndh.keysYaml: retired host key slots past their ${toString overlapDays}-day overlap: ${lib.concatStringsSep ", " overdue}
-        Once the new key is seen served, the operator runs `keys-reconcile retire <machine>`: it deletes the slot and
-        revokes it, in one change.''
     else if phase2Gaps != [ ] then
       throw ''
         ndh.keysYaml: authority generation retired before its successor was trusted everywhere: ${lib.concatStringsSep ", " phase2Gaps}
