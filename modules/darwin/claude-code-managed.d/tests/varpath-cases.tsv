@@ -1,0 +1,53 @@
+# A tree walk whose root sits in a shell variable or a glob is judged by what that root resolves to, the same as a
+# literal one: the hook resolves a variable from a LITERAL assignment earlier in the same call, and expands a glob
+# against the disk, then judges each match against the protected directories that exist. What it can't resolve stays
+# refused. Columns, tab-separated: want, today (measured on develop's hook over the @wt fixture), cwd (- for
+# /tmp/work, @wt for the fixture's worktree, @seat for the one seat-only control), cmd. @wt is the bats mkbare
+# fixture: a temp bare whose registered worktree develop holds .local.d (protected) and src. A case is loosened
+# only with 🛡️'s review.
+#
+# Controls first: the literal forms the rule must keep giving.
+DENY	DENY	-	grep -rn foo @wt/develop
+ALLOW	ALLOW	-	grep -rn foo /tmp/x
+# A literal assignment in the same call: resolved, then judged.
+ALLOW	DENY	-	W=/tmp/x; grep -rn foo "$W"/m
+ALLOW	DENY	-	W=/tmp/x && grep -rn foo "$W"
+ALLOW	ALLOW	-	W=/tmp/x; find "$W" -name '*.nix'
+DENY	DENY	-	W=@wt/develop; grep -rn foo "$W"
+DENY	DENY	-	W=@wt/develop; grep -rn foo "$W"/.local.d
+ALLOW	ALLOW	-	W=@wt; find "$W" -name x
+DENY	ALLOW	-	W=@wt/develop; tar -cf /tmp/a.tar "$W"
+DENY	DENY	-	W=@wt; cp -R "$W" /tmp/copy
+DENY	DENY	-	W=~/.local/share/password-store; grep -r x "$W"
+DENY	DENY	-	W=@wt/develop; R=$W; grep -rn foo "$R"
+# What it can't resolve stays refused.
+DENY	DENY	-	grep -r x "$W"
+DENY	DENY	-	W=$(pwd); grep -r x "$W"
+DENY	DENY	-	W=`pwd`; grep -r x "$W"
+DENY	DENY	-	W=/tmp/$X; grep -r x "$W"
+DENY	DENY	-	W=/tmp/*; grep -r x "$W"
+DENY	DENY	-	W=/tmp; W=$X; grep -r x $W
+DENY	DENY	-	for d in a b; do W=/tmp; done; grep -r x $W
+DENY	DENY	-	f() { W=/tmp; }; f; grep -r x $W
+DENY	DENY	-	export W=/tmp; bash -c 'grep -r x "$W"'
+DENY	DENY	-	W=/tmp/x grep -rn foo "$W"
+DENY	DENY	-	read W; grep -r x "$W"
+DENY	DENY	-	cd @wt && W=develop; grep -rn foo "$W"
+# find without -exec lists names and reads no content: it passes, literal or not (cost: refusing it blocks real
+# gestures for no secret). With -exec, it reads, so it's judged like a walk.
+DENY	DENY	-	W=@wt/develop; find "$W" -name x -exec cat {} +
+DENY	DENY	-	find @wt/* -exec cat {} +
+# rg recurses with no flag: a walk too, literal or from a variable (both ALLOW today, an existing hole).
+DENY	ALLOW	-	rg foo @wt/develop
+DENY	ALLOW	-	W=@wt/develop; rg foo "$W"
+ALLOW	ALLOW	-	rg foo /tmp/x
+# A glob root: expanded, each match judged.
+ALLOW	DENY	-	grep -rn foo /tmp/*.nix
+DENY	DENY	-	grep -rn foo @wt/*
+DENY	DENY	-	grep -rn foo @wt/dev*
+DENY	DENY	-	grep -rn foo @wt/*/.local.d
+DENY	DENY	-	grep -r x ~/.local/share/pass*
+ALLOW	ALLOW	-	find @wt/* -name x
+ALLOW	DENY	-	grep -rn foo /tmp/no-such-dir-*/x
+# Seat-only control: the same walk on this seat's real tree, with the installed tables (skipped in the sandbox).
+DENY	DENY	@seat	grep -rn foo /Volumes/git-worktree-store/seedmatic/rke2lab.d/develop

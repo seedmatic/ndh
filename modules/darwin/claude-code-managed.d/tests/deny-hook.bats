@@ -617,6 +617,12 @@ corpus() {
 @test "kubectl config: every corpus case gets its verdict" { corpus kubecfg-cases.tsv; }
 @test "process environment: every corpus case gets its verdict" { corpus procenv-cases.tsv; }
 @test "redirect-only stages: every corpus case gets its verdict" { corpus redirect-only-cases.tsv; }
+# Its ALLOW cases resolve to /tmp/x/m and to a /tmp/*.nix that exist, so a glob that matches is what is tested.
+@test "variable paths: every corpus case gets its verdict" {
+  mkdir -p /tmp/x/m && : >/tmp/a.nix
+  mkbare
+  corpus varpath-cases.tsv
+}
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
