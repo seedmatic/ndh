@@ -7,3 +7,10 @@ DENY	ALLOW	-	kubectl config view --raw --minify
 DENY	ALLOW	-	kubectl config view --flatten
 ALLOW	ALLOW	-	kubectl config view
 ALLOW	ALLOW	-	kubectl config get-contexts
+# Other spellings, a global option first, an =value, a wrapper (🤖 probes, 🛡️ review 2026-10-27; today on 4f5d7ba5).
+DENY	ALLOW	-	kubectl --context bioskop-mgmt config view --raw
+DENY	ALLOW	-	kubectl --kubeconfig ~/.kube/config config view --raw
+DENY	ALLOW	-	kubectl config view --raw=true
+DENY	ALLOW	-	env kubectl config view --flatten
+ALLOW	ALLOW	-	kubectl --context bioskop-mgmt config view
+ALLOW	ALLOW	-	kubectl get pods --raw /api
