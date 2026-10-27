@@ -1,0 +1,16 @@
+# A session never reads another process's environment (🛡️, 2026-10-26): the cluster-age identity rides one during a
+# grow (RKE2LAB_CLUSTER_AGE, inherited by pulumi's tree), and a transcript is where it would leak. Listing processes
+# stays free. Columns, tab-separated: want, today (develop 4f5d7ba5, measured), cwd (- for /tmp/work), cmd.
+DENY	ALLOW	-	ps -E
+DENY	ALLOW	-	ps eww
+DENY	ALLOW	-	ps -Eww -p 1234
+DENY	ALLOW	-	ps axeww
+DENY	ALLOW	-	ps -ef -E
+DENY	ALLOW	-	sudo ps eww 1234
+DENY	ALLOW	-	sudo launchctl procinfo 1234
+DENY	ALLOW	-	cat /proc/1234/environ
+DENY	ALLOW	-	ssh nikopol-nixos 'cat /proc/1/environ'
+ALLOW	ALLOW	-	ps aux
+ALLOW	ALLOW	-	ps -ef
+ALLOW	ALLOW	-	ps -o pid,comm -p 1234
+ALLOW	ALLOW	-	pgrep -l pulumi
