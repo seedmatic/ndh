@@ -540,6 +540,10 @@ class Analyzer:
         if depth > MAX_DEPTH:
             raise Refused("wrapping nested deeper than the hook follows")
         outer, bodies = extract_substitutions(text)
+        # A redirect target never reaches check_rest (simple_commands drops it): judge the text once for environ.
+        if self.PROC_ENVIRON.search(outer):
+            raise Refused("reads another process's environment, where a secret can ride (the cluster-age identity "
+                          "during a grow); list processes with ps aux or ps -o instead")
         texts, files = shell_stdin_literals(outer)
         bodies = bodies + texts + [self.read_redirected(f, outer) for f in files]
         # A substitution runs a command of its own: never beside an owned removal.
@@ -1092,15 +1096,13 @@ class Analyzer:
                 self.deny(f"{self.LEAK_WHY}. Offending reference: {ref}", argv)
                 return
 
-    PROC_ENVIRON = re.compile(r"/proc/(?:\d+|self|thread-self)(?:/task/\d+)?/environ\b")
+    PROC_ENVIRON = re.compile(r"/proc/[^/\s]+(?:/task/[^/\s]+)?/environ\b")
     PS_VALUE = {"-o", "-O", "-p", "-C", "-U", "-u", "-G", "-g", "-t", "-q", "-k", "-s", "--pid", "--user", "--format",
                 "--sort"}
 
     def reads_process_environ(self, prog, args):
-        """ps showing environments (`-E`, alone or in a dash cluster; an `e` in a dashless BSD option word),
-        launchctl procinfo, or any program naming /proc/<pid>/environ."""
-        if any(self.PROC_ENVIRON.search(a) for a in args):
-            return True
+        """ps showing environments (`-E`, alone or in a dash cluster; an `e` in a dashless BSD option word), or
+        launchctl procinfo. A /proc/<pid>/environ path is judged on the whole text in analyze(), redirects included."""
         if prog == "launchctl" and args[:1] == ["procinfo"]:
             return True
         if prog == "ps":
