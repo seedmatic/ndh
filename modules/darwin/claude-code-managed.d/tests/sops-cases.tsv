@@ -1,0 +1,29 @@
+# sops decrypt prints a secret into the transcript, whatever file it reads (a secret by definition): refused in every
+# spelling, -d clustered, the decrypt/exec-env/exec-file subcommands (🛡️'s cases, 2026-10-27). Encrypting, editing in
+# place with the editor, and help stay free. Columns, tab-separated: want, today (d5b7eb2d, measured), cwd, cmd.
+DENY	ALLOW	-	sops -d .secrets
+DENY	ALLOW	-	sops --decrypt modules/home-manager/ssh.d/keys.yaml
+DENY	ALLOW	-	sops exec-env .secrets env
+DENY	ALLOW	-	sops decrypt .secrets
+DENY	ALLOW	-	sops exec-file .secrets 'cat {}'
+DENY	ALLOW	-	sops -id .secrets
+DENY	ALLOW	-	sops --input-type yaml -d keys.yaml
+DENY	ALLOW	-	sops --decrypt --extract '["a"]' keys.yaml
+DENY	ALLOW	-	sops -d --output /tmp/p.yaml keys.yaml
+DENY	ALLOW	-	flox activate -- sops -d .secrets
+DENY	ALLOW	-	ssh nixos.bioskop sops -d /etc/x.yaml
+DENY	ALLOW	-	nix run nixpkgs#sops -- -d .secrets
+ALLOW	ALLOW	-	sops --encrypt --age age1x /tmp/p.yaml
+ALLOW	ALLOW	-	sops --help
+ALLOW	ALLOW	-	sops updatekeys -y keys.yaml
+ALLOW	ALLOW	-	sops filestatus keys.yaml
+DENY	ALLOW	-	sops keys.yaml
+DENY	ALLOW	-	EDITOR=cat sops keys.yaml
+DENY	ALLOW	-	sops edit keys.yaml
+ALLOW	ALLOW	-	sops --version
+ALLOW	ALLOW	-	sops -e -i /tmp/p.yaml
+ALLOW	ALLOW	-	sops --set '["a"] "b"' keys.yaml
+# A decrypt named beside a safe operation still decrypts.
+DENY	ALLOW	-	sops -e -d keys.yaml
+DENY	ALLOW	-	sops --encrypt --decrypt keys.yaml
+DENY	ALLOW	-	sops -ed keys.yaml
