@@ -615,6 +615,8 @@ corpus() {
 @test "process environment: every corpus case gets its verdict" { corpus procenv-cases.tsv; }
 @test "redirect-only stages: every corpus case gets its verdict" { corpus redirect-only-cases.tsv; }
 @test "lab gestures: every corpus case gets its verdict" { corpus lab-gestures-cases.tsv; }
+@test "sops: every corpus case gets its verdict" { corpus sops-cases.tsv; }
+@test "attic secrets: every corpus case gets its verdict" { corpus attic-secrets-cases.tsv; }
 # Its ALLOW cases resolve to /tmp/x/m and to a /tmp/*.nix that exist, so a glob that matches is what is tested.
 @test "variable paths: every corpus case gets its verdict" {
   mkdir -p /tmp/x/m && : >/tmp/a.nix
