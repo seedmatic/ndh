@@ -14,3 +14,13 @@ ALLOW	ALLOW	-	ps aux
 ALLOW	ALLOW	-	ps -ef
 ALLOW	ALLOW	-	ps -o pid,comm -p 1234
 ALLOW	ALLOW	-	pgrep -l pulumi
+# The redirect and a non-literal pid (🛡️, 2026-10-26): a redirect is the most common way to read environ, and a pid
+# held in a variable still names one. And six ps forms whose plain word is an option's VALUE, not a BSD option word.
+DENY	ALLOW	-	tr '\0' '\n' < /proc/1/environ
+DENY	ALLOW	-	strings /proc/$PID/environ
+ALLOW	ALLOW	-	ps -o user -p 1234
+ALLOW	ALLOW	-	ps -U nobody
+ALLOW	ALLOW	-	ps -C sleep
+ALLOW	ALLOW	-	ps -u nixbld1
+ALLOW	ALLOW	-	ps -o pid,user,comm
+ALLOW	ALLOW	-	ps -p 1234 -o etime
