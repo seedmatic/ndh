@@ -1,0 +1,26 @@
+# The lab's own gestures are the sessions' (the operator, 2026-10-27: « on se met nous-même des bâtons dans les roues »):
+# the hook refuses only the corporate bare-metal, the operator's secrets and activation outside fleet-switch. These
+# pin the loosening. Columns, tab-separated: want, today (581921ec, measured), cwd (- for /tmp/work), cmd. 🛡️'s list
+# (security/hook-scope-reduction.md); a case is tightened only with the operator's yes.
+ALLOW	DENY	-	incus --project rke2lab exec n1 -- ls
+ALLOW	DENY	-	incus --project ndh exec attic-nikopol -- ss -ltnH
+ALLOW	DENY	-	incus shell n1
+ALLOW	DENY	-	incus delete c1
+ALLOW	DENY	-	incus storage volume delete default v1
+ALLOW	DENY	-	kubectl --context bioskop-mgmt apply -f m.yaml
+ALLOW	DENY	-	kubectl -n prod delete pod x
+ALLOW	DENY	-	helm -n kube-system upgrade cilium cilium/cilium
+ALLOW	DENY	-	helm uninstall r
+ALLOW	DENY	-	pulumi -C infra up --yes
+ALLOW	DENY	-	pulumi destroy
+ALLOW	DENY	-	rke2lab-grow dev up --target x
+ALLOW	DENY	-	sudo nsenter -t 1234 -n ss -ltnH
+ALLOW	DENY	-	sudo chroot /mnt ls
+ALLOW	DENY	-	cachix push seedmatic ./result
+ALLOW	ASK	-	flox activate -- ./mvnw -pl :seed-outcluster -am exec:java
+ALLOW	ASK	-	java -cp app.jar io.seedmatic.rke2lab.controlplane.Main seed
+ALLOW	DENY	-	git push --force origin develop
+# Still refused, beside them: activation, a secret.
+DENY	DENY	-	home-manager switch
+DENY	DENY	-	gpg --decrypt f.gpg
+DENY	DENY	-	git push --force origin main

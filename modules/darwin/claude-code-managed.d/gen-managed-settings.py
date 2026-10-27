@@ -34,15 +34,13 @@ def add(rule):
 
 
 for prog, spec in table["programs"].items():
-    if spec.get("in_list", True) is False:
-        continue
     for p in [prog] + ([f"sudo {prog}"] if spec.get("sudo") else []):
         for verb in spec["verbs"]:
             add(f"{p} {verb}")
             add(f"{p} {verb} *")
             add(f"{p} -* {verb}")
             add(f"{p} -* {verb} *")
-        for verb in spec.get("nested_verbs", []) + spec.get("flag_verbs", []):
+        for verb in spec.get("flag_verbs", []):
             if verb.startswith("-"):
                 add(f"{p} {verb}")
                 add(f"{p} {verb} *")

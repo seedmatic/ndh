@@ -18,57 +18,57 @@ allowed() { [ "$status" -eq 0 ] && [ -z "$output" ] || { echo "expected allow, g
 asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"'* ]] || { echo "expected ask, got status=$status output=$output"; return 1; }; }
 
 # --- A: a global option before the verb (the deny list's own gap) ---
-@test "A kubectl -n before delete"          { run hook 'kubectl -n prod delete pod x'; denied; }
-@test "A kubectl --context before apply"    { run hook 'kubectl --context bioskop-mgmt apply -f m.yaml'; denied; }
-@test "A kubectl --kubeconfig=… patch"      { run hook 'kubectl --kubeconfig=/tmp/k patch cm x -p payload'; denied; }
-@test "A helm -n before upgrade"            { run hook 'helm -n kube-system upgrade cilium cilium/cilium'; denied; }
-@test "A helm --kube-context install"       { run hook 'helm --kube-context c install r ch'; denied; }
-@test "A pulumi -C before up"               { run hook 'pulumi -C infra up --yes'; denied; }
-@test "A pulumi --cwd before destroy"       { run hook 'pulumi --cwd infra destroy'; denied; }
-@test "A incus --project before stop"       { run hook 'incus --project rke2lab stop node-1'; denied; }
-@test "A incus nested storage volume delete" { run hook 'incus storage volume delete default v1'; denied; }
-@test "A incus config set"                  { run hook 'incus config set c1 limits.cpu 4'; denied; }
+@test "ok lab: A kubectl -n before delete"          { run hook 'kubectl -n prod delete pod x'; allowed; }
+@test "ok lab: A kubectl --context before apply"    { run hook 'kubectl --context bioskop-mgmt apply -f m.yaml'; allowed; }
+@test "ok lab: A kubectl --kubeconfig=… patch"      { run hook 'kubectl --kubeconfig=/tmp/k patch cm x -p payload'; allowed; }
+@test "ok lab: A helm -n before upgrade"            { run hook 'helm -n kube-system upgrade cilium cilium/cilium'; allowed; }
+@test "ok lab: A helm --kube-context install"       { run hook 'helm --kube-context c install r ch'; allowed; }
+@test "ok lab: A pulumi -C before up"               { run hook 'pulumi -C infra up --yes'; allowed; }
+@test "ok lab: A pulumi --cwd before destroy"       { run hook 'pulumi --cwd infra destroy'; allowed; }
+@test "ok lab: A incus --project before stop"       { run hook 'incus --project rke2lab stop node-1'; allowed; }
+@test "ok lab: A incus nested storage volume delete" { run hook 'incus storage volume delete default v1'; allowed; }
+@test "ok lab: A incus config set"                  { run hook 'incus config set c1 limits.cpu 4'; allowed; }
 @test "A home-manager --flake before switch" { run hook 'home-manager --flake . switch'; denied; }
 @test "A sudo nixos-rebuild --flake boot"   { run hook 'sudo nixos-rebuild --flake .#bioskop boot'; denied; }
 @test "A darwin-rebuild --rollback"         { run hook 'sudo darwin-rebuild --rollback'; denied; }
 
 # --- aliases, measured in the CLIs' own --help (helm v3.20.2, pulumi v3.261.0) ---
-@test "alias helm del"                      { run hook 'helm del r'; denied; }
-@test "alias helm -n x un"                  { run hook 'helm -n x un r'; denied; }
-@test "alias helm delete under flox"        { run hook 'flox activate -- helm delete r'; denied; }
-@test "alias pulumi update"                 { run hook 'pulumi update --yes'; denied; }
-@test "alias pulumi -C down"                { run hook 'pulumi -C infra down'; denied; }
-@test "alias pulumi dn"                     { run hook 'pulumi dn --yes'; denied; }
+@test "ok lab: alias helm del"                      { run hook 'helm del r'; allowed; }
+@test "ok lab: alias helm -n x un"                  { run hook 'helm -n x un r'; allowed; }
+@test "ok lab: alias helm delete under flox"        { run hook 'flox activate -- helm delete r'; allowed; }
+@test "ok lab: alias pulumi update"                 { run hook 'pulumi update --yes'; allowed; }
+@test "ok lab: alias pulumi -C down"                { run hook 'pulumi -C infra down'; allowed; }
+@test "ok lab: alias pulumi dn"                     { run hook 'pulumi dn --yes'; allowed; }
 @test "ok helm list --uninstalled"          { run hook 'helm list --uninstalled'; allowed; }
 @test "ok pulumi stack ls"                  { run hook 'pulumi stack ls'; allowed; }
 
 # --- B: launchers the deny list does not strip ---
-@test "B bash -c"                           { run hook "bash -c 'kubectl apply -f x.yaml'"; denied; }
-@test "B sh -lc"                            { run hook 'sh -lc "helm uninstall r"'; denied; }
-@test "B flox activate -c"                  { run hook "flox activate -c 'kubectl delete ns x'"; denied; }
-@test "B flox activate -d -- with flag"     { run hook 'flox activate -d . -- kubectl -n x apply -f y'; denied; }
-@test "B nix run nixpkgs#kubectl --"        { run hook 'nix run nixpkgs#kubectl -- delete pod x'; denied; }
-@test "B nix run attr alias helm"           { run hook 'nix run nixpkgs#kubernetes-helm -- upgrade r c'; denied; }
-@test "B nix shell -c"                      { run hook 'nix shell nixpkgs#kubectl nixpkgs#jq -c kubectl apply -f y'; denied; }
+@test "B bash -c"                           { run hook "bash -c 'home-manager switch'"; denied; }
+@test "B sh -lc"                            { run hook 'sh -lc "home-manager switch"'; denied; }
+@test "B flox activate -c"                  { run hook "flox activate -c 'home-manager switch'"; denied; }
+@test "B flox activate -d -- with flag"     { run hook 'flox activate -d . -- home-manager --flake . switch'; denied; }
+@test "B nix run nixpkgs#home-manager --"        { run hook 'nix run nixpkgs#home-manager -- switch'; denied; }
+@test "B nix run attr alias gpg"           { run hook 'nix run nixpkgs#gnupg -- --decrypt f.gpg'; denied; }
+@test "B nix shell -c"                      { run hook 'nix shell nixpkgs#home-manager nixpkgs#jq -c home-manager switch'; denied; }
 @test "B nix develop --command"             { run hook 'nix develop .#ci --command pulumi up'; denied; }
-@test "B nix-shell --run"                   { run hook "nix-shell -p kubectl --run 'kubectl apply -f y'"; denied; }
+@test "B nix-shell --run"                   { run hook "nix-shell -p home-manager --run 'home-manager switch'"; denied; }
 @test "B ssh remote rebuild"                { run hook 'ssh bioskop sudo nixos-rebuild switch'; denied; }
-@test "B absolute program path"             { run hook '/run/current-system/sw/bin/kubectl delete pod x'; denied; }
-@test "B env assignment"                    { run hook 'env KUBECONFIG=/k kubectl apply -f y'; denied; }
-@test "B env -u"                            { run hook 'env -u FOO incus delete c1'; denied; }
-@test "B env -S split-string"               { run hook "env -S 'kubectl apply -f y'"; denied; }
-@test "B sudo -u root"                      { run hook 'sudo -u root incus delete c1'; denied; }
-@test "B timeout with signal"               { run hook 'timeout -s KILL 30 helm upgrade r c'; denied; }
-@test "B xargs -n1"                         { run hook 'echo p | xargs -n1 kubectl delete pod'; denied; }
-@test "B watch"                             { run hook 'watch -n 5 kubectl apply -f y'; denied; }
-@test "B eval"                              { run hook 'eval "kubectl apply -f y"'; denied; }
-@test "B command substitution"              { run hook 'echo "$(kubectl delete pod x)"'; denied; }
-@test "B backticks"                         { run hook 'echo `pulumi destroy --yes`'; denied; }
-@test "B process substitution"              { run hook 'diff <(kubectl apply -f y) /dev/null'; denied; }
-@test "B heredoc fed to bash"               { run hook "$(printf "bash <<'EOF'\nkubectl apply -f y\nEOF")"; denied; }
-@test "B compound after cd"                 { run hook 'cd /tmp && kubectl -n y delete pod z'; denied; }
-@test "B newline-separated"                 { run hook "$(printf 'ls\nhelm -n x uninstall r')"; denied; }
-@test "B nested wrappers"                   { run hook "sudo env FOO=1 bash -c 'nix run nixpkgs#kubectl -- -n x delete pod y'"; denied; }
+@test "B absolute program path"             { run hook '/run/current-system/sw/bin/home-manager switch'; denied; }
+@test "B env assignment"                    { run hook 'env FOO=/k home-manager switch'; denied; }
+@test "B env -u"                            { run hook 'env -u FOO home-manager switch'; denied; }
+@test "B env -S split-string"               { run hook "env -S 'home-manager switch'"; denied; }
+@test "B sudo -u root"                      { run hook 'sudo -u root nixos-rebuild switch'; denied; }
+@test "B timeout with signal"               { run hook 'timeout -s KILL 30 home-manager switch'; denied; }
+@test "B xargs -n1"                         { run hook 'echo p | xargs -n1 home-manager switch'; denied; }
+@test "B watch"                             { run hook 'watch -n 5 home-manager switch'; denied; }
+@test "B eval"                              { run hook 'eval "home-manager switch"'; denied; }
+@test "B command substitution"              { run hook 'echo "$(home-manager switch)"'; denied; }
+@test "B backticks"                         { run hook 'echo `home-manager switch`'; denied; }
+@test "B process substitution"              { run hook 'diff <(home-manager switch) /dev/null'; denied; }
+@test "B heredoc fed to bash"               { run hook "$(printf "bash <<'EOF'\nhome-manager switch\nEOF")"; denied; }
+@test "B compound after cd"                 { run hook 'cd /tmp && home-manager switch'; denied; }
+@test "B newline-separated"                 { run hook "$(printf 'ls\nhome-manager switch')"; denied; }
+@test "B nested wrappers"                   { run hook "sudo env FOO=1 bash -c 'nix run nixpkgs#home-manager -- switch'"; denied; }
 
 # --- C: spelling variants ---
 @test "C rm -fr in a repo"                  { run hook 'rm -fr build' "$REPO"; asked; }
@@ -93,11 +93,11 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 
 # --- D: Pulumi through the Automation API ---
 @test "D nix run .#grow -- stack up"        { run hook 'nix run .#grow -- dev up'; denied; }
-@test "D rke2lab-grow stack up"             { run hook 'rke2lab-grow dev up --target x'; denied; }
+@test "ok lab: D rke2lab-grow stack up"             { run hook 'rke2lab-grow dev up --target x'; allowed; }
 @test "D grow preview stays allowed"        { run hook 'nix run "git+file:///tmp/w?rev=0123abcd#grow" -- dev preview'; allowed; }
 @test "D grow default (preview) allowed"    { run hook 'nix run "git+file:///tmp/w?rev=0123abcd#grow" -- dev'; allowed; }
-@test "D java seed-outcluster Main → ask"   { run hook 'java -cp app.jar io.seedmatic.rke2lab.controlplane.Main seed'; asked; }
-@test "D mvnw exec:java seed-outcluster → ask" { run hook 'flox activate -- ./mvnw -pl :seed-outcluster -am exec:java'; asked; }
+@test "ok lab: D java seed-outcluster Main → ask"   { run hook 'java -cp app.jar io.seedmatic.rke2lab.controlplane.Main seed'; allowed; }
+@test "ok lab: D mvnw exec:java seed-outcluster → ask" { run hook 'flox activate -- ./mvnw -pl :seed-outcluster -am exec:java'; allowed; }
 # Known limits, asserted so that a change in behaviour is noticed — a textual hook cannot see these:
 @test "D LIMIT script file content"         { run hook './scripts/deploy.sh'; allowed; }
 @test "D LIMIT make target"                 { run hook 'make up'; allowed; }
@@ -109,7 +109,6 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "ok kubectl get"                      { run hook 'kubectl -n x get pods -o wide'; allowed; }
 @test "ok kubectl get a pod named delete-me" { run hook 'kubectl get pod delete-me'; allowed; }
 @test "ok kubectl auth can-i delete"        { run hook 'kubectl auth can-i delete pods'; allowed; }
-@test "ok kubectl --dry-run is still apply" { run hook 'kubectl apply --dry-run=client -f y'; denied; }
 @test "ok helm template with install key"   { run hook 'helm template r ch --set install.crds=true'; allowed; }
 @test "ok pulumi preview"                   { run hook 'pulumi preview --diff'; allowed; }
 @test "ok pulumi stack output upstream"     { run hook 'pulumi stack output upstream-url'; allowed; }
@@ -153,19 +152,19 @@ asked()   { [ "$status" -eq 0 ] && [[ "$output" == *'"permissionDecision": "ask"
 @test "heredoc in \$(cat) for -m"           { run hook "$(printf "git commit -m \"\$(cat <<'EOF'\npulumi up is the operator's\nEOF\n)\"")"; allowed; }
 @test "heredoc with prose apostrophes"      { run hook "$(printf "cat > /tmp/n.md <<EOF\nit's the operator's call, don't\nEOF")"; allowed; }
 @test "heredoc piped into bash"             { run hook "$(printf "cat <<'EOF' | bash\nkubectl apply -f y\nEOF")"; denied; }
-@test "heredoc into sudo"                   { run hook "$(printf "sudo tee /etc/x <<'EOF'\nkubectl delete pod y\nEOF")"; denied; }
-@test "heredoc unquoted runs \$()"          { run hook "$(printf "cat <<EOF\n\$(kubectl delete pod y)\nEOF")"; denied; }
+@test "heredoc into sudo"                   { run hook "$(printf "sudo tee /etc/x <<'EOF'\nhome-manager switch\nEOF")"; denied; }
+@test "heredoc unquoted runs \$()"          { run hook "$(printf "cat <<EOF\n\$(home-manager switch)\nEOF")"; denied; }
 @test "heredoc quoted keeps \$() literal"   { run hook "$(printf "cat <<'EOF'\n\$(kubectl delete pod y)\nEOF")"; allowed; }
-@test "heredoc then a real command"         { run hook "$(printf "cat > /tmp/x <<'EOF'\nhello\nEOF\nkubectl delete pod y")"; denied; }
+@test "heredoc then a real command"         { run hook "$(printf "cat > /tmp/x <<'EOF'\nhello\nEOF\nhome-manager switch")"; denied; }
 
 # --- parse robustness: real commands of 2026-10-07 that a fail-closed parser refused ---
 @test "parse paren inside quotes in \$()"   { run hook "echo \"calls: \$(git grep -c 'packageAnnotations(' -- '*.java' | wc -l)\""; allowed; }
 @test "parse apostrophe in a comment"       { run hook "$(printf "for d in a b; do\n  # it is fleet's, counted there\n  echo \$d\ndone")"; allowed; }
 @test "parse two heredocs on one line"      { run hook "$(printf "git commit -F - <<'EOF' && git commit -F - <<'EOF2'\nthe operator's call\nEOF\nit's done\nEOF2")"; allowed; }
 @test "parse ANSI-C \$'' string"             { run hook "C=\$'it\\'s a\\nline'; echo \"\$C\""; allowed; }
-@test "parse still sees a verb after two heredocs" { run hook "$(printf "cat <<'A' && cat <<'B'\nx\nA\ny\nB\nkubectl delete pod z")"; denied; }
-@test "parse comment does not hide the next line" { run hook "$(printf "# kubectl delete here is prose\nkubectl delete pod z")"; denied; }
-@test "parse ANSI-C string still analysed"  { run hook "bash -c \$'kubectl delete pod z'"; denied; }
+@test "parse still sees a verb after two heredocs" { run hook "$(printf "cat <<'A' && cat <<'B'\nx\nA\ny\nB\nhome-manager switch")"; denied; }
+@test "parse comment does not hide the next line" { run hook "$(printf "# kubectl delete here is prose\nhome-manager switch")"; denied; }
+@test "parse ANSI-C string still analysed"  { run hook "bash -c \$'home-manager switch'"; denied; }
 
 # --- the operator's keyring material (verbs.json list_path_rules): the managed Read()/Edit() rules govern the
 #     file tools only, so the hook refuses a Bash command reaching it. A first line: a path built at run time escapes.
@@ -243,12 +242,12 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "gpg: --dearmor stays free"               { run hook 'gpg --dearmor < /tmp/k.asc > /tmp/k.gpg'; allowed; }
 
 # --- security's additions (2026-10-16): publishing, keychain, guards, public history, keys ---
-@test "pub: cachix push"                        { run hook 'cachix push seedmatic ./result'; denied; }
-@test "pub: cachix -c before watch-store"       { run hook 'cachix -c /tmp/c.dhall watch-store seedmatic'; denied; }
-@test "pub: attic push"                         { run hook 'attic push cluster ./result'; denied; }
+@test "ok lab: pub: cachix push"                        { run hook 'cachix push seedmatic ./result'; allowed; }
+@test "ok lab: pub: cachix -c before watch-store"       { run hook 'cachix -c /tmp/c.dhall watch-store seedmatic'; allowed; }
+@test "ok lab: pub: attic push"                         { run hook 'attic push cluster ./result'; allowed; }
 @test "pub: nix copy --to"                      { run hook 'nix copy --to s3://cache ./result'; denied; }
 @test "pub: nix copy --to=…"                    { run hook 'nix copy --to=https://cache.example ./result'; denied; }
-@test "pub: cachix push through flox"           { run hook 'flox activate -- cachix push seedmatic ./result'; denied; }
+@test "ok lab: pub: cachix push through flox"           { run hook 'flox activate -- cachix push seedmatic ./result'; allowed; }
 @test "pub: nix copy --to file://"              { run hook 'nix copy --to file:///tmp/cache ./result'; denied; }
 @test "pub: nix copy --to a bare path"          { run hook 'nix copy --to /tmp/cache ./result'; denied; }
 @test "pub: nix copy -L --to http:// via flox"  { run hook 'flox activate -- nix copy -L --to http://cache:8080 ./result'; denied; }
@@ -282,12 +281,12 @@ REPLICA=/Volumes/git-worktree-store/nxmatic/claude-home.d/pass/seedmatic
 @test "guard: env GIT_CONFIG_GLOBAL before am"  { run hook 'env GIT_CONFIG_GLOBAL=/dev/null git am x.patch'; denied; }
 @test "ok GIT_CONFIG_GLOBAL before git log"     { run hook 'GIT_CONFIG_GLOBAL=/dev/null git log -1'; allowed; }
 @test "ok git -c user.name commit"              { run hook 'git -c user.name=x commit -m y'; allowed; }
-@test "history: push --force develop"           { run hook 'git push --force origin develop'; denied; }
+@test "ok lab: history: push --force develop"           { run hook 'git push --force origin develop'; allowed; }
 @test "history: push -f main"                   { run hook 'git push -f origin main'; denied; }
-@test "history: push +develop"                  { run hook 'git push origin +develop'; denied; }
+@test "ok lab: history: push +develop"                  { run hook 'git push origin +develop'; allowed; }
 @test "history: push lease to refs/heads/main"  { run hook 'git push --force-with-lease origin HEAD:refs/heads/main'; denied; }
 @test "history: forced push, no refspec"        { run hook 'git push --force'; denied; }
-@test "history: delete remote develop"          { run hook 'git push origin --delete develop'; denied; }
+@test "ok lab: history: delete remote develop"          { run hook 'git push origin --delete develop'; allowed; }
 @test "history: delete via :main"               { run hook 'git push origin :main'; denied; }
 @test "ok forced push of a feature branch"      { run hook 'git push --force-with-lease origin feature/x'; allowed; }
 @test "ok push develop"                         { run hook 'git push origin develop'; allowed; }
@@ -423,19 +422,19 @@ mkstate() {
 @test "ok a glob that misses the state"            { mkstate; HOME="$BATS_TEST_TMPDIR/home" run hook "cat $W/src/*"; allowed; }
 
 # --- launchers: the command a launcher runs elsewhere is judged like an ssh remote command ---
-@test "launcher: tart exec of a mutating incus"       { run hook 'tart exec -i nikopol-nixos incus delete c1'; denied; }
-@test "launcher: tart exec of a shell of kubectl"     { run hook 'tart exec vm sh -c "kubectl delete ns x"'; denied; }
-@test "launcher: kubectl exec of a mutating helm"    { run hook 'kubectl exec -n x pod -- helm uninstall x'; denied; }
+@test "launcher: tart exec of an activation"       { run hook 'tart exec -i nikopol-nixos home-manager switch'; denied; }
+@test "launcher: tart exec of an activation, through tart 2"     { run hook 'tart exec vm sh -c "home-manager switch"'; denied; }
+@test "launcher: kubectl exec of an activation"    { run hook 'kubectl exec -n x pod -- home-manager switch'; denied; }
 @test "launcher: kubectl exec without -- keeps its flags" { run hook 'kubectl exec pod rm -rf /Users/tester/.claude'; asked; }
-@test "launcher: docker exec of a mutating helm"      { run hook 'docker exec -it -u root c1 helm uninstall x'; denied; }
-@test "launcher: podman exec of a mutating pulumi"    { run hook 'podman exec c1 pulumi up --yes'; denied; }
+@test "launcher: docker exec of an activation"      { run hook 'docker exec -it -u root c1 home-manager switch'; denied; }
+@test "launcher: podman exec of an activation"    { run hook 'podman exec c1 home-manager switch'; denied; }
 @test "launcher: chroot of a protected read"          { run hook 'chroot /mnt cat /Users/tester/.ssh/id_ed25519'; denied; }
-@test "launcher: nsenter of a mutating kubectl"      { run hook 'nsenter -t 1 -m -- kubectl delete ns x'; denied; }
-@test "launcher: systemd-run of a mutating kubectl"   { run hook 'systemd-run --user -p X=1 kubectl apply -f m.yaml'; denied; }
-@test "launcher: machinectl shell of a mutating incus" { run hook 'machinectl shell root@c1 /run/current-system/sw/bin/incus delete c1'; denied; }
-@test "launcher: incus exec stays a gated verb"       { run hook 'incus exec c1 -- ls'; denied; }
-@test "launcher: chroot with no command is refused, as any chroot"   { run hook 'chroot /mnt'; denied; }
-@test "launcher: machinectl shell with no command is refused"        { run hook 'machinectl shell c1'; denied; }
+@test "launcher: nsenter of an activation"      { run hook 'nsenter -t 1 -m -- home-manager switch'; denied; }
+@test "launcher: systemd-run of an activation"   { run hook 'systemd-run --user -p X=1 home-manager switch'; denied; }
+@test "launcher: machinectl shell of an activation" { run hook 'machinectl shell root@c1 /run/current-system/sw/bin/home-manager switch'; denied; }
+@test "ok lab: launcher: incus exec stays a gated verb"       { run hook 'incus exec c1 -- ls'; allowed; }
+@test "ok lab: chroot with no command"   { run hook 'chroot /mnt'; allowed; }
+@test "ok lab: machinectl shell with no command"        { run hook 'machinectl shell c1'; allowed; }
 @test "ok launcher: tart exec of a read-only incus"   { run hook 'tart exec incus-probe incus list'; allowed; }
 @test "ok launcher: kubectl exec of a listing"        { run hook 'kubectl exec -n x pod -- ls /'; allowed; }
 @test "ok launcher: docker exec of a listing"         { run hook 'docker exec c1 ls /'; allowed; }
@@ -445,8 +444,8 @@ mkstate() {
   run hook 'find /tmp -name x -exec sh -c "cat /Users/tester/.ssh/id_ed25519" \;'
   denied
 }
-@test "find: -exec sh of a mutating kubectl" {
-  run hook 'find /tmp/work -name m.yaml -exec sh -c "kubectl apply -f m.yaml" \;'
+@test "find: -exec sh of an activation" {
+  run hook 'find /tmp/work -name m.yaml -exec sh -c "home-manager switch" \;'
   denied
 }
 @test "ok find: -exec of a reader on a scratch tree" {
@@ -477,7 +476,7 @@ mkstate() {
 @test "git env reset: exec -cl"                  { run hook 'exec -cl git show HEAD'; denied; }
 @test "git env reset: script then env -i"        { run hook 'script -q /dev/null env -i git diff HEAD~1'; denied; }
 @test "git env reset: script -c of env -i"       { run hook "script -q -c 'env -i git show HEAD' /dev/null"; denied; }
-@test "launcher: script of a mutating kubectl"   { run hook 'script -q /dev/null kubectl delete ns x'; denied; }
+@test "launcher: script of an activation"   { run hook 'script -q /dev/null home-manager switch'; denied; }
 @test "git env reset: unbuffer then env -i"      { run hook 'unbuffer env -i git diff HEAD~1'; denied; }
 @test "git env reset: stdbuf then env -i"        { run hook 'stdbuf -o0 env -i git diff HEAD~1'; denied; }
 @test "ok exec -a of a plain git"                { run hook 'exec -a x git diff HEAD~1'; allowed; }
@@ -518,7 +517,6 @@ mkstate() {
 @test "ok relay: request target in /v1"        { run hook 'curl --request-target /v1/models http://nixos.nikopol:4001'; allowed; }
 @test "ok relay: the /v1 API"                  { run hook 'curl -s http://nixos.nikopol:4001/v1/models'; allowed; }
 @test "ok relay: the base url in a grep"       { run hook 'git grep -n nixos.nikopol:4001 -- modules'; allowed; }
-@test "seed run: the ask keeps its own reason" { run hook 'mvn exec:java -pl :seed-outcluster'; [[ "$output" == *"live/preview mode"* ]]; }
 
 # --- VS Code's state stores: the Flox extension froze whole environments there, tokens included ---
 @test "vscode: reading a workspace's state db"   { run hook 'sqlite3 -readonly "/Users/tester/Library/Application Support/Code/User/workspaceStorage/abc123/state.vscdb" .dump'; denied; }
@@ -609,7 +607,6 @@ corpus() {
   [[ -z "$bad" ]] || { printf '%s' "$bad"; false; }
 }
 @test "activation: every corpus case gets its verdict" { corpus activation-cases.tsv; }
-@test "namespaces: every corpus case gets its verdict" { corpus nsenter-cases.tsv; }
 @test "leak: every corpus case gets its verdict" { corpus leak-cases.tsv; }
 @test "redirects: every corpus case gets its verdict" { corpus redirect-cases.tsv; }
 @test "pipes: every corpus case gets its verdict" { corpus pipe-cases.tsv; }
@@ -617,6 +614,7 @@ corpus() {
 @test "kubectl config: every corpus case gets its verdict" { corpus kubecfg-cases.tsv; }
 @test "process environment: every corpus case gets its verdict" { corpus procenv-cases.tsv; }
 @test "redirect-only stages: every corpus case gets its verdict" { corpus redirect-only-cases.tsv; }
+@test "lab gestures: every corpus case gets its verdict" { corpus lab-gestures-cases.tsv; }
 # Its ALLOW cases resolve to /tmp/x/m and to a /tmp/*.nix that exist, so a glob that matches is what is tested.
 @test "variable paths: every corpus case gets its verdict" {
   mkdir -p /tmp/x/m && : >/tmp/a.nix
