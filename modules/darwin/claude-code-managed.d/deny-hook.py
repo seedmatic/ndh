@@ -1645,6 +1645,9 @@ class Analyzer:
         if prog == "ndh-ops" and args[:1] == ["arm"]:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
+        if prog == "ndh-ops" and args[:1] == ["grow"]:
+            self.deny("ndh-ops grow is the operator's: it reads the cluster identity from pass and runs pulumi", argv)
+            return
         if prog in ("cd", "pushd", "popd"):
             # The simple commands come in order, so a chain of cd is followed: `cd …/keyhole.d && cd keyring`.
             # A target the hook cannot resolve (a variable, a substitution, `cd -`, popd's stack) loses the cwd: a
