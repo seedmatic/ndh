@@ -36,10 +36,13 @@ in
       ''
         python3 -I ${src}/gen-managed-settings.py list.json
         python3 -I ${src}/tests/check-list.py list.json
-        # A hook that crashes lets the call through, so the interpreter is the store's, never PATH's.
+        # A hook that crashes lets the call through, so the interpreter is the store's, never PATH's. A hook that
+        # times out (seconds) lets it through too, unless onFailure blocks: measured on Claude Code 2.1.308, which
+        # needs 2.1.295 or later and a synchronous hook (2026-10-27).
         HOOK="${python}/bin/python3 -I ${hookDir}/deny-hook.py" yq -p=json -o=json -e '
-          . + {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": strenv(HOOK), "timeout": 10}]}]}}
+          . + {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": strenv(HOOK), "timeout": 10, "onFailure": "block"}]}]}}
         ' list.json > $out
+        python3 -I ${src}/tests/check-hook-entry.py $out
       '';
 
   tests =
