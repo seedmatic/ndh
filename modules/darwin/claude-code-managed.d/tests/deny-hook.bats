@@ -560,7 +560,32 @@ quick() {
   [[ "$output" == *"took over 1 s"* ]]
 }
 
+# A bare with a registered worktree holding .local.d, and a copy of the hook whose verbs.json scans that bare and
+# protects that tree: the walk rule judges what exists, and the nix sandbox has no /Volumes. @wt names the tree.
+mkbare() {
+  local t g c
+  # By its resolved path, as git records a worktree: /var/folders is /private/var/folders on darwin.
+  t="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/bare"
+  WT="$t/wt"
+  g="$t/x.git"
+  git init -q --bare "$g"
+  c=$(git --git-dir="$g" -c user.name=t -c user.email=t@t commit-tree -m t "$(git --git-dir="$g" mktree </dev/null)")
+  git --git-dir="$g" update-ref refs/heads/develop "$c"
+  git --git-dir="$g" worktree add -q "$WT/develop" develop
+  mkdir -p "$WT/develop/.local.d" "$WT/develop/src" "$t/hook"
+  echo foo >"$WT/develop/.local.d/run.log"
+  echo foo >"$WT/develop/src/a.txt"
+  cp "$HOOK" "$t/hook/"
+  B="$t" R="Read(/$WT/**/.local.d/**)" yq -o=json '.protected_scan_bares = [strenv(B)]
+    | (.list_path_rules[] | select(.rule | test("/.local.d/")) | .rule) = strenv(R)' \
+    "$BATS_TEST_DIRNAME/../verbs.json" >"$t/hook/verbs.json"
+  HOOK="$t/hook/deny-hook.py"
+}
+@test "bare fixture: a recursive grep over its worktree is refused" { mkbare; run hook "grep -rn foo $WT/develop"; denied; }
+@test "ok bare fixture: a recursive grep over a tree without .local.d" { mkbare; run hook "grep -rn foo $WT/develop/src"; allowed; }
+
 # --- security's refusal corpora: one case per line, want, today, cwd (- for the test's), the command as typed ---
+# cwd @seat: a control on this seat's real tree, run by the installed tables only where /Volumes/git-bare-store exists.
 corpus() {
   local want today cwd cmd bad="" fx="$BATS_TEST_TMPDIR/redirect-fixtures"
   # A writable copy, symlinks kept: big.sh, over the hook's 256 KiB cap, is generated rather than committed.
@@ -568,9 +593,15 @@ corpus() {
   head -c 300000 /dev/zero | tr '\0' '#' >"$fx/big.sh"
   while IFS=$'\t' read -r want today cwd cmd; do
     case "$want" in '' | '#'*) continue ;; esac
-    case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$fx" ;; esac
+    case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$fx" ;; @wt) cwd="$WT/develop" ;; esac
     cmd="${cmd//@fixtures/$fx}"
-    run hook "$cmd" "$cwd"
+    cmd="${cmd//@wt/$WT}"
+    if [ "$cwd" = @seat ]; then
+      [ -d /Volumes/git-bare-store ] || continue
+      HOOK="$BATS_TEST_DIRNAME/../deny-hook.py" run hook "$cmd"
+    else
+      run hook "$cmd" "$cwd"
+    fi
     [ "$status" -ne 124 ] || { bad+="  no answer within 5 s: $cmd"$'\n'; continue; }
     if [ "$want" = DENY ]; then [ "$status" -eq 2 ] || bad+="  want DENY, got status=$status: $cmd"$'\n'
     else [ "$status" -eq 0 ] && [ -z "$output" ] || bad+="  want ALLOW, got status=$status $output: $cmd"$'\n'; fi
@@ -586,6 +617,12 @@ corpus() {
 @test "kubectl config: every corpus case gets its verdict" { corpus kubecfg-cases.tsv; }
 @test "process environment: every corpus case gets its verdict" { corpus procenv-cases.tsv; }
 @test "redirect-only stages: every corpus case gets its verdict" { corpus redirect-only-cases.tsv; }
+# Its ALLOW cases resolve to /tmp/x/m and to a /tmp/*.nix that exist, so a glob that matches is what is tested.
+@test "variable paths: every corpus case gets its verdict" {
+  mkdir -p /tmp/x/m && : >/tmp/a.nix
+  mkbare
+  corpus varpath-cases.tsv
+}
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.

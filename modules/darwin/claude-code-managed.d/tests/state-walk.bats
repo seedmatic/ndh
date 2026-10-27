@@ -43,7 +43,8 @@ allowed() { [ "$status" -eq 0 ] && [ -z "$output" ] || { echo "expected allow, g
   denied
 }
 @test "walk: an unresolvable root is refused" { run hook 'grep -r token $d'; denied; }
-@test "ok plain rg skips hidden and ignored"  { run hook "rg token $W"; allowed; }
+# Plain rg skips hidden names only by default: a config file (RIPGREP_CONFIG_PATH) can add --hidden unseen.
+@test "walk: plain rg"                        { run hook "rg token $W"; denied; }
 @test "ok grep -r below the state's level"    { run hook "grep -r token $W/src"; allowed; }
 @test "ok grep without -r at the root"        { run hook "grep token $W/README"; allowed; }
 @test "ok cp without -r"                      { run hook "cp $W/README /tmp/r"; allowed; }
