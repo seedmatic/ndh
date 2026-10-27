@@ -50,6 +50,7 @@ in
       {
         nativeBuildInputs = [
           pkgs.bats
+          pkgs.git
           pkgs.yq-go
           python
         ];
