@@ -3157,6 +3157,9 @@
                 [ "$fail" = 0 ] && touch "$out"
               '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
+          viewer-kubeconfig-bats = import ./modules/.common.d/viewer-kubeconfig.d/tests/package.nix {
+            inherit pkgs;
+          };
           # No bats test of the repository carries a line that checks nothing mid-test.
           bats-weak-lines = import ./modules/.common.d/bats-lint.d/package.nix {
             inherit pkgs;

@@ -62,6 +62,12 @@ in
       };
       description = "ssh-keys-certify, built for this seat: one of ndh-ops's tools, and the flake's app.";
     };
+    viewerKubeconfig = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      default = import ../.common.d/viewer-kubeconfig.d/package.nix { inherit pkgs; };
+      description = "viewer-kubeconfig: the sessions' read-only kubeconfig, collected from the operator's; one of ndh-ops's tools.";
+    };
     # The armed delegation's runner, installed by the switch: its tools are this seat's own packages, by store path.
     ndhOps = lib.mkOption {
       type = lib.types.package;
@@ -75,6 +81,7 @@ in
           ndh-keyring = "${config.ndh.keyring.package}/bin/ndh-keyring";
           keys-reconcile = "${cfg.keysReconcile}/bin/keys-reconcile";
           fleet-switch = "${cfg.fleetSwitch}/bin/fleet-switch";
+          viewer-kubeconfig = "${cfg.viewerKubeconfig}/bin/viewer-kubeconfig";
         };
       };
       description = "ndh-ops, on this seat's PATH: runs one of the operator's tools on the delegation they armed.";
