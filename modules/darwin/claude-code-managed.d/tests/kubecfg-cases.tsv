@@ -1,0 +1,9 @@
+# kubectl config view --raw (or --flatten) prints the loaded kubeconfig's client key, token and certificate data into
+# the transcript (🛡️, 2026-10-26). Sessions inherit a KUBECONFIG that can point at the operator's admin kubeconfig.
+# Plain `config view` redacts them, so it stays allowed. Columns, tab-separated: want, today (develop 4f5d7ba5,
+# measured), cwd (- for /tmp/work), cmd.
+DENY	ALLOW	-	kubectl config view --raw
+DENY	ALLOW	-	kubectl config view --raw --minify
+DENY	ALLOW	-	kubectl config view --flatten
+ALLOW	ALLOW	-	kubectl config view
+ALLOW	ALLOW	-	kubectl config get-contexts
