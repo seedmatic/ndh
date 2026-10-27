@@ -127,3 +127,71 @@ ops() { bash "$T/ndh-ops" "$@"; }
   [ "$status" -eq 3 ]
   [[ "$output" == *"arm: fleet-switch-seat is not one of"* ]]
 }
+
+# ndh-ops grow (the operator's one door, 2026-10-26): rke2lab's grow by revision, from the stack home, with the
+# cluster's age identity read HERE from pass, handed in RKE2LAB_CLUSTER_AGE, in the operator's own invocation, never printed, never armed.
+grow_setup() {
+  mkdir -p "$T/home-stack" "$T/pass"
+  printf 'name: rke2lab\n' >"$T/home-stack/Pulumi.yaml"
+  : "pass: prints a fake identity for its one entry; nix: records argv, cwd, and the identity's length in its env"
+  cat >"$T/bin/pass" <<STUB
+#!$BASH
+printf '%s\n' "pass \$*" >>"$T/calls"
+[ "\$1 \$2" = "show seedmatic/cluster-age/1" ] || exit 1
+echo AGE-SECRET-KEY-1FAKEFAKEFAKE
+STUB
+  cat >"$T/bin/nix" <<STUB
+#!$BASH
+printf '%s\n' "nix \$* (cwd \$PWD)" >>"$T/calls"
+printf 'env %s\n' "\${#RKE2LAB_CLUSTER_AGE}" >>"$T/calls"
+case "\$*" in *AGE-SECRET-KEY*) echo "argv carries the identity" >>"$T/calls" ;; esac
+exit \${STUB_EXIT:-0}
+STUB
+  chmod +x "$T/bin/pass" "$T/bin/nix"
+  sed -i "1a grow_home=$T/home-stack grow_flake=github:seedmatic/rke2lab/develop cluster_age_version=1 PATH=$T/bin:\$PATH" "$T/ndh-ops"
+}
+
+@test "grow: rke2lab's grow by revision, from the stack home, the identity in its environment, never printed" {
+  grow_setup
+  run ops grow dev up
+  [ "$status" -eq 0 ]
+  grep -qx "pass show seedmatic/cluster-age/1" "$T/calls"
+  grep -qx "nix --refresh run github:seedmatic/rke2lab/develop""#grow -- dev up (cwd $T/home-stack)" "$T/calls"
+  : "the environment carried the identity (its length only), never argv, and nothing printed it"
+  grep -qx "env 28" "$T/calls"
+  run grep -c "argv carries the identity" "$T/calls"
+  [ "$output" = 0 ]
+  [[ $output != *"AGE-SECRET-KEY"* ]]
+  run grep -c 'AGE-SECRET-KEY' "$T/state/ndh-ops/log"
+  [ "$output" = 0 ]
+}
+@test "grow: needs no arming (the operator's own invocation), and is logged" {
+  grow_setup
+  run ops grow dev up
+  [ "$status" -eq 0 ]
+  grep -q "grow: dev up" "$T/state/ndh-ops/log"
+}
+@test "grow: only preview or up, a stack name only, nothing passed through" {
+  grow_setup
+  run ops grow dev destroy
+  [ "$status" -eq 2 ]
+  run ops grow '../x' up
+  [ "$status" -eq 2 ]
+  run ops grow dev up --target x
+  [ "$status" -eq 2 ]
+  : "refused before pass and nix: nothing was called at all"
+  [ ! -e "$T/calls" ]
+}
+@test "grow: an identity pass cannot show refuses, and nix never runs" {
+  grow_setup
+  sed -i 's#seedmatic/cluster-age/1"#seedmatic/cluster-age/9"#' "$T/bin/pass"
+  run ops grow dev up
+  [ "$status" -ne 0 ]
+  run grep -c '^nix ' "$T/calls"
+  [ "$output" = 0 ]
+}
+@test "grow: its exit status is the grow's" {
+  grow_setup
+  STUB_EXIT=7 run ops grow dev up
+  [ "$status" -eq 7 ]
+}

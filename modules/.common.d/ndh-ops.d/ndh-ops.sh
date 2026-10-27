@@ -2,6 +2,8 @@
 #   ndh-ops arm --hours N --tools a,b   the operator only (the sessions are refused it); writes the delegation as root
 #   ndh-ops status | disarm             anyone: neither grants anything
 #   ndh-ops <tool> [args…]              refused unless an unexpired delegation names <tool>
+#   ndh-ops grow <stack> preview|up     the operator's grow: rke2lab's own, by revision (published develop), run from
+#                                       the one stack home, the cluster's age identity read here from pass
 # The tools are the store paths fixed at build time (tools[]), never a PATH lookup, and every attempt is logged.
 # An arming item (items[]) is a permission a tool checks itself in the delegation: arm writes it, nobody runs it.
 set -euo pipefail
@@ -84,8 +86,27 @@ armed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       echo "not armed"
     fi
     ;;
+  grow)
+    : "the operator's own invocation, like arm: it reads pass in their shell, and nothing is armed for it"
+    (($# == 3)) || { echo "usage: ndh-ops grow <stack> preview|up" >&2; exit 2; }
+    stack=$2 action=$3
+    [[ $stack =~ ^[a-z][a-z0-9-]*$ ]] || { echo "ndh-ops grow: '$stack' is not a stack name" >&2; exit 2; }
+    [[ $action == preview || $action == up ]] || { echo "ndh-ops grow: '$action' is not preview or up" >&2; exit 2; }
+    [[ -f $grow_home/Pulumi.yaml ]] || refuse "grow: $grow_home is not the stack home (no Pulumi.yaml)"
+    entry="seedmatic/cluster-age/$cluster_age_version"
+    : "read once, before nix runs: a pass that cannot show it stops here, and the identity is never printed"
+    identity=$(pass show "$entry") || refuse "grow: pass cannot show $entry"
+    log "grow: $stack $action (from $grow_home, $grow_flake)"
+    status=0
+    : "the identity reaches the grow in its environment (RKE2LAB_CLUSTER_AGE), by a prefix assignment: never in argv"
+    (cd "$grow_home" && RKE2LAB_CLUSTER_AGE="$identity" nix --refresh run "${grow_flake}#grow" -- "$stack" "$action") ||
+      status=$?
+    unset identity
+    log "grow done: $stack $action exit $status"
+    exit "$status"
+    ;;
   "" | -h | --help)
-    echo "usage: ndh-ops arm --hours N --tools a,b | status | disarm | <tool> [args…]   (tools: ${!tools[*]})" >&2
+    echo "usage: ndh-ops arm --hours N --tools a,b | status | disarm | grow <stack> preview|up | <tool> [args…]   (tools: ${!tools[*]})" >&2
     exit 2
     ;;
   *)

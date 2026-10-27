@@ -1,6 +1,14 @@
 # ndh-ops (see ndh-ops.sh). tools: an attrset name → executable store path, one per entry of verbs.json's
 # operator_tools but those never delegated; the flake builds it from the same packages as the tools' own apps.
-{ pkgs, tools }:
+{
+  pkgs,
+  tools,
+  # The grow's one stack home: the operator's rke2lab checkout that holds the Pulumi state (owned-dirs.yaml), whose
+  # files ndh-ops never reads; it only runs rke2lab's grow from there, by revision.
+  growHome ? "/Volumes/git-worktree-store/seedmatic/rke2lab.d/operator/develop",
+  # rke2lab-cluster-age-<n> (rke2lab .sops.yaml): the version the fleet's cluster files are encrypted to.
+  clusterAgeVersion ? 1,
+}:
 let
   inherit (pkgs) lib;
   inherit (import ./paths.nix) dir armingItems;
@@ -20,11 +28,16 @@ pkgs.writeShellApplication {
   runtimeInputs = with pkgs; [
     coreutils
     gnused
+    nix
+    pass
   ];
   text = ''
     dir=${lib.escapeShellArg dir}
     sudo=/usr/bin/sudo
     max_hours=72
+    grow_home=${lib.escapeShellArg growHome}
+    grow_flake=github:seedmatic/rke2lab/develop
+    cluster_age_version=${toString clusterAgeVersion}
     items=(${lib.escapeShellArgs armingItems})
     declare -A tools=(${
       lib.concatStrings (lib.mapAttrsToList (n: p: "[${n}]=${lib.escapeShellArg p} ") tools)
