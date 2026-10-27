@@ -336,6 +336,7 @@ def extract_substitutions(text):
 
 
 def simple_commands(text):
+    """The simple commands of TEXT, each as (the separator before it, None for the first; its words)."""
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     # shlex reads `#` as a comment anywhere, which would turn `nix run .#grow -- dev up` into
@@ -345,15 +346,18 @@ def simple_commands(text):
         tokens = list(lexer)
     except ValueError as exc:
         raise Refused(f"unparseable command: {exc}") from exc
-    commands, current, skip_next = [], [], False
+    commands, current, skip_next, before = [], [], False, None
     for tok in tokens:
         if skip_next:
             skip_next = False
             continue
         if tok in SEPARATORS:
             if current:
-                commands.append(current)
+                commands.append((before, current))
+                before = None
             current = []
+            # Two separators in a row, `a; (b)`: the last is the one b follows.
+            before = tok
             continue
         if REDIRECTS.match(tok):
             skip_next = True
@@ -362,7 +366,7 @@ def simple_commands(text):
             continue
         current.append(tok)
     if current:
-        commands.append(current)
+        commands.append((before, current))
     return commands
 
 
@@ -531,6 +535,7 @@ class Analyzer:
         self.protected = protected_paths(table, home)
         self.protected_globs = protected_globs(table, home)
         self._existing = None
+        self.vars, self.vars_closed, self.depth = {}, False, 0
         self.verdicts = []
         self.git_env_reset = False
         self.git_env_tainted = False
@@ -553,10 +558,18 @@ class Analyzer:
         bodies = bodies + texts + [self.read_redirected(f, outer) for f in files]
         # A substitution runs a command of its own: never beside an owned removal.
         self.other_commands += len(bodies)
-        for body in bodies:
-            self.analyze(body, depth + 1)
-        for argv in simple_commands(outer):
-            self.unwrap(argv, depth)
+        # A nested shell (bash -c, ssh, a substitution) does not see the call's unexported variables.
+        outer_depth, self.depth = self.depth, depth
+        try:
+            for body in bodies:
+                self.analyze(body, depth + 1)
+            commands = simple_commands(outer)
+            for k, (before, argv) in enumerate(commands):
+                if depth == 0:
+                    self.note_variables(argv, before, commands[k + 1][0] if k + 1 < len(commands) else None)
+                self.unwrap(argv, depth)
+        finally:
+            self.depth = outer_depth
 
     def read_redirected(self, target, text):
         """The text of a file redirected into a shell, to analyse as code; refused when the hook cannot read it whole
@@ -1158,6 +1171,40 @@ class Analyzer:
             self.cwd, self.cwd_lost = "", True
         return moved
 
+    def note_variables(self, argv, before, after):
+        """The literal values the call's own shell gives its variables, for a tree walk's root. An assignment is
+        believed only as a command of its own, run unconditionally in the call's top-level list (nothing conditional,
+        piped, backgrounded or looped before it), with a literal path for value; any other mention of the name
+        forgets it, and eval or source forgets them all."""
+        if (before in ("||", "|", "|&", "&", "(", ")", ";;") or self.order_unknown
+                or any(w in KEYWORDS for w in argv)):
+            self.vars_closed = True
+        if (all(ASSIGNMENT.match(w) for w in argv) and not self.vars_closed and before in (None, ";")
+                and after in (None, ";", "&&")):
+            for w in argv:
+                name, value = w.split("=", 1)
+                value = self.expand_vars(value)
+                if value.startswith("~") and not self.home_tainted:
+                    value = re.sub(r"^~(?=/|$)", self.home, value)
+                if name in ("HOME", "CDPATH") or re.search(r"[$`*?\[\]{}~\s]", value) or "__subst__" in value:
+                    self.vars.pop(name, None)
+                else:
+                    self.vars[name] = value
+            return
+        if argv and os.path.basename(argv[0]) in ("eval", "source", "."):
+            self.vars.clear()
+            return
+        for w in argv:
+            self.vars.pop(w.split("=", 1)[0], None)
+
+    def expand_vars(self, tok):
+        """TOK with the variables note_variables knows replaced by their values; the others are left for resolve to
+        refuse. Inside a nested shell, none is known."""
+        if self.depth:
+            return tok
+        return re.sub(r"\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))",
+                      lambda m: self.vars.get(m.group(1) or m.group(2), m.group(0)), tok)
+
     def note_env(self, tok):
         """An assignment (or an export/unset name) that changes how cd moves: HOME is what ~, $HOME and a bare cd
         expand to, and CDPATH sends a relative cd elsewhere. Once either is touched, the hook no longer trusts them."""
@@ -1283,9 +1330,10 @@ class Analyzer:
             pattern_given = any(f in ("-e", "-f") or f.startswith(("--regexp", "--file")) for f in flags)
             return (pos if pattern_given else pos[1:]) or ["."]
         if prog == "rg":
-            if not ("u" in short or any(f.startswith(("--no-ignore", "--hidden")) for f in flags)):
-                return []
-            return pos[1:] or ["."]
+            # rg walks a directory with no flag at all: -u and --hidden only widen what it skips, and an ignore file
+            # or its config can widen that too.
+            pattern_given = any(f in ("-e", "-f") or f.startswith(("--regexp", "--file")) for f in flags)
+            return (pos if pattern_given else pos[1:]) or ["."]
         if prog == "cp":
             return pos[:-1] if ("r" in short or "R" in short or "a" in short or "--recursive" in flags) else []
         if prog in ("scp", "zip"):
@@ -1293,8 +1341,24 @@ class Analyzer:
         if prog in ("rsync", "ditto"):
             return pos[:-1]
         if prog == "tar":
-            mode = (args[0] if args and not args[0].startswith("-") else "") + short
-            return [a for a in pos if os.path.isdir(self.resolve(a) or "")] if "c" in mode else []
+            old = bool(args) and not args[0].startswith("-")
+            if "c" not in (args[0] if old else "") + short:
+                return []
+            # The archive -f names is written, not walked; every other operand that is a directory is a root, and so
+            # is one the hook cannot resolve (a variable, a glob), for walks_into_protected to judge.
+            roots, i, old_file = [], 1 if old else 0, old and "f" in args[0]
+            while i < len(args):
+                a = args[i]
+                i += 1
+                if a == "--file" or re.fullmatch(r"-[A-Za-z]*f", a):
+                    i += 1
+                elif not a.startswith("-") and old_file:
+                    old_file = False
+                elif not a.startswith("-"):
+                    path = self.resolve(a)
+                    if path is None or os.path.isdir(path):
+                        roots.append(a)
+            return roots
         if prog == "find":
             runs = any(a in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(args)
                        and os.path.basename(args[i + 1]) in self.CONTENT_PROGRAMS for i, a in enumerate(args))
@@ -1327,18 +1391,36 @@ class Analyzer:
         return []
 
     def walks_into_protected(self, prog, args):
-        """Why PROG is refused: a recursive walk whose root holds (or is) an existing protected directory."""
-        roots = self.tree_roots(prog, args)
-        if not roots:
-            return None
-        for r in roots:
-            path = self.resolve(r)
-            if path is None:
-                return f"a recursive {prog} from {r}, which the hook cannot resolve; name the absolute path"
-            for d in self.existing_protected_dirs():
-                if d == path or d.startswith(path.rstrip("/") + "/"):
-                    return f"a recursive {prog} from {r} would read {d}"
+        """Why PROG is refused: a recursive walk whose root is, lies in or holds a protected directory. A root held in
+        a variable is read from the call's own literal assignment (note_variables); a glob is expanded against the
+        disk and each match judged, and its pattern against the listed paths, which need not exist here. What the
+        hook cannot resolve is refused."""
+        for r in self.tree_roots(prog, [self.expand_vars(a) for a in args]):
+            if re.search(r"[*?\[]", r) and not re.search(r"[$`{}]", r) and "__subst__" not in r:
+                pattern = self.glob_pattern(r)
+                matches = expand_glob(pattern) if pattern else None
+                # expand_glob stops at 512 names: past that, what it did not list is unknown.
+                if matches is None or len(matches) >= 512:
+                    return f"a recursive {prog} from {r}, which the hook cannot resolve; name the absolute path"
+                segs = pattern.strip("/").split("/")
+                found = next((p for p in self.protected if all(
+                    fnmatch.fnmatchcase(b, "*" if a == "**" else a) for a, b in zip(segs, p.strip("/").split("/")))),
+                    None) or next(filter(None, (self.protected_at_or_below(os.path.normpath(m)) for m in matches)), None)
+            else:
+                path = self.resolve(r)
+                if path is None:
+                    return f"a recursive {prog} from {r}, which the hook cannot resolve; name the absolute path"
+                found = self.protected_at_or_below(path)
+            if found:
+                return f"a recursive {prog} from {r} would read {found}"
         return None
+
+    def protected_at_or_below(self, path):
+        """The protected path PATH is, lies in, or holds: one of the listed paths, or a protected directory on disk."""
+        if self.is_protected(path):
+            return path
+        below = path.rstrip("/") + "/"
+        return next((d for d in self.protected + self.existing_protected_dirs() if d.startswith(below)), None)
 
     def option_hits(self, args, rule):
         """The first forbidden option of ARGS, and whether ARGS name a command. gpg takes any unique prefix
