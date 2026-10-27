@@ -562,6 +562,7 @@ corpus() {
 @test "leak: every corpus case gets its verdict" { corpus leak-cases.tsv; }
 @test "redirects: every corpus case gets its verdict" { corpus redirect-cases.tsv; }
 @test "pipes: every corpus case gets its verdict" { corpus pipe-cases.tsv; }
+@test "ndh-ops grow: every corpus case gets its verdict" { corpus ndh-ops-grow-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
