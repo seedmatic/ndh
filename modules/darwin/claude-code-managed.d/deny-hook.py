@@ -1642,6 +1642,15 @@ class Analyzer:
         if prog in tools.get("programs", []) and args not in tools.get("session_forms", {}).get(prog, []):
             self.deny(f"{prog} {tools['why']}", argv)
             return
+        # kubectl config view --raw (or --flatten) prints the loaded kubeconfig's client key, token and certificates
+        # into the transcript; plain config view redacts them (security, 2026-10-26).
+        if prog == "kubectl":
+            spec = self.table.get("programs", {}).get("kubectl", {})
+            if positionals(args, set(spec.get("value_opts", [])))[:2] == ["config", "view"] and any(
+                    re.fullmatch(r"--(?:raw|flatten)(?:=(?:true|1))?", a) for a in args):
+                self.deny("kubectl config view --raw or --flatten prints the kubeconfig's credentials; use plain "
+                          "kubectl config view, which redacts them", argv)
+                return
         if prog == "ndh-ops" and args[:1] == ["arm"]:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
