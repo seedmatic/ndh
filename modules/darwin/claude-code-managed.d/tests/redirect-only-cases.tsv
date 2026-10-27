@@ -7,8 +7,8 @@ ALLOW	ALLOW	-	</dev/null 2>&1 | yq .
 ALLOW	TIMEOUT	-	> /tmp/x
 ALLOW	ALLOW	-	2>&1 >/dev/null | cat
 # The same shape must not hide what the rest of the line runs.
-DENY	TIMEOUT	-	< /dev/null > /tmp/x | incus exec attic-nikopol -- ls
-DENY	DENY	-	ssh -n nikopol-nixos 'incus exec attic-nikopol -- ls </dev/null 2>&1 | yq .'
+DENY	TIMEOUT	-	< /dev/null > /tmp/x | home-manager switch
+DENY	DENY	-	ssh -n nikopol-nixos 'home-manager switch </dev/null 2>&1 | yq .'
 DENY	DENY	-	</dev/null 2>&1 | bash
 DENY	TIMEOUT	-	< /dev/null | sudo nsenter -t 1 -a sh
-DENY	DENY	-	> /tmp/x 2>&1 | cat; incus shell attic-nikopol
+DENY	DENY	-	> /tmp/x 2>&1 | cat; home-manager switch

@@ -1,1 +1,1 @@
-echo $(incus exec attic-nikopol -- ls)
+echo $(home-manager switch)

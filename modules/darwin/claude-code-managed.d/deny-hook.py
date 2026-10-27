@@ -629,7 +629,6 @@ class Analyzer:
                 self.deny(f"{prog} is trusted only as installed by ndh (the store or the system profile)", argv)
                 return
             self.check_system_switch(prog, rest, argv)
-            self.check_namespace_doors(prog, rest, argv)
             self.check_nix_leak(prog, rest, argv)
             self.check_legacy_nix(prog, rest, argv)
             nxt = self.peel(prog, rest, depth)
@@ -764,7 +763,7 @@ class Analyzer:
             return []
         launched = self.launched(prog, rest)
         if launched is not None:
-            # The launcher's own argv is judged too: `incus exec` stays a gated verb whatever it runs.
+            # The launcher's own argv is judged too, then what it runs.
             self.check([prog] + rest)
             where, inner = launched
             if where == "here":
@@ -772,8 +771,6 @@ class Analyzer:
             if inner:
                 # It runs elsewhere (a VM, a pod, a container, a chroot): judged like an ssh remote command.
                 self.analyze(" ".join(shlex.quote(a) for a in inner), depth + 1)
-            elif where == "shell":
-                self.ask(f"an interactive shell through {prog}, which the hook cannot see into", [prog] + rest)
             return []
         if prog == "ssh":
             i = skip_options(rest, set("-b -c -D -E -e -F -I -i -J -L -l -m -O -o -p -Q -R -S -W -w -B".split()))
@@ -876,8 +873,8 @@ class Analyzer:
 
     def launched(self, prog, rest):
         """A launcher that runs a command elsewhere or as another context: ("away", argv) for a VM, a pod, a container
-        or a chroot; ("here", argv) for a local one (nsenter, systemd-run); ("shell", []) for an interactive shell;
-        None when PROG launches nothing."""
+        or a chroot; ("here", argv) for a local one (nsenter, systemd-run), with an empty argv for an interactive shell; None when
+        PROG launches nothing."""
         def after(i):
             return rest[i:] if i < len(rest) else []
         if prog == "tart" and rest[:1] == ["exec"]:
@@ -906,16 +903,16 @@ class Analyzer:
             return ("away", after(i + 1)) if i < len(rest) else None
         if prog == "chroot":
             i = skip_options(rest, {"--userspec", "--groups"})
-            return (("away", after(i + 1)) if after(i + 1) else ("shell", [])) if i < len(rest) else None
+            return ("away", after(i + 1)) if i < len(rest) else None
         if prog == "incus" and rest[:1] in (["exec"], ["shell"]):
             i = 1 + skip_options(rest[1:], {"--project", "--target", "--env", "--cwd", "--user", "--group", "--mode"})
             if rest[0] == "shell":
-                return ("shell", [])
+                return ("away", [])
             tail = rest[rest.index("--", i) + 1:] if "--" in rest[i:] else after(i + 1)
             return ("away", tail) if i < len(rest) else None
         if prog == "machinectl" and rest[:1] in (["shell"], ["login"]):
             pos = [a for a in rest[1:] if not a.startswith("-")]
-            return ("away", pos[1:]) if len(pos) > 1 else ("shell", [])
+            return ("away", pos[1:])
         if prog == "nsenter":
             return ("here", after(skip_options(rest, {"-t", "--target", "-S", "--setuid", "-G", "--setgid",
                                                        "-w", "--wd", "-r", "--root"})))
@@ -965,22 +962,6 @@ class Analyzer:
                 self.deny(f"points the system profile at another closure, half of a switch; it {self.SYSTEM_SWITCH_WHY}",
                           argv)
 
-    # A second door to `incus exec` and `incus shell`, which are refused outright, read-only commands included: entering
-    # a container's or another process's namespaces opens a root shell there with passwordless sudo, so these are
-    # refused the same way, whatever they launch (security, 2026-10-25). Asking for help or a listing changes nothing.
-    NAMESPACE_DOORS_WHY = ("enters a container's or another process's namespaces, a second door to incus exec, which "
-                           "is refused outright: the operator runs it")
-
-    def check_namespace_doors(self, prog, rest, argv):
-        # Only when the flag IS the whole command: the launched command's own arguments are not the door's.
-        if rest in (["-h"], ["--help"], ["-V"], ["--version"]):
-            return
-        sub = positionals(rest, {"-M", "--machine", "-H", "--host"})[:1]
-        door = (prog in ("nsenter", "lxc-attach", "unshare", "chroot")
-                or (prog == "machinectl" and sub and sub[0] in ("shell", "login"))
-                or (prog == "systemd-run" and any(a in ("-M", "--machine") or a.startswith("--machine=") for a in rest)))
-        if door:
-            self.deny(self.NAMESPACE_DOORS_WHY, argv)
     # The 2026-10-10 leak: the global git sops smudge decrypts the secrets on disk, and an evaluation that names a working
     # tree (`.`, a path, `path:`, a `git+file:` without a revision, or nothing, which means `.`) copies it, plaintext
     # included, into the store, from where a cache publishes it. A revision is read from the object database, where the
@@ -1752,6 +1733,11 @@ class Analyzer:
             return False
         return self.owned_removal("worktrees", argv)
 
+    # kubectl's global options that take a value, so `config view` is found after them.
+    KUBECTL_VALUE = {"-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-s", "--server", "--token",
+                     "--as", "--as-group", "--as-uid", "--request-timeout", "--certificate-authority",
+                     "--client-certificate", "--client-key", "--tls-server-name", "--cache-dir", "-v", "--v"}
+
     def check_rest(self, argv):
         prog, args = argv[0], argv[1:]
         # By its base name, so a store path and `nix run …#<tool>` (unwrapped to the attribute) count too.
@@ -1762,8 +1748,7 @@ class Analyzer:
         # kubectl config view --raw (or --flatten) prints the loaded kubeconfig's client key, token and certificates
         # into the transcript; plain config view redacts them (security, 2026-10-26).
         if prog == "kubectl":
-            spec = self.table.get("programs", {}).get("kubectl", {})
-            if positionals(args, set(spec.get("value_opts", [])))[:2] == ["config", "view"] and any(
+            if positionals(args, self.KUBECTL_VALUE)[:2] == ["config", "view"] and any(
                     re.fullmatch(r"--(?:raw|flatten)(?:=(?:true|1))?", a) for a in args):
                 self.deny("kubectl config view --raw or --flatten prints the kubeconfig's credentials; use plain "
                           "kubectl config view, which redacts them", argv)
@@ -1845,9 +1830,6 @@ class Analyzer:
             pos = positionals(args, set(spec.get("value_opts", [])))
             if any(v in pos[:spec.get("window", 1)] for v in spec["verbs"]):
                 self.deny(f"mutating {prog} verb", argv)
-                return
-            if any(v in pos[:spec.get("nested_window", 0)] for v in spec.get("nested_verbs", [])):
-                self.deny(f"mutating {prog} sub-verb", argv)
                 return
             if any(a == f or a.startswith(f + "=") for a in args for f in spec.get("flag_verbs", [])):
                 self.deny(f"mutating {prog} flag", argv)

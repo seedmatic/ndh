@@ -1,37 +1,5 @@
 {
   "programs": {
-    "kubectl": {
-      "verbs": ["apply", "create", "delete", "patch", "replace"],
-      "window": 2,
-      "value_opts": ["-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user",
-                     "-s", "--server", "--token", "--as", "--as-group", "--as-uid",
-                     "--request-timeout", "--certificate-authority", "--client-certificate",
-                     "--client-key", "--tls-server-name", "--cache-dir", "-v", "--v"]
-    },
-    "helm": {
-      "verbs": ["install", "upgrade", "uninstall", "del", "delete", "un"],
-      "window": 2,
-      "value_opts": ["-n", "--namespace", "--kube-context", "--kubeconfig", "--kube-apiserver",
-                     "--kube-as-user", "--kube-as-group", "--kube-ca-file", "--kube-token",
-                     "--registry-config", "--repository-config", "--repository-cache",
-                     "--burst-limit", "--qps"]
-    },
-    "pulumi": {
-      "verbs": ["up", "update", "destroy", "down", "dn", "cancel"],
-      "window": 2,
-      "value_opts": ["-C", "--cwd", "-s", "--stack", "--color", "-v", "--verbose", "--tracing",
-                     "--profiling", "--memprofilerate"]
-    },
-    "incus": {
-      "verbs": ["launch", "init", "create", "start", "stop", "restart", "pause", "delete", "rm",
-                "copy", "cp", "move", "mv", "rename", "exec", "shell", "restore", "publish",
-                "import", "rebuild", "admin"],
-      "window": 1,
-      "nested_verbs": ["create", "delete", "set", "unset", "edit", "add", "remove", "attach",
-                       "detach", "restore", "push", "import", "rename"],
-      "nested_window": 4,
-      "value_opts": ["--project", "--target"]
-    },
     "home-manager": {
       "verbs": ["switch"],
       "window": 2,
@@ -52,13 +20,9 @@
       "value_opts": ["--flake", "--target-host", "--build-host", "-I", "--option", "-p",
                      "--profile-name", "--specialisation", "-c"]
     },
-    "rke2lab-grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false },
-    "grow": { "verbs": ["up"], "window": 2, "value_opts": [], "in_list": false },
-    "cachix": { "verbs": ["push", "watch-store", "watch-exec"], "window": 1, "value_opts": ["-c", "--config", "--hostname"] },
-    "attic": { "verbs": ["push", "watch-store"], "window": 1, "value_opts": [] },
     "security": { "verbs": ["dump-keychain"], "flag_verbs": ["-w", "-g"], "window": 1, "value_opts": [] }
   },
-  "protected_branches": ["develop", "main"],
+  "protected_branches": ["main"],
   "list_tool_rules": {
     "why": "the Atlassian plugin acts on the employer's systems: its writes ask, its destructive operations are the operator's, in the web UI",
     "ask": ["mcp__plugin_atlassian_atlassian__createConfluenceContent", "mcp__plugin_atlassian_atlassian__updateConfluenceContent", "mcp__plugin_atlassian_atlassian__createJiraIssue", "mcp__plugin_atlassian_atlassian__editJiraIssue", "mcp__plugin_atlassian_atlassian__transitionJiraIssue", "mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment", "mcp__plugin_atlassian_atlassian__executeWrite"],
@@ -142,18 +106,10 @@
     {"pattern": "(?i)--request-target(?:=|\\s+)['\"]?(?!/v1/)", "why": "curl's --request-target sends a path apart from the URL: beyond /v1, the relay's agent pages"},
     { "pattern": "(?:^|[\\s'\"=/])pass/seedmatic:", "why": "a blob of claude-home's pass/seedmatic head, the replica's content" }
   ],
-  "list_ask_rules": ["rm -rf /", "rm -rf ~", "rm -rf ~/", "rm -rf $HOME", "rm -rf /Users", "rm -rf /Volumes", "rm -rf /nix", "rm -rf ~/.claude*"],
   "nix_attr_aliases": {
-    "kubernetes-helm": "helm",
-    "pulumi-bin": "pulumi",
-    "incus-lts": "incus",
-    "incus-client": "incus",
     "gnupg": "gpg"
   },
   "ask_launchers": [
-    { "program": "java", "any_arg_contains": ["io.seedmatic.rke2lab.controlplane.Main", "seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
-    { "program": "mvnw", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
-    { "program": "mvn", "all_args_contain": ["exec:java"], "any_arg_contains": ["seed-outcluster"], "why": "a seed run whose live/preview mode is decided inside the JVM, not in this text" },
     { "program": "systemctl", "all_args_contain": ["stop"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
     { "program": "systemctl", "all_args_contain": ["restart"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },
     { "program": "systemctl", "all_args_contain": ["kill"], "any_arg_contains": ["loopback-forward"], "why": "the LLM gateway relay: stopping it cuts both seats' backend; the operator's or 🎛️'s gesture" },

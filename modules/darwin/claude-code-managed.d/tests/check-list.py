@@ -46,23 +46,13 @@ print(f"{path}: rules={len(rules)} bases={len(bases)} twins-missing={len(missing
 
 must_refuse = {
     "gap A": [
-        "kubectl -n prod delete pod x", "kubectl --context c apply -f m.yaml", "helm -n ks upgrade r c",
-        "pulumi -C infra up --yes", "incus --project p stop n1", "incus --project p exec n1 -- ls",
         "home-manager --flake . switch", "sudo nixos-rebuild --flake .#h boot",
-        "sudo darwin-rebuild --rollback", "flox activate -- kubectl -n x apply -f y",
-        "flox activate -d . -- incus --project p rm n1",
-    ],
-    "aliases": [
-        "helm del r", "helm delete r", "helm un r", "helm -n x uninstall r", "helm -n x un r",
-        "pulumi update --yes", "pulumi -C infra update", "pulumi down", "pulumi dn --yes",
-        "pulumi --cwd infra down",
+        "sudo darwin-rebuild --rollback", "flox activate -- home-manager switch",
+        "flox activate -d . -- nixos-rebuild switch",
     ],
     "draft forms": [
-        "kubectl apply -f y", "kubectl delete", "incus delete c1", "incus rm c1",
-        "incus config set c1 k v", "incus storage volume delete p v", "incus config device add c1 d disk",
         "nixos-rebuild switch --flake .#h", "darwin-rebuild --rollback", "sudo darwin-rebuild switch",
-        "mv ~/.claude /tmp/x", "flox activate -- pulumi up",
-        "flox activate -d . -- pulumi destroy",
+        "mv ~/.claude /tmp/x", "security dump-keychain",
     ],
 }
 open_cases = 0
@@ -71,23 +61,20 @@ for group, cmds in must_refuse.items():
     open_cases += len(left)
     print(f"{group}: {len(cmds) - len(left)}/{len(cmds)} refused by the list", *(f"  OPEN {c}" for c in left), sep="\n")
 
-read_only = [
-    "kubectl get pod delete-me", "kubectl auth can-i delete pods", "kubectl -n x get pods",
-    "kubectl get events --field-selector reason=Created", "kubectl get cm apply-config -o yaml",
-    "kubectl explain deployment --recursive", "helm template r ch --set install.crds=true",
-    "helm list -A", "helm history upgrade-test", "pulumi preview --diff",
-    "pulumi stack output upstream-url", "pulumi stack ls", "pulumi config get update-window",
-    "incus list", "incus info shell-box", "incus info init-node", "incus list starter",
-    "incus config show c1 --expanded", "incus image list images: copyright",
-    "incus list --columns ns4 restarted", "incus network list --format csv",
+# The lab's own gestures are the sessions' (the operator, 2026-10-27): the list refuses none of them.
+lab_gestures = [
+    "kubectl -n prod delete pod x", "kubectl apply -f y", "kubectl get pod delete-me", "helm -n ks upgrade r c",
+    "helm uninstall r", "pulumi -C infra up --yes", "pulumi destroy", "pulumi preview --diff",
+    "incus --project rke2lab exec n1 -- ls", "incus delete c1", "incus storage volume delete p v", "incus list",
+    "cachix push seedmatic ./result", "attic push cluster ./result",
     "nixos-rebuild build --flake .#bioskop", "nixos-rebuild dry-build --flake .#bioskop",
     "sudo nixos-rebuild build --flake .#test-host", "darwin-rebuild build --flake .#nikopol",
     "home-manager generations", "home-manager news --flake . switchboard",
     "nix copy --to ssh-ng://bioskop-nixos ./result", "nix copy --to=ssh://nikopol-nixos ./result",
 ]
-fps = [(c, refused(c)) for c in read_only]
+fps = [(c, refused(c)) for c in lab_gestures]
 fps = [(c, hit) for c, hit in fps if hit]
-print(f"false positives: {len(fps)}/{len(read_only)} read-only commands refused")
+print(f"false positives: {len(fps)}/{len(lab_gestures)} lab gestures and reads refused")
 for c, hit in fps:
     print(f"  FP  {c!r:52} ← {hit[0]!r}")
 
@@ -96,11 +83,9 @@ def asked(cmd):
     return [r for r in ask_rules if matches(r, cmd)]
 
 
-must_ask = ["rm -rf /", "rm -rf ~", "rm -rf $HOME", "rm -rf /Volumes", "rm -rf /nix",
-            "rm -rf ~/.claude", "rm -rf ~/.claude/projects", "flox activate -- rm -rf /"]
-not_asked = [c for c in must_ask if not asked(c) or refused(c)]
-print(f"ask: {len(must_ask) - len(not_asked)}/{len(must_ask)} dangerous roots asked, not refused",
-      *(f"  OPEN {c}" for c in not_asked), sep="\n")
+# The rm -rf asks left the list: Claude Code's built-in check guards a removal of a root itself.
+not_asked = [r for r in ask_rules if r.startswith("rm ")]
+print(f"ask: {len(not_asked)} rm rules in the list, none wanted", *(f"  LEFT {r}" for r in not_asked), sep="\n")
 cleanup = ["rm -rf /tmp/x", "rm -rf /private/tmp/flox-sb", "rm -rf $T", "rm -rf mmcheck",
            "rm -rf repo/.scratchpad.d/topic", "rm -rf ${T:?}/out"]
 caught = [c for c in cleanup if refused(c) or asked(c)]
