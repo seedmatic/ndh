@@ -17,11 +17,14 @@ import json
 import os
 import re
 import shlex
+import signal
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_DEPTH = 8
+# Under the settings' 10 s hook timeout: a slow analysis is refused here rather than left to the harness.
+TIME_BOUND = 3
 
 SEPARATORS = {"&&", "||", "|", "|&", ";", "&", ";;", "(", ")"}
 KEYWORDS = {"if", "then", "else", "elif", "fi", "do", "done", "while", "until", "for", "case",
@@ -373,9 +376,11 @@ def stdin_shell(stage):
     words = [w for w in stage if not ASSIGNMENT.match(w)]
     # Stdin by fd number is stdin: `0<` folds into `<`.
     words = [w for j, w in enumerate(words) if not (w == "0" and j + 1 < len(words) and words[j + 1] == "<")]
-    # A redirect may come before the program (`< f bash`): move it after.
+    # A redirect may come before the program (`< f bash`): move it after. A stage of redirects only has no program.
+    lead = []
     while len(words) >= 2 and REDIRECTS.match(words[0]):
-        words = words[2:] + words[:2]
+        lead, words = lead + words[:2], words[2:]
+    words += lead
     while words and os.path.basename(words[0]) in STDIN_WRAPPERS:
         words = words[1:]
         # The wrapper's own options, an env's assignments, timeout's duration, nice's -n value.
@@ -1791,7 +1796,17 @@ def audit(line):
         pass
 
 
+class TooSlow(Exception):
+    """The analysis ran past TIME_BOUND."""
+
+
+def too_slow(*_):
+    raise TooSlow()
+
+
 def main():
+    signal.signal(signal.SIGALRM, too_slow)
+    signal.alarm(TIME_BOUND)
     try:
         event = json.load(sys.stdin)
         if event.get("tool_name") != "Bash":
@@ -1813,8 +1828,13 @@ def main():
             if re.search(rule["pattern"], command):
                 analyzer.deny("names the operator's secret material", [rule["why"]])
         analyzer.analyze(command)
+        signal.alarm(0)
     except Refused as exc:
         print(f"deny-hook refused: {exc}", file=sys.stderr)
+        return 2
+    except TooSlow:
+        print(f"deny-hook refused: the analysis took over {TIME_BOUND} s; split the command or write it to a script",
+              file=sys.stderr)
         return 2
     except Exception as exc:  # fail closed: a PreToolUse hook that errors would otherwise let the call through
         print(f"deny-hook internal error, refusing: {type(exc).__name__}: {exc}", file=sys.stderr)

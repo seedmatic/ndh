@@ -10,7 +10,7 @@ setup() {
 hook() {
   C="$1" CWD="${2:-/tmp/work}" yq -n -o=json \
     '{"hook_event_name":"PreToolUse", "permission_mode":"bypassPermissions",
-      "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":strenv(CWD)}' | python3 "$HOOK"
+      "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":strenv(CWD)}' | timeout 5 python3 "$HOOK"
 }
 
 denied()  { [ "$status" -eq 2 ] || { echo "expected deny, got status=$status output=$output"; return 1; }; }
@@ -541,6 +541,25 @@ mkstate() {
 @test "operator tool: pass-seedmatic-publish dry run"  { run hook 'pass-seedmatic-publish --dry-run'; denied; }
 @test "operator tool: pass-seedmatic-publish by nix"   { run hook 'nix run "git+file:///Volumes/git-bare-store/nxmatic/claude-home.git?ref=claude/develop#pass-seedmatic-publish"'; denied; }
 
+# A hook that times out lets the call through (measured, Claude Code 2026-10-27): the hook must answer fast, and a
+# stage of redirects only once looped forever. Each answers in under a second, under the hook's own time bound.
+quick() {
+  C="$1" yq -n -o=json '{"hook_event_name":"PreToolUse", "tool_name":"Bash", "tool_input":{"command":strenv(C)}, "cwd":"/tmp/work"}' \
+    >"$BATS_TEST_TMPDIR/event.json"
+  run timeout "${2:-1}" python3 "$HOOK" <"$BATS_TEST_TMPDIR/event.json"
+  [ "$status" -ne 124 ] || { echo "no answer within ${2:-1} s: $1"; return 1; }
+}
+@test "quick: a stage of redirects only"        { quick '< /dev/null > /tmp/o | cat'; allowed; }
+@test "quick: through ssh, before a pipe"       { quick "ssh -n h 'timeout 20 sudo -n incus cluster list -f yaml </dev/null 2>&1 | yq -o json .'"; allowed; }
+@test "a slow analysis is refused, not timed out" {
+  sed 's/^TIME_BOUND = .*/TIME_BOUND = 1/' "$HOOK" >"$BATS_TEST_TMPDIR/deny-hook.py"
+  cp "$BATS_TEST_DIRNAME/../verbs.json" "$BATS_TEST_TMPDIR/"
+  sed -i 's/^def main():/Analyzer.analyze = lambda self, text, depth=0: time.sleep(5)\n\n\ndef main():/' "$BATS_TEST_TMPDIR/deny-hook.py"
+  HOOK="$BATS_TEST_TMPDIR/deny-hook.py" quick 'ls' 3
+  denied
+  [[ "$output" == *"took over 1 s"* ]]
+}
+
 # --- security's refusal corpora: one case per line, want, today, cwd (- for the test's), the command as typed ---
 corpus() {
   local want today cwd cmd bad="" fx="$BATS_TEST_TMPDIR/redirect-fixtures"
@@ -552,6 +571,7 @@ corpus() {
     case "$cwd" in -) cwd=/tmp/work ;; @fixtures) cwd="$fx" ;; esac
     cmd="${cmd//@fixtures/$fx}"
     run hook "$cmd" "$cwd"
+    [ "$status" -ne 124 ] || { bad+="  no answer within 5 s: $cmd"$'\n'; continue; }
     if [ "$want" = DENY ]; then [ "$status" -eq 2 ] || bad+="  want DENY, got status=$status: $cmd"$'\n'
     else [ "$status" -eq 0 ] && [ -z "$output" ] || bad+="  want ALLOW, got status=$status $output: $cmd"$'\n'; fi
   done <"$BATS_TEST_DIRNAME/$1"
@@ -565,6 +585,7 @@ corpus() {
 @test "ndh-ops grow: every corpus case gets its verdict" { corpus ndh-ops-grow-cases.tsv; }
 @test "kubectl config: every corpus case gets its verdict" { corpus kubecfg-cases.tsv; }
 @test "process environment: every corpus case gets its verdict" { corpus procenv-cases.tsv; }
+@test "redirect-only stages: every corpus case gets its verdict" { corpus redirect-only-cases.tsv; }
 # An xargs feeds only the sudo of its own command, never the commands after it.
 @test "ok sudo after an xargs, in its own command" { run hook 'echo a | xargs echo; sudo -v'; allowed; }
 # A sudo makes root only the command it prefixes, never the commands after it.
