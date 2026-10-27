@@ -1092,6 +1092,34 @@ class Analyzer:
                 self.deny(f"{self.LEAK_WHY}. Offending reference: {ref}", argv)
                 return
 
+    PROC_ENVIRON = re.compile(r"/proc/(?:\d+|self|thread-self)(?:/task/\d+)?/environ\b")
+    PS_VALUE = {"-o", "-O", "-p", "-C", "-U", "-u", "-G", "-g", "-t", "-q", "-k", "-s", "--pid", "--user", "--format",
+                "--sort"}
+
+    def reads_process_environ(self, prog, args):
+        """ps showing environments (`-E`, alone or in a dash cluster; an `e` in a dashless BSD option word),
+        launchctl procinfo, or any program naming /proc/<pid>/environ."""
+        if any(self.PROC_ENVIRON.search(a) for a in args):
+            return True
+        if prog == "launchctl" and args[:1] == ["procinfo"]:
+            return True
+        if prog == "ps":
+            value_next = False
+            for a in args:
+                if value_next:
+                    value_next = False
+                    continue
+                if re.fullmatch(r"-[A-Za-z]*E[A-Za-z]*", a):
+                    return True
+                # The word after an option taking a value (-o user, -C sleep, -p 1234) is that value, not an option.
+                if a in self.PS_VALUE:
+                    value_next = True
+                    continue
+                # A BSD option word has no dash.
+                if not a.startswith("-") and re.fullmatch(r"[a-zA-Z]+", a) and "e" in a:
+                    return True
+        return False
+
     def peel_nix(self, rest):
         if not rest or rest[0] not in ("run", "shell", "develop"):
             return None
@@ -1651,6 +1679,12 @@ class Analyzer:
                 self.deny("kubectl config view --raw or --flatten prints the kubeconfig's credentials; use plain "
                           "kubectl config view, which redacts them", argv)
                 return
+        # Another process's environment: the cluster-age identity rides one during a grow (security, 2026-10-26), and a
+        # transcript is where reading it would leak. Listing processes stays free.
+        if self.reads_process_environ(prog, args):
+            self.deny("reads another process's environment, where a secret can ride (the cluster-age identity during "
+                      "a grow); list processes with ps aux or ps -o instead", argv)
+            return
         if prog == "ndh-ops" and args[:1] == ["arm"]:
             self.deny("ndh-ops arm is the operator's: a session never arms its own delegation", argv)
             return
