@@ -2957,6 +2957,10 @@
           root-ceremony-bats = import ./modules/.common.d/root-ceremony.d/tests/package.nix { inherit pkgs; };
           # hs: no preauth key and no API key in a trace or an argv.
           hs-bats = import ./modules/darwin/headscale-tools/tests/package.nix { inherit pkgs; };
+          # The headscale client's `tailscale up` takes the preauth key as a `file:` reference, never inline in argv.
+          headscale-client-bats = import ./modules/darwin/headscale-client.d/tests/package.nix {
+            inherit pkgs;
+          };
           # No secret VALUE in a trace or an argv, over every .sh of the repo (report mode until batch 1).
           secret-xtrace-guard = import ./modules/.common.d/secret-xtrace-guard.d/package.nix {
             inherit pkgs;
