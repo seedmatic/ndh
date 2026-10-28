@@ -46,6 +46,11 @@
     {"domain": "172.16.16.1", "why": "the same relay, by its fabric address"}
   ],
   "list_path_rules": [
+    { "rule": "Read(//var/lib/attic-secrets/**)", "why": "the attic cache's server env, in its container: the signing key and the JWT secret" },
+    { "rule": "Read(//var/lib/attic-tokens/**)", "why": "the attic cache's served tokens, in its container" },
+    { "rule": "Read(//var/lib/attic-tls/tls.key)", "why": "the attic cache's TLS private key, in its container; the dir's public files stay readable" },
+    { "rule": "Read(//var/lib/ndh-attic/secrets/**)", "why": "the attic dataset's secrets on its host, mounted into the container as /var/lib/attic-secrets" },
+    { "rule": "Read(//var/lib/ndh-attic/tls/tls.key)", "why": "the attic dataset's TLS private key on its host" },
     {"rule": "Read(//var/lib/loopback-forward/**)", "why": "the LLM gateway relay's own ssh key, which opens the vz host's agent port"},
     {"rule": "Edit(//var/lib/loopback-forward/**)", "why": "the relay's key and state: a session never writes them"},
     { "rule": "Read(~/Library/Application Support/*/User/workspaceStorage/*/state.vscdb*)", "why": "VS Code's per-workspace state: the Flox extension froze whole process environments there, GitHub tokens included (43 found, 2026-10-21)" },

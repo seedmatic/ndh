@@ -1733,6 +1733,28 @@ class Analyzer:
             return False
         return self.owned_removal("worktrees", argv)
 
+    # sops prints the plaintext of whatever it opens, a secret by definition (security, 2026-10-27): decrypt, exec-env,
+    # exec-file, and its default operation, edit, which hands the plaintext to $EDITOR (`EDITOR=cat sops f` prints it).
+    # So a sops command passes only when it names an operation that never reveals: encrypt, rotate, set or unset,
+    # a key-management subcommand, help or version. -d, -e and -r cluster with the other short flags.
+    SOPS_SAFE = {"encrypt", "rotate", "updatekeys", "filestatus", "groups", "keyservice", "publish", "help", "h"}
+    SOPS_VALUE = {"-k", "--kms", "-p", "--pgp", "-a", "--age", "--gcp-kms", "--azure-kv", "--hc-vault-transit",
+                  "--input-type", "--output-type", "--output", "--extract", "--config", "--encrypted-regex",
+                  "--unencrypted-regex", "--encrypted-suffix", "--unencrypted-suffix", "--filename-override",
+                  "--indent", "--shamir-secret-sharing-threshold", "--keyservice", "--set", "--unset"}
+
+    def sops_reveals(self, args):
+        """Whether a sops command prints, or hands an editor, the plaintext of what it opens."""
+        shorts = "".join(a[1:] for a in args if re.fullmatch(r"-[A-Za-z]+", a))
+        # A decrypt named beside a safe operation still decrypts.
+        if "d" in shorts or any(a == "--decrypt" or a.startswith("--decrypt=") for a in args):
+            return True
+        if set(shorts) & set("erhv") or any(a in ("--encrypt", "--rotate", "--help", "--version") or
+                                            a.startswith(("--set", "--unset")) for a in args):
+            return False
+        sub = positionals(args, self.SOPS_VALUE)[:1]
+        return not (sub and sub[0] in self.SOPS_SAFE)
+
     # kubectl's global options that take a value, so `config view` is found after them.
     KUBECTL_VALUE = {"-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-s", "--server", "--token",
                      "--as", "--as-group", "--as-uid", "--request-timeout", "--certificate-authority",
@@ -1753,6 +1775,10 @@ class Analyzer:
                 self.deny("kubectl config view --raw or --flatten prints the kubeconfig's credentials; use plain "
                           "kubectl config view, which redacts them", argv)
                 return
+        if prog == "sops" and self.sops_reveals(args):
+            self.deny("sops decrypt prints a secret's plaintext into the transcript, whatever file it opens; the "
+                      "operator decrypts", argv)
+            return
         # Another process's environment: the cluster-age identity rides one during a grow (security, 2026-10-26), and a
         # transcript is where reading it would leak. Listing processes stays free.
         if self.reads_process_environ(prog, args):
