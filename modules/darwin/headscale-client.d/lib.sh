@@ -97,11 +97,13 @@ ndh::headscaleClient:reregister() {
 	# block indefinitely, hanging surrounding callers (most
 	# importantly `darwin-rebuild switch`'s setupLaunchAgents step
 	# when invoked from the post-activation hook).
+	# `file:`: tailscale reads (and trims) the key itself, so the preauth key never sits in its argv,
+	# where `ps` would show it to any process of the seat.
 	local -a upArgs=(
 		--timeout=45s
 		--reset
 		--login-server="$serverUrl"
-		--authkey="$(tr -d '[:space:]' <"$authKeyFile")"
+		--auth-key="file:$authKeyFile"
 		--hostname="$hostname"
 	)
 	[[ "$wantSsh" == "true" ]] && upArgs+=(--ssh)
