@@ -27,10 +27,14 @@ repo_holds_flake() {
 # attributes file count in both.
 sops_filtered_paths() {
   local p v
-  git ls-files -z | git check-attr ${1:+"$1"} -z --stdin filter |
+  git ls-files -z | git check-attr ${1:+"$1"} -z --stdin filter | {
+    # One iteration per tracked file: untraced, so a traced hook shows the step, not every file. The loop runs in
+    # the pipeline's own subshell, so the caller's trace is untouched.
+    { set +x; } 2>/dev/null
     while IFS= read -r -d "" p && IFS= read -r -d "" _ && IFS= read -r -d "" v; do
       if [[ "$v" == sops-* ]]; then printf '%s filter=%s\n' "$p" "$v"; fi
     done
+  }
 }
 
 # Both views, once each.
