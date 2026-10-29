@@ -10,8 +10,6 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 # seedmatic/ part of their pass store, encrypted to the seedmatic subkey alone.
 #
 #   ndh-keyring host-key <machine>      a machine's ssh host key, as seedmatic/host-key/<machine>
-#   ndh-keyring sshfs-key <guest>       the key a NixOS guest mounts its operator seat's git stores with,
-#                                       as seedmatic/sshfs-key/<guest>
 #   ndh-keyring vz-recover-key <host>   the key the sessions recover a foreign vz-host's VMs with, as
 #                                       seedmatic/vz-recover-key/<host>, installed at ~/.ssh/vz-recover
 #   ndh-keyring nix-signing-public <machine>
@@ -41,7 +39,7 @@ die() {
 }
 ulimit -c 0
 
-usage="usage: ndh-keyring host-key <machine> | sshfs-key <guest> | vz-recover-key <host> | nix-signing-public <machine>"
+usage="usage: ndh-keyring host-key <machine> | vz-recover-key <host> | nix-signing-public <machine>"
 usage+=" | cluster-age <n> | cluster-age-public <n>"
 [[ $# -eq 2 ]] || die "$usage"
 kind="$1"
@@ -49,7 +47,6 @@ name="$2"
 allowed=()
 case "$kind" in
   host-key | nix-signing-public) allowed=("${machines[@]}") among="machines" recorded="${name}" usageTag=ssh-host ;;
-  sshfs-key) allowed=("${guests[@]}") among="NixOS guests" recorded="sshfs-${name}" usageTag=ssh-user ;;
   vz-recover-key) allowed=("${vzHosts[@]}") among="foreign vz-hosts" recorded="vz-recover-${name}" usageTag=ssh-user ;;
   # Not a machine: a version. A new <n> is a new key, so the version is the rotation.
   cluster-age | cluster-age-public)

@@ -58,7 +58,7 @@ let
   # reachability now ride the per-metalspace split-DNS zone + advertised
   # subnet route (the former per-host ARP resolver is retired).
   # The publickey identity every operator-facing alias presents: the profile
-  # user's rdp-host key+cert read straight from disk (IdentityAgent none) so
+  # user's operator key+cert read straight from disk (IdentityAgent none) so
   # auth never depends on a populated ssh-agent.  Single-sourced here because
   # the bare/.local/-ts host block below must present the SAME identity —
   # otherwise the literal `.local` name (a bringup fallback that does NOT match
@@ -66,7 +66,7 @@ let
   # through to OpenSSH's built-in default identities (none of which carry the
   # operator key+cert) and be rejected by the CA-cert sshd.
   operatorIdentityLines = ''
-    IdentityFile ${config.sshPaths.operatorKeyFile}
+    IdentityFile ${config.sshPaths.privKeyFile}
     IdentitiesOnly yes
     IdentityAgent none
     PreferredAuthentications publickey
@@ -147,7 +147,7 @@ let
     ''
       Host vzhost.${bm.domain} ${bm.vzHostLanName}${catalog.netplan.lan.domain}
         User ${bm.vzHostUser}
-        IdentityFile ${config.sshPaths.operatorKeyFile}
+        IdentityFile ${config.sshPaths.privKeyFile}
         IdentitiesOnly yes
         PreferredAuthentications publickey
     '';
@@ -205,13 +205,13 @@ let
   # `User root` + the operator key/cert; the `*-nixos` wildcard block above
   # already relaxes known_hosts for it (host keys rotate across re-materialisation).
   # The `IdentityFile none` reset clears the default identities accumulated by the
-  # `Host *` blocks so IdentitiesOnly offers only the rdp-host key.
+  # `Host *` blocks so IdentitiesOnly offers only the operator key.
   nerdNixosAlias = ''
     Host nerd-nixos
       HostName nerd-nixos.local
       User root
       IdentityFile none
-      IdentityFile ${config.sshPaths.operatorKeyFile}
+      IdentityFile ${config.sshPaths.privKeyFile}
       IdentitiesOnly yes
   '';
 

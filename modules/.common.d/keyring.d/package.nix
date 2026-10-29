@@ -1,6 +1,6 @@
-# ndh-keyring: the machines' host keys, the NixOS guests' sshfs keys, the foreign vz-hosts' vz-recover keys and
+# ndh-keyring: the machines' host keys, the foreign vz-hosts' vz-recover keys and
 # the cluster's age identity in the operator's keyring (the seedmatic/ part of their pass store), on the operator
-# seat holding it. The machines, guests and vz-hosts it knows and the recipient it requires are fixed at
+# seat holding it. The machines and vz-hosts it knows and the recipient it requires are fixed at
 # evaluation.
 {
   pkgs,
@@ -38,7 +38,6 @@ pkgs.writeShellApplication {
   ];
   text = ''
     machines=(${lib.concatMapStringsSep " " lib.escapeShellArg machines})
-    guests=(${lib.concatMapStringsSep " " lib.escapeShellArg guests})
     vzHosts=(${lib.concatMapStringsSep " " lib.escapeShellArg vzHosts})
     declare -A vzRecoverOptions=(${
       lib.concatMapStringsSep " " (h: "[${h}]=${lib.escapeShellArg (vzRecoverOptions h)}") vzHosts

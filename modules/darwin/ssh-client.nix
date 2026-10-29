@@ -92,7 +92,7 @@ in
             identityFile = mkOption {
               type = types.nullOr types.path;
               default = null;
-              description = "Pinned key path for the guest stanza (null -> the host rdp-host key, which VM guests authorise).";
+              description = "Pinned key path for the guest stanza (null -> the operator key, which VM guests authorise).";
             };
             identitiesOnly = mkOption {
               type = types.bool;
@@ -182,7 +182,7 @@ in
       identityRelativePath = mkOption {
         type = types.str;
         default = "operator";
-        description = "Host identity private key path. By default the operator's client key (sshPaths.operatorKeyName); relative paths are resolved against sshPaths.secretsKeysDir and absolute paths are used as-is.";
+        description = "Host identity private key path. By default the operator's client key (sshPaths.keyName); relative paths are resolved against sshPaths.secretsKeysDir and absolute paths are used as-is.";
       };
     };
   };
@@ -246,7 +246,7 @@ in
             ++ lib.optional (tailnetFqdn != null) tailnetFqdn
           );
 
-      # Guest VMs authorise the canonical rdp-host key on `nxmatic` (via
+      # Guest VMs authorise the operator key on `nxmatic` (via
       # `users.users.nxmatic.openssh.authorizedKeys.keys`); no other
       # key is accepted in the final configuration.  Use that key as
       # the guest-stanza default.
@@ -369,7 +369,7 @@ in
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
     {
-      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault config.sshPaths.operatorKeyName;
+      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault config.sshPaths.keyName;
 
       environment.etc."ssh/ssh_config".text = cfg.baseConfig + "\n";
       environment.etc."ssh/ssh_config.d/50-guest.conf" = mkIf (cfg.guest.enable) {

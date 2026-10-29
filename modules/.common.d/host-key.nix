@@ -1,6 +1,7 @@
-# Whether a machine serves its OWN host key or the shared rdp-host, read from keys.yaml's slot state (roles × keys
-# S3a, K5), and the key born on it for a pending slot (K3). One declaration for NixOS guests and operator seats; the
-# platform openssh modules read it.
+# A fleet machine's OWN host key, read from keys.yaml's slot state (roles × keys S3a, K5), and the key born on it for
+# a pending slot (K3). One declaration for NixOS guests and operator seats; the platform openssh modules read it. A
+# configuration that is no catalog machine (the generic runtime layer, the bringup alias) has no host key here: its
+# sshd serves the key NixOS generates at first boot.
 {
   config,
   lib,
@@ -11,6 +12,7 @@
 let
   cfg = config.ndh.hostKey;
   machine = config.networking.hostName;
+  fleetMachine = lib.any (m: m.name == machine) (ndh.context.catalog.machines or [ ]);
 in
 {
   options.ndh.hostKey = {
@@ -18,11 +20,12 @@ in
       type = lib.types.bool;
       readOnly = true;
       default =
-        ((import ./host-key.d/slots.nix { inherit lib; } cfg.entry).current.state or "") == "serving";
+        fleetMachine
+        && ((import ./host-key.d/slots.nix { inherit lib; } cfg.entry).current.state or "") == "serving";
       description = ''
         Whether this machine serves its own host key, at `ndh.hostKey.file`, with the certificate keys.yaml records
-        for `<hostName>`: read from keys.yaml, true exactly when its current slot is `serving` (roles × keys
-        K5). Never set by hand: a slot reaches `serving` only once its key is there and certified.
+        for `<hostName>`: true exactly for a catalog machine whose current slot is `serving` (roles × keys K5). Never
+        set by hand. False for a configuration that is no catalog machine: it serves NixOS's first-boot key.
       '';
     };
 

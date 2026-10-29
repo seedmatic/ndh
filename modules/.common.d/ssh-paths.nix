@@ -84,69 +84,20 @@ in
 
     keyName = lib.mkOption {
       type = lib.types.str;
-      default = "rdp-host";
-      description = "Canonical SSH key basename used by SSH consumers.";
-    };
-
-    operatorKeyName = lib.mkOption {
-      type = lib.types.str;
       default = "operator";
       description = "The operator's client key: its ssh-user certificate (principal `operator`) opens the fleet's accounts.";
-    };
-
-    operatorKeyFile = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.operatorKeyName}";
-      description = "The operator's client private key, installed by the keys.yaml extraction like every profile key.";
-    };
-
-    operatorCertFile = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.operatorKeyName}-cert.pub";
-      description = "The operator's ssh-user certificate, beside operatorKeyFile.";
     };
 
     privKeyFile = lib.mkOption {
       type = lib.types.str;
       default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}";
-      description = "Path to the SSH host private key.";
-    };
-
-    hostPublicKeyFile = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}.pub";
-      description = ''
-        Path to the canonical SSH host public key used by the sshd
-        authorized-keys enrollment check and other SSH consumers.
-
-        Lives next to `privKeyFile` in `secretsKeysDir`, which is where the
-        ssh-extract-keys pipeline
-        (modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq) puts
-        EVERYTHING: key `.pub` files via `target_dir = "user"`, and authority
-        publics (`<auth>-ca.pub`) plus certificates
-        (`<key>-<auth>-{user,host}-cert.pub`) via `target_dir = "system"`, which
-        the extractor also maps to the user output dir. One directory, scoped by
-        suffix. An earlier version of this text claimed the latter two landed in a
-        separate authority directory; they never did, and that directory could not
-        exist — see the note above `systemKeysDir`.
-      '';
-    };
-
-    hostCertPublic = lib.mkOption {
-      type = lib.types.str;
-      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}-server-cert.pub";
-      description = ''
-        Path to the SSH host public certificate. Sits in `secretsKeysDir` with
-        everything else the extractor writes — as a symlink to the matching
-        `<key>-<auth>-host-cert.pub`, which ssh-extract-keys resolves by
-        FINGERPRINT rather than by name.
-      '';
+      description = "The operator's client private key, installed by the keys.yaml extraction like every profile key.";
     };
 
     userCertPublic = lib.mkOption {
       type = lib.types.str;
       default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}-cert.pub";
-      description = "Path to the canonical SSH user certificate corresponding to privKeyFile.";
+      description = "The operator's ssh-user certificate, beside privKeyFile.";
     };
 
     # Home-manager SSH keys workflow paths

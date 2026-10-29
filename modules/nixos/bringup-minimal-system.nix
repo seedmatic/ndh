@@ -58,7 +58,7 @@ in
     ./cache-trust.nix
 
     # SSH identity (keys.yaml access + cert-signed nix-store identity).
-    # ssh-keys-enrichment materializes the nix-store + rdp-host keypairs so
+    # ssh-keys-enrichment materializes the nix-store keypair so
     # bioskop can `nix copy --to` and SSH in during bringup activation.
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
     (worktreePath.of "modules/.common.d/openssh-policy.nix")
@@ -180,19 +180,21 @@ in
     lib.concatMapStringsSep "\n" (g: "Include ${g}") config.opensshPolicy.includeClientGlobs + "\n"
   );
 
-  # Enable SSH server for emergency access + mammoth-skate cert auth on
-  # both sides of the handshake so clients with the CA trust can ssh in
-  # without known_hosts pinning and sshd accepts ssh-user certs without
-  # per-user authorized_keys churn. The referenced files are materialized
-  # by the ssh-keys-enrichment unit (ordered `before sshd.service`) into
-  # sshPaths.systemKeysDir.
+  # Enable SSH server for emergency access: sshd accepts the operator's ssh-user certificate (mammoth-skate)
+  # without per-user authorized_keys churn. Its host key is born in the VM at first boot (NixOS's own ed25519),
+  # never baked: the image is the same for every host and carries no private. The operator's client accepts that
+  # unknown host for the bringup alias only. The CA file is materialized by the ssh-keys-enrichment unit (ordered
+  # `before sshd.service`) into sshPaths.systemKeysDir.
   services.openssh = {
     enable = true;
-    hostKeys = lib.mkForce [ ]; # Disable auto-generated host keys — we use the rdp-host material below.
+    hostKeys = [
+      {
+        path = "/etc/ssh/ssh_host_ed25519_key";
+        type = "ed25519";
+      }
+    ];
     settings = {
       PermitRootLogin = "prohibit-password"; # Only allow key-based auth
-      HostKey = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}";
-      HostCertificate = "${config.sshPaths.systemKeysDir}/${config.sshPaths.keyName}-server-cert.pub";
       TrustedUserCAKeys = "${config.sshPaths.systemKeysDir}/trusted-user-ca.pub";
       # The same list every runtime sshd reads (openssh-policy.nix): a bringup
       # VM is no reason to accept a key the fleet has revoked.
@@ -206,7 +208,7 @@ in
 
   # Add authorized SSH keys for root from keys.yaml via the shared
   # ndh.keysYaml helper (modules/.common.d/keys-yaml.nix). linux-builder
-  # powers remote build fan-out during bootstrap; rdp-host is the
+  # powers remote build fan-out during bootstrap; operator is the
   # interactive operator key.
   users.users.root.openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [
     "linux-builder"

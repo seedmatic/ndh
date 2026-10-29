@@ -22,6 +22,8 @@
   atticCaches,
   keysJsonTool,
   delegation,
+  # The keys a configuration of this revision still uses (retire-key refuses them).
+  inUseKeys,
 }:
 let
   inherit (pkgs) lib;
@@ -131,6 +133,7 @@ ndh.store.installBinScript "keys-reconcile" (
     close = ./close.sh;
     retire = ./retire.sh;
     hostNamesJson = pkgs.writeText "keys-reconcile-host-names.json" (builtins.toJSON hostNames);
+    inUseKeys = pkgs.writeText "keys-reconcile-in-use-keys.json" (builtins.toJSON inUseKeys);
     write = ./write.sh;
     classes = ./classes;
     delegation = lib.escapeShellArg delegation;
@@ -140,5 +143,5 @@ ndh.store.installBinScript "keys-reconcile" (
   }
 )
 // {
-  passthru = { inherit batch; };
+  passthru = { inherit batch inUseKeys; };
 }

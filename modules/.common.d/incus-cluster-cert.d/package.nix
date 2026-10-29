@@ -7,8 +7,7 @@
 # revision: nothing evaluates a working tree at run time. Imported by the flake's packages and
 # apps, one definition.
 # operatorIdentity: the ONE ssh identity the closure uses to reach a member — the OPERATOR
-# principal's key, named by its role (rdp-host today; the `operator` key after the step-9 renewal
-# changes this one argument): { user, keyFile, certFile }.
+# principal's key, the `operator` key: { user, keyFile, certFile }.
 {
   pkgs,
   lib,

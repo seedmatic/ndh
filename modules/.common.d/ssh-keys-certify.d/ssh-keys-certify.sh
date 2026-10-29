@@ -9,15 +9,8 @@
 #
 #   ssh-host   the names of the machine(s) the key serves, baked at build per machine from the
 #              inventory and the guests' own configurations (each name one machine's only):
-#                host-<machine>  that machine's names: its own host key (roles × keys S3a)
-#                rdp-host        nikopol's machines only, the interim decided 2026-10-15: the shared key
-#                                nikopol's sshd still serves (baked: interimKey), until nikopol's own key
-#                                is placed (its push). Gated: only once every other machine SERVES its own
-#                                key, `ndh.hostKey.own` on in its configuration (baked: ownMachines), and
-#                                its host-<machine> certificate is current or signed earlier in the same
-#                                run; until then its recorded union certificate is left untouched
-#                                (interim::waiting)
-#                any other key   refused: a host key serves one machine, or nikopol's in the interim
+#                <machine>       that machine's names: its own host key, named after it (roles × keys S3a)
+#                any other key   refused: a host key serves one machine
 #   ssh-user   the principals the key declares (`principals`)
 #
 # Valid forever, by decision: the hosts are checked strictly, so a certificate that expired
@@ -28,11 +21,7 @@
 # Every certificate is revocable on its own (S3a K1, K2): its key id adds to {marker, owner, key, usage}
 # the sha256 of its sorted principals (`names`; bounded, the names themselves are the principals) and
 # its UTC issue stamp (`issued`), and its serial is one above the highest any certificate recorded in
-# keys.yaml carries (never 0). So the union host certificate signed before S3a for the shared key, its
-# id the bare {marker, owner, key, usage} and its serial 0, is shared by no certificate signed here:
-# re-signed for the interim, it leaves keys.yaml but stays valid wherever it was installed, until the
-# KRL step revokes it by that exact id (`ssh-keygen -L` on the revision that recorded it, also logged
-# here when it is replaced). Nothing here deletes a recorded certificate otherwise.
+# keys.yaml carries (never 0). Nothing here deletes a recorded certificate.
 #
 # Idempotent: a certificate already recorded with the same key, authority generation, type,
 # principals, identity (its issue stamp aside), a non-zero serial and validity is kept as it is. Dry
@@ -65,15 +54,12 @@ readonly sshKeygen="@sshKeygen@"
 readonly sshAgent="${sshKeygen%/*}/ssh-agent"
 readonly sshAdd="${sshKeygen%/*}/ssh-add"
 readonly sha256sum="@sha256sum@"
-readonly interimKey="@interimKey@"
-declare -g keysYaml tmpdir updated expected apply nextSerial interimWaiting="" agentPid="" sopsErr=""
-declare -ga plan=() current=() unrecorded=() interimMachines=() interimPending=() interimKept=() ownMachines=()
+declare -g keysYaml tmpdir updated expected apply nextSerial agentPid="" sopsErr=""
+declare -ga plan=() current=() unrecorded=()
 # machine → its names, comma-separated: baked as `machine=name,name machine=name,…`.
 declare -gA hostNames=()
 # authority@slot → loaded in the agent.
 declare -gA loaded=()
-read -r -a interimMachines <<<"@interimMachines@"
-read -r -a ownMachines <<<"@ownMachines@"
 read -r -a hostNameEntries <<<"@hostNames@"
 for entry in ${hostNameEntries[@]+"${hostNameEntries[@]}"}; do
 	hostNames["${entry%%=*}"]="${entry#*=}"
@@ -135,15 +121,10 @@ cert::identity_shape() { # <identity JSON>
 		'.issued |= (tag == "!!str" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' -
 }
 
-# A host key's names: nikopol's machines' for the interim key, its machine's for host-<machine>.
+# A host key's names: its machine's.
 # plan::build has refused any other ssh-host key, and a host-<machine> naming no baked machine.
 cert::host_names() { # <key> → one name per line
-	local machine
-	if [[ "$1" == "$interimKey" ]]; then
-		for machine in "${interimMachines[@]}"; do tr ',' '\n' <<<"${hostNames[$machine]}"; done
-	else
-		tr ',' '\n' <<<"${hostNames[$1]}"
-	fi
+	tr ',' '\n' <<<"${hostNames[$1]}"
 }
 
 # Sorted bytewise: the identity hashes this exact string, so it must not depend on the locale.
@@ -242,11 +223,9 @@ plan::build() {
 			[[ -n "$slot" ]] || continue
 			while IFS= read -r usage; do
 				[[ "$usage" == ssh-host || "$usage" == ssh-user ]] || continue
-				if [[ "$usage" == ssh-host && "$key" != "$interimKey" ]]; then
-					if [[ ! -v "hostNames[${key}]" ]]; then
-						log::error "${key}: an ssh-host key is named after a machine of this build's inventory, or is ${interimKey} — refusing to certify it for any machine"
-						return 1
-					fi
+				if [[ "$usage" == ssh-host && ! -v "hostNames[${key}]" ]]; then
+					log::error "${key}: an ssh-host key is named after a machine of this build's inventory — refusing to certify it for any machine"
+					return 1
 				fi
 				# A slot whose public is not recorded holds material generated at activation, on each host:
 				# there is nothing to sign here, so that host keeps signing it until its slot is recorded.
@@ -263,57 +242,12 @@ plan::build() {
 					fi
 				fi
 				line="${key}	${slot}	${authority}	${authSlot}	${usage}	$([[ -n "$recorded" ]] && echo stale || echo missing)"
-				if [[ "$key" == "$interimKey" && "$usage" == ssh-host ]]; then
-					interimPending+=("$line")
-				else
-					plan+=("$line")
-				fi
+				plan+=("$line")
 			done < <(yq::get ".keys.\"${key}\".cert_usage // [] | .[]")
 		# A pending slot is keys-reconcile's to certify, a retired one nobody's (roles × keys K5+).
 		done < <(yq::get ".keys.\"${key}\".slots // {} | with_entries(select((.value.state // \"\") != \"pending\" and (.value.state // \"\") != \"retired\")) | keys | sort | .[]")
 	done < <(yq::get '.keys // {} | keys | .[]')
-	interimWaiting="$(interim::waiting)"
-	if [[ -n "$interimWaiting" ]]; then
-		interimKept=(${interimPending[@]+"${interimPending[@]}"})
-	else
-		# Last, so the <machine> certificates the gate counted are signed before it in the run.
-		plan+=(${interimPending[@]+"${interimPending[@]}"})
-	fi
 	serial::next
-}
-
-# The rollout gate (S3a K3: every host serves its OWN certificate before the union one goes away):
-# until every machine outside the interim set serves its own host key — `ndh.hostKey.own` on in its
-# configuration, and its certificate current or signed in this run — its sshd still serves the
-# interim key, so the interim key keeps the union certificate it has, untouched; re-signing it would
-# also mint a second union id for the KRL to cut. A certificate alone is not enough: recorded before
-# the machine's switch, it would leave that machine serving an interim certificate that does not
-# name it. Prints the machines still waiting, each with why.
-interim::waiting() {
-	local machine line key usage waiting="" found why
-	while IFS= read -r machine; do
-		[[ -n "$machine" ]] || continue
-		[[ " ${interimMachines[*]} " == *" ${machine} "* ]] && continue
-		why=""
-		[[ " ${ownMachines[*]} " == *" ${machine} "* ]] || why="ndh.hostKey.own off"
-		found=0
-		for line in ${current[@]+"${current[@]}"}; do
-			IFS=$'\t' read -r key _ usage <<<"$line"
-			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=1
-		done
-		for line in ${plan[@]+"${plan[@]}"}; do
-			IFS=$'\t' read -r key _ _ _ usage _ <<<"$line"
-			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=1
-		done
-		# a slot of its key with no recorded public is not certified: not yet its own
-		for line in ${unrecorded[@]+"${unrecorded[@]}"}; do
-			IFS=$'\t' read -r key _ usage <<<"$line"
-			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=0
-		done
-		((found)) || why="${why:+${why}, }${machine} not certified"
-		[[ -z "$why" ]] || waiting="${waiting:+${waiting}; }${machine} (${why})"
-	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
-	printf '%s\n' "$waiting"
 }
 
 plan::show() {
@@ -322,8 +256,7 @@ plan::show() {
 	while IFS= read -r machine; do
 		printf 'host names   %-14s %s\n' "$machine" "${hostNames[$machine]}"
 	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
-	printf 'interim      %-14s %s\nown key      %s\nnext serial  %s\n\n' "$interimKey" "${interimMachines[*]}" \
-		"${ownMachines[*]:-(none)}" "$nextSerial"
+	printf 'next serial  %s\n\n' "$nextSerial"
 	for line in ${current[@]+"${current[@]}"}; do
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  current  %-22s %-9s %s\n' "$key" "$slot" "$usage"
@@ -332,18 +265,11 @@ plan::show() {
 		IFS=$'\t' read -r key slot usage <<<"$line"
 		printf '  unrecorded %-20s %-9s %-9s no public in keys.yaml: generated and signed at activation\n' "$key" "$slot" "$usage"
 	done
-	for line in ${interimKept[@]+"${interimKept[@]}"}; do
-		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
-		printf '  kept     %-22s %-9s %-9s its union certificate, still served on %s\n' "$key" "$slot" "$usage" "$interimWaiting"
-	done
 	for line in ${plan[@]+"${plan[@]}"}; do
 		IFS=$'\t' read -r key slot authority authSlot usage why <<<"$line"
 		printf '  %-8s %-22s %-9s %-9s signed by %s@%s\n' "$why" "$key" "$slot" "$usage" "$authority" "$authSlot"
 	done
 	printf '\n'
-	if ((${#interimKept[@]} > 0)); then
-		log::info "${interimKey} keeps its union cert: not yet on their own host key: ${interimWaiting}"
-	fi
 }
 
 # The signing slot's private, from sops into this run's own agent through a pipe. Not `ssh-keygen -s
@@ -491,21 +417,6 @@ main() {
 		log::error "no host names were baked into this build — refusing to sign a host certificate for nobody"
 		return 1
 	fi
-	local machine
-	if [[ -z "$interimKey" ]] || ((${#interimMachines[@]} == 0)); then
-		log::error "no interim host key and machines were baked into this build"
-		return 1
-	fi
-	for machine in "${interimMachines[@]}"; do
-		[[ -v "hostNames[$machine]" ]] && continue
-		log::error "interim machine ${machine} has no baked names"
-		return 1
-	done
-	for machine in ${ownMachines[@]+"${ownMachines[@]}"}; do
-		[[ -v "hostNames[$machine]" ]] && continue
-		log::error "machine ${machine} serves its own key but has no baked names"
-		return 1
-	done
 
 	keysYaml="$(git rev-parse --show-toplevel)/${keysRel}"
 	[[ -r "$keysYaml" ]] || {

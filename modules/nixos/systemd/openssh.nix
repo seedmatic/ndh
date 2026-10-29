@@ -29,7 +29,6 @@ let
       profile.host.hostAlias
     else
       profile.host.hostName;
-  clientKeyName = builtins.baseNameOf config.sshPaths.privKeyFile;
 
   userHome =
     if config ? profile && config.profile ? user && config.profile.user ? home then
@@ -38,8 +37,7 @@ let
       "/root";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   ownsHostKey = config.ndh.hostKey.own;
-  # The ed25519 path Tailscale SSH reads: the rdp-host copy sshd-host-identity-reload installs, or, once
-  # the guest owns its host key, a link to it.
+  # The ed25519 path Tailscale SSH reads: a link to the guest's own host key; NixOS's own generated key otherwise.
   hostKeyPath = "/etc/ssh/ssh_host_ed25519_key";
   keysDir = config.opensshPolicy.keysDir;
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
@@ -59,45 +57,7 @@ let
   sshKeysEnrichmentServiceName = ndhSystemd.mkServiceName "ssh-keys-enrichment";
   contributedTargetName = ndhSystemd.contributedTargetName;
   hasSshKeysEnrichmentService = builtins.hasAttr (ndhSystemd.mkUnitName "ssh-keys-enrichment") config.systemd.services;
-  homeManagerServiceName = "home-manager-${config.profile.user.name}";
-  hostkeyEnrollmentCheckTag = "nixos.services.ndh.hostkeyEnrollmentCheck";
-  authorizedKeysCheckTag = "nixos.services.ndh.authorizedKeysCheck";
   sshdAutostartCheckTag = "nixos.services.ndh.sshdAutostartCheck";
-  hostkeyEnrollmentCheckScript = ndh.store.installBinScript "openssh-hostkey-enrollment-check" (
-    pkgs.replaceVars ./openssh.d/hostkey-enrollment-check.sh {
-      nixBashTrampoline = nixBashTrampoline;
-      logTag = hostkeyEnrollmentCheckTag;
-      userPrivateSourceDir = config.sshPaths.secretsKeysDir;
-      # userCaSourceDir is a misnomer kept for the script's substitution
-      # slot: the variable holds the per-key `.pub` directory (used to
-      # read `<key>.pub` alongside its private counterpart), which
-      # ssh-extract-keys routes to `target_dir = "user"` → secretsKeysDir.
-      # Everything the extractor writes lands in secretsKeysDir, scoped by suffix.
-      userCaSourceDir = config.sshPaths.secretsKeysDir;
-      systemHostKeyPub = "${hostKeyPath}.pub";
-      clientKeyName = clientKeyName;
-    }
-  );
-  authorizedKeysCheckScript = ndh.store.installBinScript "openssh-authorized-keys-check" (
-    pkgs.replaceVars ./openssh.d/authorized-keys-check.sh {
-      nixBashTrampoline = nixBashTrampoline;
-      logTag = authorizedKeysCheckTag;
-      authorizedKeysFile = "${config.opensshPolicy.authorizedKeysDir}/${config.profile.user.name}";
-      expectedPublicKeyFile = config.sshPaths.hostPublicKeyFile;
-      profileUserName = config.profile.user.name;
-    }
-  );
-  sshdHostIdentityReloadTag = "nixos.services.ndh.sshdHostIdentityReload";
-  sshdHostIdentityReloadScript = ndh.store.installBinScript "openssh-sshd-host-identity-reload" (
-    pkgs.replaceVars ./openssh.d/sshd-host-identity-reload.sh {
-      nixBashTrampoline = nixBashTrampoline;
-      logTag = sshdHostIdentityReloadTag;
-      hostKeySource = config.sshPaths.privKeyFile;
-      hostKeyPublicSource = config.sshPaths.hostPublicKeyFile;
-      systemHostKey = hostKeyPath;
-      hostCertificatePath = config.sshPaths.hostCertPublic;
-    }
-  );
   sshdAutostartCheckScript = ndh.store.installBinScript "openssh-sshd-autostart-check" (
     pkgs.replaceVars ./openssh.d/sshd-autostart-check.sh {
       nixBashTrampoline = nixBashTrampoline;
@@ -131,7 +91,7 @@ in
     #
     # `/etc/ssh/authorized_keys.d/%u` is the static, Nix-baked rescue
     # path: NixOS renders `users.users.<u>.openssh.authorizedKeys.keys`
-    # there at build time, so the rdp-host bare pubkey declared in
+    # there at build time, so the operator bare pubkey declared in
     # modules/nixos/users.nix is always present even before the
     # ssh-keys-enrichment unit runs (or if it fails). Listed first so
     # sshd consults it before the runtime-managed dir.
@@ -144,15 +104,11 @@ in
     trustedCAPath = caPublicKeyPath;
     principalsCommandSource = principalsScriptStore;
     groupKeysCommandSource = groupKeysScriptStore;
+    # A fleet machine serves its own host key and its keys.yaml certificate (without one, a client falls back to
+    # the raw key pinned in known_hosts, and a rotation fails on every client). Any other configuration (the
+    # generic runtime layer) serves the key NixOS generates at first boot, uncertified.
     hostKeyPaths = [ (if ownsHostKey then config.ndh.hostKey.file else hostKeyPath) ];
-    # Without a certificate, a client verifying this guest falls back to the raw
-    # key pinned in known_hosts, and a host-key rotation fails on every client.
-    # An owned key's certificate is keys.yaml's, a store file. Otherwise the served
-    # key IS rdp-host (hostkey-enrollment keeps them equal), and this path is the
-    # extractor's symlink to the matching certificate, resolved by fingerprint; a
-    # missing file is not fatal: sshd logs it and serves the key.
-    hostCertificatePath =
-      if ownsHostKey then "${config.ndh.hostKey.certificateFile}" else config.sshPaths.hostCertPublic;
+    hostCertificatePath = if ownsHostKey then "${config.ndh.hostKey.certificateFile}" else null;
 
     # Force IPv4 only for SSH server
     extraSettings = {
@@ -165,9 +121,15 @@ in
   services.openssh = {
     enable = true;
     authorizedKeysFiles = lib.mkForce config.opensshPolicy.authorizedKeysFiles;
-    # NixOS generates every key listed here at boot and serves them all (rsa and
-    # ed25519 by default). sshd serves the policy's keys only, rendered below.
-    hostKeys = lib.mkForce [ ];
+    # NixOS generates every key listed here at boot and serves them all (rsa and ed25519 by default). sshd serves
+    # the policy's keys only, rendered below: a fleet machine's own, or, for any other configuration, the one
+    # ed25519 NixOS generates here at first boot.
+    hostKeys = lib.mkForce (
+      lib.optional (!ownsHostKey) {
+        path = hostKeyPath;
+        type = "ed25519";
+      }
+    );
     settings = config.opensshPolicy.settings // {
       UsePAM = true;
       # Allow client to specify which address to bind for remote forwardsssh
@@ -226,12 +188,7 @@ in
             "@groupCommand@"
             "@principalsScript@"
             "@groupKeysScript@"
-            "@profileUserName@"
             "@loggerTag@"
-            "@userPrivateSourceDir@"
-            "@userCaSourceDir@"
-            "@clientKeyName@"
-            "@systemHostKey@"
           ]
           [
             nixBashTrampoline
@@ -242,17 +199,7 @@ in
             config.opensshPolicy.canonicalGroupKeysCommandName
             "${principalsScriptStore}"
             "${groupKeysScriptStore}"
-            config.profile.user.name
             loggerTag
-            config.sshPaths.secretsKeysDir
-            # userCaSourceDir placeholder now fed the per-key `.pub`
-            # directory (secretsKeysDir), matching ssh-extract-keys's
-            # `target_dir = "user"` routing.  Kept the misnomer for the
-            # substitution slot to avoid churn in the shell script.
-            config.sshPaths.secretsKeysDir
-            clientKeyName
-            # The fallback copies a previous rdp-host extraction; an owned key is no client identity.
-            (if ownsHostKey then "" else hostKeyPath)
           ]
           (builtins.readFile ./openssh.d/activation.sh);
     };
@@ -273,8 +220,7 @@ in
     "d /run/ndh/ssh 0775 ${config.profile.user.name} ${config.profile.user.name} - -"
   ]
   # Tailscale SSH serves the keys it finds under /etc/ssh, not sshd's HostKey: the link makes it present
-  # the owned key, and the removals leave no rdp-host private, nor a key of an earlier generation, on
-  # the guest.
+  # the guest's own key, and the removals leave no key of an earlier generation on the guest.
   ++ lib.optionals ownsHostKey (
     [ "L+ ${hostKeyPath} - - - - ${config.ndh.hostKey.file}" ]
     ++ map (path: "r ${path} - - - - -") (
@@ -292,66 +238,13 @@ in
     )
   );
 
-  # It reads them only at start, so the switch that flips ndh.hostKey.own restarts it once.
+  # It reads them only at start, so a switch that changes the served key restarts it once.
   systemd.services.tailscaled = lib.mkIf config.services.tailscale.enable {
-    restartTriggers = [ (builtins.toJSON { inherit (config.ndh.hostKey) own file; }) ];
+    restartTriggers = [ config.ndh.hostKey.file ];
   };
 
   # Ensure all systemd services (including sshd) inherit a wrapper-first PATH
   systemd.globalEnvironment.PATH = config.opensshPolicy.setEnvPath;
-
-  systemd.services.${ndhSystemd.mkUnitName "hostkey-enrollment-check"} = lib.mkIf (!ownsHostKey) {
-    description = "Check whether host key enrollment into encrypted secrets is required (@codebase)";
-    wantedBy = [ "sshd.service" ];
-    before = [ "sshd.service" ];
-    wants = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
-    after = lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
-    path = with pkgs; [
-      coreutils
-      gawk
-      openssh
-      util-linux
-      yq-go
-    ];
-    serviceConfig = {
-      Type = "oneshot";
-      User = config.profile.user.name;
-      Group = config.profile.user.name;
-      Environment = [ "HOME=${userHome}" ];
-      ExecStart = "${pkgs.bash}/bin/bash ${hostkeyEnrollmentCheckScript}/bin/openssh-hostkey-enrollment-check";
-    };
-  };
-
-  systemd.services.${ndhSystemd.mkUnitName "authorized-keys-check"} = {
-    description = "Verify expected system authorized key is installed (informational, does not gate sshd) (@codebase)";
-    # WantedBy (not RequiredBy) + no `before = sshd.service`: this is a
-    # post-flight assertion on the managed authorized_keys pipeline, not a
-    # prerequisite for sshd to come up.  If the operator's key is missing
-    # or mismatched, root key-based emergency SSH must still work so the
-    # operator can diagnose the enrichment / extraction failure — blocking
-    # sshd here turned a soft misconfiguration into a hard no-login outage.
-    wantedBy = [ "multi-user.target" ];
-    wants = lib.optionals hasSshKeysEnrichmentService [
-      sshKeysEnrichmentServiceName
-    ];
-    after = [
-      "sshd.service"
-    ]
-    ++ lib.optionals hasSshKeysEnrichmentService [
-      sshKeysEnrichmentServiceName
-    ];
-    path = with pkgs; [
-      coreutils
-      gnugrep
-      gawk
-    ];
-    serviceConfig = {
-      Type = "oneshot";
-      User = "root";
-      Group = "root";
-      ExecStart = "${pkgs.bash}/bin/bash ${authorizedKeysCheckScript}/bin/openssh-authorized-keys-check";
-    };
-  };
 
   systemd.services.${ndhSystemd.mkUnitName "sshd-autostart-check"} = {
     description = "Validate sshd autostart state after contributed target activation (@codebase)";
@@ -368,22 +261,6 @@ in
       ExecStart = "${pkgs.bash}/bin/bash ${sshdAutostartCheckScript}/bin/openssh-sshd-autostart-check";
     };
   };
-
-  # The home-manager unit is what extracts the host key and its certificate, so
-  # it is the one that installs the key into /etc/ssh and tells sshd to pick
-  # both up — `+` because the unit runs as the user. Never
-  # the other way round (sshd After= home-manager): sshd must not wait on the key
-  # pipeline, or a broken extraction locks the operator out.
-  # Gated on home-manager.users, not on config.systemd.services: conditioning
-  # a definition OF it on it recurses. A guest owning its host key has nothing to copy.
-  systemd.services.${homeManagerServiceName} =
-    lib.mkIf
-      (!ownsHostKey && lib.hasAttrByPath [ "home-manager" "users" config.profile.user.name ] config)
-      {
-        serviceConfig.ExecStartPost = [
-          "+${pkgs.bash}/bin/bash ${sshdHostIdentityReloadScript}/bin/openssh-sshd-host-identity-reload"
-        ];
-      };
 
   # An owned host key missing is ONE fault, said once: sshd's start fails on this
   # dependency. Not an ExecStartPre: sshd's Restart=always would retry it up to the

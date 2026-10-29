@@ -15,7 +15,7 @@ setup() {
   export SOPS_AGE_KEY_FILE="$t/age.txt"
   operator=$(age-keygen -y "$SOPS_AGE_KEY_FILE")
   for n in ca old new shared; do ssh-keygen -q -t ed25519 -N '' -C "$n" -f "$t/$n"; done
-  : "a shared key (rdp-host's part) whose ssh-host certificate names the seat alone, with a known id: retire revokes it"
+  : "a shared key (as rdp-host was) whose ssh-host certificate names the seat alone, with a known id: retire revokes it"
   ssh-keygen -q -s "$t/ca" -I shared-host-cert -h -z 7 -n seat,seat.lan "$t/shared.pub"
   mv "$t/shared-cert.pub" "$t/shared-host-cert.pub"
   : "and a user certificate on the same key, another certificate that retire must leave byte-identical"
@@ -48,6 +48,8 @@ EOF
       .keys."seat".slots."26-11-01" = {"state": "pending", "origin": "host"} |
       .keys."shared".type = "ssh-ed25519" | .keys."shared".usage = ["user-signing"] | .keys."shared".profiles = [] |
       .keys."shared".slots."26-01-01".public = strenv(SHAREDPUB) |
+      .keys."shared".slots."26-01-01".private = "shared-private-fixture" |
+      (.keys."shared".slots."26-01-01".private | key) headComment = "sops:encrypted" |
       .keys."shared".slots."26-01-01".certificates.fabric."ssh-host" = strenv(SHAREDCERT) |
       .keys."shared".slots."26-01-01".certificates.fabric."ssh-user" = strenv(SHAREDUSER)
     ' >"$src/modules/home-manager/ssh.d/keys.yaml"
@@ -71,6 +73,7 @@ EOF
     "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/batch.json"
   arm "$(($(date +%s) + 600))" keys-reconcile
   echo '{"seat": ["seat", "seat.lan"]}' >"$t/host-names.json"
+  echo '[]' >"$t/in-use.json"
   render
 }
 
@@ -89,7 +92,7 @@ arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the t
 
 render() {
   local -A vars=(
-    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [retire]="$BATS_TEST_DIRNAME/../retire.sh" [hostNamesJson]="$t/host-names.json" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
+    [nixBashTrampoline]="$NDH_TRAMPOLINE" [toolPath]="$PATH" [verify]="$BATS_TEST_DIRNAME/../verify.sh" [declare]="$BATS_TEST_DIRNAME/../declare.sh" [close]="$BATS_TEST_DIRNAME/../close.sh" [retire]="$BATS_TEST_DIRNAME/../retire.sh" [hostNamesJson]="$t/host-names.json" [inUseKeys]="$t/in-use.json" [write]="$BATS_TEST_DIRNAME/../write.sh" [classes]="$BATS_TEST_DIRNAME/../classes"
     [revision]="$rev" [remote]="$t/remote.git" [batch]="$t/batch.json" [machines]="$t/machines.yaml"
     [keysJson]="$t/keys.json" [publishDir]="$t/published" [delegation]="$t/delegation" [keysJsonTool]="$t/keys-json" [ttyIn]="$t/tty" [ttyOut]="$t/prompt"
   )
@@ -604,6 +607,67 @@ substring_cert() {
   [ "$status" -eq 3 ]
   [[ $stderr == *"names 'seat.lan', which maps to more than one machine (seat other)"* ]]
   [ ! -e "$(tree)" ]
+}
+
+# keys-reconcile retire-key: a whole key no configuration uses, at the fixture's pushed revision.
+retire_key() { # <answer> <key>
+  printf '%s\n' "$1" >"$t/tty"
+  GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" retire-key "$2"
+}
+
+@test "retire-key: each slot's public revoked and the key deleted, every other encrypted value kept, in one commit" {
+  run --separate-stderr retire_key yes shared
+  [ "$status" -eq 0 ]
+  k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
+  [ "$(yq -r '.keys | has("shared")' "$k")" = false ]
+  [ "$(yq -r '.revoked."shared@26-01-01".public' "$k")" = "$(cut -d' ' -f2 "$t/shared.pub")" ]
+  [ "$(yq -r '.keys."seat".slots."26-10-17".public' "$k")" = "$(cut -d' ' -f2 "$t/old.pub")" ]
+  [ "$(encrypted "$k" | grep -c .)" -eq "$(($(encrypted "$src/modules/home-manager/ssh.d/keys.yaml" | grep -c .) - 1))" ]
+  [ "$(yq -p json -r '.keys | has("shared")' "$(tree)/modules/home-manager/ssh.d/keys.json")" = false ]
+  [ "$(git -C "$(tree)" log -1 --format=%s)" = "keys-reconcile retire-key: shared, at ${rev:0:12}" ]
+}
+
+@test "retire-key: refused before the « yes » — a machine's key, an unknown key, a key in use, unarmed; without « yes », nothing" {
+  run --separate-stderr retire_key yes seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"seat is a machine's host key"* ]]
+  run --separate-stderr retire_key yes nobody
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"keys.yaml has no nobody entry"* ]]
+  echo '["shared"]' >"$t/in-use.json"
+  run --separate-stderr retire_key yes shared
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"shared is still used by a configuration of this revision"* ]]
+  echo '[]' >"$t/in-use.json"
+  run --separate-stderr retire_key no shared
+  [ "$status" -eq 5 ]
+  [ ! -e "$(tree)" ]
+  rm -f "$t/delegation"
+  run --separate-stderr retire_key yes shared
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"retire-key is not armed"* ]]
+}
+
+@test "mutant: a retire-key that keeps the key in keys.yaml is refused by its postcondition" {
+  grep -F -v 'sops unset --input-type yaml --output-type yaml "$keysYaml" "[\"keys\"][\"${key}\"]"' "$BATS_TEST_DIRNAME/../retire.sh" |
+    sed 's/^    reconcile::fail "sops unset failed on ${key}" || return 1$/    :/' >"$t/retire.sh"
+  [ "$(grep -c -F 'sops unset failed on ${key}"' "$t/retire.sh")" -eq 0 ]
+  bash -n "$t/retire.sh"
+  sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
+  run --separate-stderr retire_key yes shared
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"keys.yaml changed more than the retired key and its revocations"* ]]
+}
+
+@test "mutant: a retire-key that keeps the key's encrypted values in the snapshot is refused by tree::check" {
+  : "so the snapshot filter is what lets the key's own private leave, and tree::check still guards the others"
+  grep -F -v 'grep -v -F "keys.${key}." "$snapshot" >"$snapshot.kept" || true' "$BATS_TEST_DIRNAME/../retire.sh" |
+    grep -F -v 'mv "$snapshot.kept" "$snapshot"' >"$t/retire.sh"
+  [ "$(grep -c -F 'snapshot.kept' "$t/retire.sh")" -eq 0 ]
+  sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
+  run --separate-stderr retire_key yes shared
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"an encrypted value changed"* ]]
 }
 
 : "the window's output holds to keys.schema.yaml: a bootstrap slot, declared so, keeps its bootstrap once recorded and"

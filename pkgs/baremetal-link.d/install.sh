@@ -159,7 +159,7 @@ if [ -n "\$lease" ] && [ "\$lease" != "\$(cat ${conf_dir}/.uplink-lease 2>/dev/n
   # on the next WatchPaths fire instead of being silently marked done.
   # Auth = the vz-nudge CA-signed identity shipped here by the deploy (private +
   # user cert); IdentitiesOnly pins it (no agent/other keys). Its cert principal
-  # (rdp-host) grants root on the guest via TrustedUserCAKeys — rotates freely.
+  # (vz-nudge's) grants root on the guest via TrustedUserCAKeys — rotates freely.
   if /usr/bin/ssh -i /var/root/.ssh/vz-nudge -o CertificateFile=/var/root/.ssh/vz-nudge-cert.pub \\
        -o IdentitiesOnly=yes -o UserKnownHostsFile=/var/root/.ssh/known_hosts \\
        -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \\

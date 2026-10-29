@@ -17,9 +17,8 @@ in
     # Mac, and what this guest used to fetch from it — over ssh or the /srv/host/sops.d share
     # — was the OPERATOR identity, which opens every sops file in ndh.
     #
-    # ⛔ No sshKeyPaths: the guest's sshd host key is the `rdp-host` material, a key that
-    # travels in keys.yaml to every host. An age identity derived from it would isolate
-    # nothing, and the next rdp-host rotation would force a re-key.
+    # ⛔ No sshKeyPaths: the age identity is the one placed above, apart from the host key, so a host-key
+    # rotation forces no re-key.
     ndh.sopsAgeKeyBootstrap = {
       defaultAgeKeyFile = "/var/lib/sops-nix/nikopol-nixos.age";
       nixosHostKeyImport.enable = false;
@@ -46,15 +45,13 @@ in
     };
 
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount but authenticates as nxmatic — the operator who owns the
-    # trees — via the CA-signed rdp-host key, or read-only with the guest's own key once
-    # ndh.sshfs.ownKey is set (roles × keys S3b); remote files map back to uid/gid 501:30001.
+    # Root executes the mount, read-only, as nxmatic — the operator who owns the trees — with the
+    # guest's own host key, which the seat authorizes for sftp only; remote files map back to uid/gid 501:30001.
     # nikopol keeps its git trees on dedicated /Volumes stores.
     services.sshfsMounts = {
       enable = true;
       remoteHost = "nikopol.local";
       remoteUser = "nxmatic";
-      identityFile = "/var/lib/ndh/ssh-keys/rdp-host";
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";

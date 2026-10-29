@@ -64,11 +64,6 @@ in
     systemd.services.io-seedmatic-ndh-bringup-runtime-install = {
       description = "Install NDH bringup runtime profile for root (@codebase)";
       wantedBy = [ "multi-user.target" ];
-      # The enrollment check exists only while sshd serves the rdp-host copy (ndh.hostKey.own off).
-      requiredBy = lib.optional (
-        !config.ndh.hostKey.own
-      ) "io-seedmatic-ndh-hostkey-enrollment-check.service";
-      before = lib.optional (!config.ndh.hostKey.own) "io-seedmatic-ndh-hostkey-enrollment-check.service";
       path = [
         pkgs.bash
         config.nix.package

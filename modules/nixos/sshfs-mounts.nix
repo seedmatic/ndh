@@ -6,13 +6,10 @@
 }:
 let
   cfg = config.services.sshfsMounts;
-  ownKey = config.ndh.sshfs.ownKey;
-  # The guest's own sshfs key, used once ndh.sshfs.ownKey is set.
-  sshfsKeyFile = "/var/lib/ndh/sshfs/id_ed25519";
 
   # Reliability options shared by every sshfs mount. sshfs rides ONE ssh channel — no nfsd /
   # lockd / statd / mountd / portmapper / stale-handles (the whole NFS surface that hung us). The key
-  # is rdp-host's CA-signed identity, or with ndh.sshfs.ownKey the guest's own, authorized on its seat.
+  # is the guest's own host key, born on it (ndh.hostKey.file), authorized on its seat for read-only sftp.
   #   reconnect + ServerAlive*  → survive a dropped link (roaming / hotspot) and re-establish.
   #   cache + kernel_cache      → cut the FUSE+SSH per-op latency (read-mostly worktree/assets).
   #   x-systemd.automount       → mount on first access, not at boot (server may be down).
@@ -31,18 +28,12 @@ let
     "ServerAliveCountMax=3"
     "ConnectTimeout=10"
   ]
-  # With its own key (roles × keys S3b) the guest mounts read-only — the seat serves `internal-sftp -R` to
-  # that key — and verifies the seat like every fleet name, by the scoped @cert-authority (S3a step 6),
-  # never by a pin taken on first use. Until then, the rdp-host mount as it was.
-  ++ (
-    if ownKey then
-      [
-        "ro"
-        "StrictHostKeyChecking=yes"
-      ]
-    else
-      [ "StrictHostKeyChecking=accept-new" ]
-  )
+  # Read-only (the seat serves `internal-sftp -R` to that key), and the seat verified like every fleet name, by the
+  # scoped @cert-authority, never by a pin taken on first use.
+  ++ [
+    "ro"
+    "StrictHostKeyChecking=yes"
+  ]
   ++ [
     "compression=no"
     "cache=yes"
@@ -50,7 +41,7 @@ let
     "idmap=user"
     "uid=${toString cfg.uid}"
     "gid=${toString cfg.gid}"
-    "IdentityFile=${if ownKey then sshfsKeyFile else cfg.identityFile}"
+    "IdentityFile=${config.ndh.hostKey.file}"
   ];
 
   mkFileSystem = mount: {
@@ -63,16 +54,6 @@ let
   };
 in
 {
-  options.ndh.sshfs.ownKey = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = ''
-      Mount the operator seat's git stores read-only with this guest's own key, `sshfs-<hostName>`, at
-      ${sshfsKeyFile}, instead of identityFile. Off on every guest: its key born on the guest, like the host
-      key's (K3), is a step of its own; nothing places one there any more (the push channel is gone, K5).
-    '';
-  };
-
   options.services.sshfsMounts = {
     enable = lib.mkEnableOption "sshfs mounts replacing the NFS /net automount (reliable single-ssh-channel transport)";
 
@@ -84,11 +65,6 @@ in
     remoteUser = lib.mkOption {
       type = lib.types.str;
       description = "SSH login user on remoteHost that owns the shared trees (the CA-signed identity authenticates as this user).";
-    };
-
-    identityFile = lib.mkOption {
-      type = lib.types.str;
-      description = "Absolute path to the CA-signed private key root uses to authenticate to remoteHost (a system-profile key under /var/lib/ndh/ssh-keys/, root-readable), while ndh.sshfs.ownKey is off.";
     };
 
     uid = lib.mkOption {
@@ -127,8 +103,8 @@ in
     {
       assertions = [
         {
-          assertion = !ownKey || cfg.enable;
-          message = "ndh.sshfs.ownKey is set on ${config.networking.hostName}, which mounts nothing over sshfs.";
+          assertion = !cfg.enable || config.ndh.hostKey.own;
+          message = "${config.networking.hostName} mounts its seat over sshfs with its own host key, but does not serve one yet.";
         }
       ];
     }

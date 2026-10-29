@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # ssh-keys-certify against a real sops and a throwaway age key, in a throwaway git repository: an
 # authority with two slots (the older compromised), a key with ssh-user, a TLS-only key, a
-# machine's public-only host key (alpha) and the shared interim host key (rdp-host).
+# machine's public-only host key (alpha) and its guest's (alpha-nixos).
 # No private value is printed: the assertions read certificates, which are public. The tool reaches
 # sops only through a stub that records every call and refuses it (97) unless it is one an --apply
 # may make: the --decrypt --extract of one authority slot's private, or a set.
@@ -19,10 +19,10 @@ creation_rules:
     age: $(age-keygen -y "$SOPS_AGE_KEY_FILE")
 EOF
   cd "$BATS_TEST_TMPDIR"
-  for n in ca-old ca-new host alpha alphan rdp; do ssh-keygen -q -t ed25519 -N '' -f "$n" -C "$n"; done
+  for n in ca-old ca-new host alpha alphan; do ssh-keygen -q -t ed25519 -N '' -f "$n" -C "$n"; done
   keys="$repo/modules/home-manager/ssh.d/keys.yaml"
   OLDPUB="$(cut -d' ' -f2 ca-old.pub)" OLDPRIV="$(<ca-old)" NEWPUB="$(cut -d' ' -f2 ca-new.pub)" NEWPRIV="$(<ca-new)" \
-    HOSTPUB="$(cut -d' ' -f2 host.pub)" HOSTPRIV="$(<host)" ALPHAPUB="$(cut -d' ' -f2 alpha.pub)" ALPHANPUB="$(cut -d' ' -f2 alphan.pub)" RDPPUB="$(cut -d' ' -f2 rdp.pub)" \
+    HOSTPUB="$(cut -d' ' -f2 host.pub)" HOSTPRIV="$(<host)" ALPHAPUB="$(cut -d' ' -f2 alpha.pub)" ALPHANPUB="$(cut -d' ' -f2 alphan.pub)" \
     yq eval -n '
       .authorities.fabric.type = "ssh-ed25519" |
       .authorities.fabric.usage = ["ssh-authority"] |
@@ -49,10 +49,6 @@ EOF
       .keys."alpha-nixos".authority = "fabric" |
       .keys."alpha-nixos".cert_usage = ["ssh-host"] |
       .keys."alpha-nixos".slots."26-03-03".public = strenv(ALPHANPUB) |
-      .keys."rdp-host".type = "ssh-ed25519" |
-      .keys."rdp-host".authority = "fabric" |
-      .keys."rdp-host".cert_usage = ["ssh-host"] |
-      .keys."rdp-host".slots."26-03-03".public = strenv(RDPPUB) |
       (.authorities.fabric.slots."26-01-01".private | key) headComment = "sops:encrypted" |
       (.authorities.fabric.slots."26-02-02".private | key) headComment = "sops:encrypted" |
       (.keys.host.slots."26-03-03".private | key) headComment = "sops:encrypted"
@@ -107,17 +103,13 @@ EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/sops"
 }
 
-# alpha, beta and their guests; beta plays nikopol, whose machines the interim key is certified for,
-# alpha bioskop, whose machines must serve their own host keys before the interim replaces the union.
-# OWN: the machines whose configuration has ndh.hostKey.own on, by default both of alpha's.
-OWN="alpha alpha-nixos"
+# alpha, beta and their guests: each machine's names, as the build bakes them.
 FLEET="alpha=alpha,alpha.lan alpha-nixos=alpha-nixos,nixos.alpha beta=beta,beta.lan beta-nixos=beta-nixos,nixos.beta"
-# The names the union host certificate signed before S3a carried: a recorded certificate's, never signed now.
+# The names a union host certificate carried before S3a: a recorded legacy certificate's, never signed now.
 UNION="alpha,alpha-nixos,alpha.lan,beta,beta-nixos,beta.lan,nixos.alpha,nixos.beta"
 
-bake() { # <machine=names …> [own machines]
+bake() { # <machine=names …>
   sed -e "s#@nixBashTrampoline@#$BATS_TEST_TMPDIR/trampoline.sh#" -e 's#@loggerTag@#test#' -e "s#@hostNames@#$1#" \
-    -e 's#@interimKey@#rdp-host#' -e 's#@interimMachines@#beta beta-nixos#' -e "s#@ownMachines@#${2-$OWN}#" \
     -e "s#@sha256sum@#$(command -v sha256sum)#" -e "s#@sshKeygen@#$BATS_TEST_TMPDIR/openssh/ssh-keygen#" \
     -e "s#@toolPath@#$BATS_TEST_TMPDIR/bin:$PATH#" -e "s#@keysJson@#$BATS_TEST_TMPDIR/keys-json#" \
     "$BATS_TEST_DIRNAME/../ssh-keys-certify.sh" >"$BATS_TEST_TMPDIR/ssh-keys-certify"
@@ -209,8 +201,7 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [ "$(grep -E '^  (missing|stale|current|kept|unrecorded) ' <<<"$output")" = "$(printf '%s\n' \
     '  missing  host                   26-03-03  ssh-user  signed by fabric@26-02-02' \
     '  missing  alpha                  26-03-03  ssh-host  signed by fabric@26-02-02' \
-    '  missing  alpha-nixos            26-03-03  ssh-host  signed by fabric@26-02-02' \
-    '  missing  rdp-host               26-03-03  ssh-host  signed by fabric@26-02-02')" ]
+    '  missing  alpha-nixos            26-03-03  ssh-host  signed by fabric@26-02-02')" ]
   [[ "$output" == *"decrypted: no (dry run)"* ]]
   [ ! -e "$SOPS_LOG" ]
 }
@@ -222,8 +213,7 @@ record_legacy() { # <key> <public file> <serial> <ca private>
     '--decrypt --extract ["authorities"]["fabric"]["slots"]["26-02-02"]["private"] keys.yaml' \
     'set keys.certified.yaml ["keys"]["host"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-user"] <value>' \
     'set keys.certified.yaml ["keys"]["alpha"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
-    'set keys.certified.yaml ["keys"]["alpha-nixos"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>' \
-    'set keys.certified.yaml ["keys"]["rdp-host"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>')" ]
+    'set keys.certified.yaml ["keys"]["alpha-nixos"]["slots"]["26-03-03"]["certificates"]["fabric"]["ssh-host"] <value>')" ]
   [ "$(cat "$BATS_TEST_TMPDIR/ssh-add.log")" = "-t 120 -q -" ]
   [[ "$output" == *"decrypted: fabric@26-02-02"* ]]
 }
@@ -233,7 +223,7 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   (cd "$repo" && PATH="$BATS_TEST_TMPDIR/bin:$PATH" SOPS_STUB=apply bash -x "$BATS_TEST_TMPDIR/ssh-keys-certify" --apply) \
     >/dev/null 2>"$BATS_TEST_TMPDIR/trace"
   grep -q '^+* certify::one ' "$BATS_TEST_TMPDIR/trace"
-  for n in ca-old ca-new host alpha alphan rdp; do
+  for n in ca-old ca-new host alpha alphan; do
     run ! grep -qF -f <(sed -n 2p "$BATS_TEST_TMPDIR/$n") "$BATS_TEST_TMPDIR/trace"
   done
 }
@@ -279,13 +269,13 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [[ "$output" == *"Valid: forever"* ]]
 }
 
-@test "an ssh-host key that is neither named after a machine nor the interim key is refused, and nothing is signed" {
+@test "an ssh-host key not named after a machine is refused, and nothing is signed" {
   (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["nix-store"]' \
     "{\"type\": \"ssh-ed25519\", \"authority\": \"fabric\", \"cert_usage\": [\"ssh-host\"], \"slots\": {\"26-03-03\": {\"public\": \"$(cut -d' ' -f2 host.pub)\"}}}")
   cp "$keys" before
   run certify --apply
   [ "$status" -eq 1 ]
-  [[ "$output" == *"nix-store: an ssh-host key is named after a machine of this build's inventory, or is rdp-host"* ]]
+  [[ "$output" == *"nix-store: an ssh-host key is named after a machine of this build's inventory"* ]]
   [[ "$output" != *"signed "* ]]
   cmp "$keys" before
 }
@@ -293,11 +283,6 @@ record_legacy() { # <key> <public file> <serial> <ca private>
 @test "a machine's host key gets exactly its machine's names" {
   certify --apply
   [ "$(names alpha ssh-host)" = "alpha,alpha.lan" ]
-}
-
-@test "the interim key gets nikopol's machines only, never another machine's" {
-  certify --apply
-  [ "$(names rdp-host ssh-host)" = "beta,beta-nixos,beta.lan,nixos.beta" ]
 }
 
 @test "a host key of a machine the build does not know is refused, and nothing is signed" {
@@ -318,91 +303,18 @@ record_legacy() { # <key> <public file> <serial> <ca private>
   [ "$(yq -p json -r .marker <<<"$id")" = ndh-ssh-key-meta-v1 ]
 }
 
-recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabric.\"ssh-host\"" "$keys"; }
-
-@test "the gate closed: a machine without its own host key keeps the union certificate untouched" {
-  (cd "$repo" && sops unset modules/home-manager/ssh.d/keys.yaml '["keys"]["alpha-nixos"]')
-  record_legacy rdp-host rdp.pub 0 ca-new
-  recorded_cert rdp-host >union
-  run certify --apply
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"rdp-host keeps its union cert: not yet on their own host key: alpha-nixos (alpha-nixos not certified)"* ]]
-  [[ "$output" != *"signed rdp-host"* ]]
-  [ "$(recorded_cert rdp-host)" = "$(cat union)" ]
-  [ "$(names alpha ssh-host)" = "alpha,alpha.lan" ]
-}
-
-@test "the gate closed: a machine with its host key certified but ndh.hostKey.own off keeps the union certificate byte-identical" {
-  record_legacy rdp-host rdp.pub 0 ca-new
-  bake "$FLEET" alpha
-  certify --apply
-  run cert alpha-nixos ssh-host
-  [[ "$output" == *"host certificate"* ]]
-  recorded_cert rdp-host >union
-  run certify --apply
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"current"*"alpha-nixos"*"ssh-host"* ]]
-  [[ "$output" == *"rdp-host keeps its union cert: not yet on their own host key: alpha-nixos (ndh.hostKey.own off)"* ]]
-  [[ "$output" != *"signed rdp-host"* ]]
-  [ "$(recorded_cert rdp-host)" = "$(cat union)" ]
-}
-
-@test "the gate closed on no machine at all on its own key, each named with why" {
-  (cd "$repo" && sops unset modules/home-manager/ssh.d/keys.yaml '["keys"]["alpha-nixos"]')
-  record_legacy rdp-host rdp.pub 0 ca-new
-  bake "$FLEET" ""
-  run certify --apply
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"own key      (none)"* ]]
-  [[ "$output" == *"not yet on their own host key: alpha (ndh.hostKey.own off); alpha-nixos (ndh.hostKey.own off, alpha-nixos not certified)"* ]]
-}
-
-@test "an own machine the build has no names for refuses to run" {
-  bake "$FLEET" "alpha gamma"
-  run certify
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"machine gamma serves its own key but has no baked names"* ]]
-}
-
-@test "the gate open, every other machine on its own certified key: the interim is signed, the union id logged" {
-  certify --apply
-  record_legacy rdp-host rdp.pub 0 ca-new
-  legacy="$(key_id rdp-host ssh-host)"
-  run certify --apply
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"current"*"alpha "*"ssh-host"* ]]
-  [[ "$output" == *"current"*"alpha-nixos"*"ssh-host"* ]]
-  [[ "$output" == *"replaces rdp-host@26-03-03 ssh-host: key id \"$legacy\", serial 0"* ]]
-  [[ "$output" != *"keeps its union cert"* ]]
-  [ "$(key_id rdp-host ssh-host)" != "$legacy" ]
-  [ "$(names rdp-host ssh-host)" = "beta,beta-nixos,beta.lan,nixos.beta" ]
-}
-
-@test "the gate opening in the same run: the host keys are signed first, then the interim" {
-  record_legacy rdp-host rdp.pub 0 ca-new
-  legacy="$(key_id rdp-host ssh-host)"
-  run certify
-  [[ "$output" == *"stale"*"rdp-host"*"ssh-host"* ]]
-  run certify --apply
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"signed alpha@"*"signed alpha-nixos@"*"replaces rdp-host@26-03-03 ssh-host: key id \"$legacy\", serial 0"*"signed rdp-host@"* ]]
-  [ "$(serial rdp-host ssh-host)" -gt "$(serial alpha-nixos ssh-host)" ]
-  [ "$(key_id rdp-host ssh-host)" != "$legacy" ]
-  [ "$(names rdp-host ssh-host)" = "beta,beta-nixos,beta.lan,nixos.beta" ]
-}
-
 @test "new serials are non-zero, distinct, and start one above the highest recorded" {
-  record_legacy rdp-host rdp.pub 41 ca-new
+  record_legacy alpha alpha.pub 41 ca-new
   certify --apply
-  s="$(for k in alpha alpha-nixos rdp-host; do serial "$k" ssh-host; done; serial host ssh-user)"
+  s="$(for k in alpha alpha-nixos; do serial "$k" ssh-host; done; serial host ssh-user)"
   [ "$(sort -n <<<"$s" | head -1)" = 42 ]
-  [ "$(sort -u <<<"$s" | wc -l)" -eq 4 ]
+  [ "$(sort -u <<<"$s" | wc -l)" -eq 3 ]
   ! grep -qx 0 <<<"$s"
 }
 
 @test "with nothing recorded, serials start at 1" {
   certify --apply
-  [ "$({ for k in alpha alpha-nixos rdp-host; do serial "$k" ssh-host; done; serial host ssh-user; } | sort -n | head -1)" = 1 ]
+  [ "$({ for k in alpha alpha-nixos; do serial "$k" ssh-host; done; serial host ssh-user; } | sort -n | head -1)" = 1 ]
 }
 
 @test "a certificate signed by a compromised authority slot is stale, and re-signed by the signing one" {
@@ -450,7 +362,6 @@ recorded_cert() { yq eval -r ".keys.\"$1\".slots.\"26-03-03\".certificates.fabri
   run certify
   [[ "$output" == *"stale"*"alpha"*"ssh-host"* ]]
   [[ "$output" == *"current"*"alpha-nixos"*"ssh-host"* ]]
-  [[ "$output" == *"current"*"rdp-host"*"ssh-host"* ]]
   [[ "$output" == *"current"*"host"*"ssh-user"* ]]
 }
 

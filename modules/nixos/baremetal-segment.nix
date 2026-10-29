@@ -321,7 +321,7 @@ lib.mkIf enabled {
   # Mac's WatchPaths link-up.sh can authenticate the guest-reconfigure nudge (see
   # pkgs/baremetal-link.d/). The oneshot runs as root: it reads the 0600 vz-nudge
   # private and connects to the corp Mac as the operator login with the root-readable
-  # rdp-host cert (the Mac refuses root ssh). Best-effort + idempotent — the CA cert is
+  # operator cert (the Mac refuses root ssh). Best-effort + idempotent — the CA cert is
   # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
   # attached to the contributed target so it re-runs each activation, re-shipping the
   # rotated key.

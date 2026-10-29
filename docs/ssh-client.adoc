@@ -29,7 +29,7 @@ Options (namespace: sshClient):
 | guest.includeLocal | bool (true) | Also match the `.local` pattern.
 | guest.includeTailnet | bool (true) | Also match the tailnet FQDN pattern `host.tailnetName.tailnetDomain`.
 | guest.explicitPatterns | list ([]) | If non-empty, override all derived patterns with this list.
-| guest.identityFile | nullOr path (null) | Pinned key for the guest patterns. `null` falls back to the host `rdp-host` key, which VM guests authorise.
+| guest.identityFile | nullOr path (null) | Pinned key for the guest patterns. `null` falls back to the `operator` key, which VM guests authorise.
 | guest.identitiesOnly | bool (true) | Emit IdentitiesOnly yes for the guest stanza.
 | guest.bypassAgent | bool (false) | Emit IdentityAgent none (bypass ssh-agent) if true.
 | extraStanzas | list ([]) | Additional explicit host stanza definitions (see below).

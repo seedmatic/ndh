@@ -11,8 +11,8 @@
     # A missing identity fails the age bootstrap unit and then sops-install-secrets (phase enforce);
     # nothing generates one.
     #
-    # ⛔ No sshKeyPaths: the guest's sshd host key is the `rdp-host` material, a key that
-    # travels in keys.yaml to every host; the identity derived from it is a recipient of nothing.
+    # ⛔ No sshKeyPaths: the age identity is the one placed above, apart from the host key, so a host-key
+    # rotation forces no re-key.
     ndh.sopsAgeKeyBootstrap = {
       defaultAgeKeyFile = "/var/lib/sops-nix/bioskop-nixos.age";
       nixosHostKeyImport.enable = false;
@@ -35,9 +35,8 @@
     };
 
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount but authenticates as nxmatic — the operator who owns the
-    # trees — via the CA-signed rdp-host key, or read-only with the guest's own key once
-    # ndh.sshfs.ownKey is set (roles × keys S3b); remote files map back to uid/gid 501:30001.
+    # Root executes the mount, read-only, as nxmatic — the operator who owns the trees — with the
+    # guest's own host key, which the seat authorizes for sftp only; remote files map back to uid/gid 501:30001.
     # bioskop now names the split the way nikopol does — object stores on one volume, coexisting
     # checkouts on the other — so this block is its twin, and the layout divergence is gone. The
     # old single /private/var/lib/git export is NOT kept: it carried 44 other orgs beside the
@@ -46,7 +45,6 @@
       enable = true;
       remoteHost = "bioskop.local";
       remoteUser = "nxmatic";
-      identityFile = "/var/lib/ndh/ssh-keys/rdp-host";
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";

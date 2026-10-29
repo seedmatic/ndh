@@ -676,23 +676,21 @@ until its slot is recorded, so the authority's private leaves the hosts only the
 The same shape holds for a TLS leaf: the key is generated on the server, the operator seat signs its CSR with
 `mammoth-skate tls`.
 
-=== ✅ A NixOS guest mounts its operator seat's git stores read-only, with its own key
+=== ✅ A NixOS guest mounts its operator seat's git stores read-only, with its own host key
+
+The guest mounts with `ndh.hostKey.file`, the host key born on it; there is no sshfs key of its own (the
+`sshfs-<guest>` keys and the shared `rdp-host` were retired on 2026-10-29). Its operator seat authorizes that host
+public, `authorizedLinesFor [ <guest> ]`, with `restrict,command="internal-sftp -R"`, generated at evaluation:
+sshd's in-process sftp server, so no login shell runs, and read-only. A certificate principal would be honored by
+every sshd trusting the authority, where this line holds on one seat, with one forced command. The guest mounts
+`ro`, with `StrictHostKeyChecking=yes` on its seat's fleet name, and refuses to evaluate sshfs mounts while it
+does not serve its own host key.
 
 [source,bash]
 ----
-ndh-keyring sshfs-key <guest> |   # the private into the keyring, as seedmatic/sshfs-key/<guest>
-  nix run "git+file://$PWD?rev=$(git rev-parse HEAD)#ssh-keys-renew" -- \
-    --create sshfs-<guest> --public - --usage ssh-user --apply
-git add modules/home-manager/ssh.d/keys.yaml && git commit   # then switch the guest's operator seat
-# nothing places it on the guest any more: its key born there, as a host key's, is a step of its own
+# a key no configuration uses any more leaves keys.yaml in one change, its publics revoked
+ndh-ops keys-reconcile retire-key <key>
 ----
-
-`sshfs-<guest>` is recorded public-only, with no authority and no certificate. Its operator seat authorizes
-that public for the operator with `restrict,command="internal-sftp -R"`, generated at evaluation: sshd's
-in-process sftp server, so no login shell runs. A certificate principal would be honored by every sshd
-trusting the authority, where this line holds on one seat, with one forced command. With `ndh.sshfs.ownKey`, the guest mounts `ro`, with
-`StrictHostKeyChecking=yes` on its seat's fleet name. A guest that mounts sshfs takes the key as the third
-item of its push frame, and refuses a frame without it; any other machine refuses a frame carrying one.
 
 === ✅ One principal, one account
 

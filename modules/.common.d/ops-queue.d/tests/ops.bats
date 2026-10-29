@@ -89,10 +89,10 @@ ops_on() { # $1 = a queue.json
   [[ $output == *"✗ unmet: the previous step is not done on the whole fleet"* ]]
 }
 
-@test "serve: host and sshfs keys alike" {
+@test "serve: the host keys" {
   run --separate-stderr ops "$OPS_SERVE" next
   [[ $output == *"next step: serve"* ]]
-  [[ $output == *"• g2 — switch g2: it serves sshfs-g2@26-11-01"* ]]
+  [[ $output == *"• g2 — switch g2: it serves g2@26-11-01"* ]]
   [[ $output == *"• mac — switch mac: it serves mac@26-11-01"* ]]
 }
 
