@@ -1522,6 +1522,80 @@
               waitsFor fixture.waitingNotice == [ "nikopol" ]
             ) "attic-tokens-wait-for-leaf: with bioskop's leaf, only nikopol must wait";
             pkgs.runCommand "attic-tokens-wait-for-leaf" { } "touch $out";
+          # The cache container's nginx.conf passes `nginx -t`. nixpkgs' build-time validation (gixy) does not parse it
+          # as nginx does, and nginx never starts before a leaf is recorded, so an unquoted `{64}` in a location regex
+          # stayed hidden until the first leaf (2026-10-29: `unknown directive "64}/…"`, :443 closed on both caches).
+          # On aarch64-linux the real nginx parses the real file, its leaf and key pointed at a throwaway pair; where the
+          # guests' files cannot be built, the declaration: a location regex holding `{` must be quoted.
+          attic-nginx-config-parses =
+            let
+              lib = nixpkgs.lib;
+              guests = lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations;
+              nginxOf =
+                c:
+                (import (c.pkgs.path + "/nixos/lib/eval-config.nix") {
+                  system = null;
+                  modules = [
+                    {
+                      nixpkgs.pkgs = c.pkgs;
+                      boot.isContainer = true;
+                      system.stateVersion = c.config.system.stateVersion;
+                    }
+                  ]
+                  ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
+                }).config;
+              unquotedRegex =
+                c:
+                lib.filter
+                  (l: lib.hasPrefix "~" l && lib.hasInfix "{" l && builtins.match "~\\*? *\".*\"" l == null)
+                  (
+                    lib.concatMap (v: lib.attrNames v.locations) (
+                      lib.attrValues (nginxOf c).services.nginx.virtualHosts
+                    )
+                  );
+              bad = lib.filterAttrs (_: c: unquotedRegex c != [ ]) guests;
+              line =
+                name: c:
+                let
+                  conf = lib.head (
+                    builtins.match ".*-c '([^']+)'.*" (nginxOf c).systemd.services.nginx.serviceConfig.ExecStart
+                  );
+                in
+                "${name} ${conf}";
+            in
+            assert lib.assertMsg (guests != { }) "attic-nginx-config-parses: no guest runs the attic container";
+            assert lib.assertMsg (bad == { })
+              "attic-nginx-config-parses: an unquoted location regex holding `{` (nginx reads it as a block) on: ${toString (lib.attrNames bad)}";
+            if system != "aarch64-linux" then
+              pkgs.runCommand "attic-nginx-config-parses" { } "touch $out"
+            else
+              pkgs.runCommand "attic-nginx-config-parses"
+                {
+                  nativeBuildInputs = [
+                    pkgs.nginx
+                    pkgs.openssl
+                  ];
+                  passAsFile = [ "confs" ];
+                  confs = lib.concatLines (lib.mapAttrsToList line guests);
+                }
+                ''
+                  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=throwaway \
+                    -keyout key.pem -out cert.pem -days 1 2>/dev/null
+                  rc=0
+                  while read -r name conf; do
+                    # Runtime paths the sandbox has not: the leaf and key, the pid, the logs and the temp dirs, and the
+                    # user nginx drops to.
+                    sed -e "s|/var/lib/attic-tls/cert.pem|$PWD/cert.pem|g" -e "s|/var/lib/attic-tls/key.pem|$PWD/key.pem|g" \
+                      -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
+                      -e '/^\s*user /d' "$conf" >"$name.conf"
+                    if ! nginx -t -q -p "$PWD" -c "$PWD/$name.conf"; then
+                      echo "$name: the cache container's nginx.conf does not parse" >&2
+                      rc=1
+                    fi
+                  done <"$confsPath"
+                  [ "$rc" = 0 ] && touch $out
+                  exit "$rc"
+                '';
           # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
           # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
           attic-leaves-recorded =
