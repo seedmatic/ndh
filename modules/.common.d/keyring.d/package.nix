@@ -34,6 +34,7 @@ pkgs.writeShellApplication {
     pkgs.gnused
     pkgs.openssh
     pkgs.pass
+    pkgs.sops
     pkgs.ssh-to-age
   ];
   text = ''
@@ -43,6 +44,8 @@ pkgs.writeShellApplication {
       lib.concatMapStringsSep " " (h: "[${h}]=${lib.escapeShellArg (vzRecoverOptions h)}") vzHosts
     })
     recipient=${import ./seedmatic-recipient.nix}
+    operatorRecipient=${import ../keys-yaml.d/operator-recipient.nix}
+    sopsProbe=${../../home-manager/ssh.d/keys.yaml}
     generate=${generate}
     derive=${pkgs.callPackage ../../../packages/ndh-nix-signing-derive { }}/bin/ndh-nix-signing-derive
     # The label's version, so the key name's: seedmatic/nix-signing/<n> gives seedmatic-<machine>-<n>.

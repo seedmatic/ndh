@@ -123,7 +123,7 @@ pkgs.writeShellApplication {
       | tr -d '\n' || true)"
     if [[ -z "$password" ]]; then
       echo "[bbox-reconcile][ERROR] failed to extract lan.mammoth-skate.password from $SECRETS_FILE" >&2
-      echo "[bbox-reconcile][HINT] check SOPS_AGE_KEY_FILE / ~/.config/sops/age/keys.txt" >&2
+      echo "[bbox-reconcile][HINT] check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator" >&2
       exit 3
     fi
 

@@ -12,7 +12,7 @@ let
   lib = pkgs.lib;
   # Never in keys.yaml: the key that opens a file must not live inside that file.
   standalone = {
-    "age1hlvu7l7kefeum8drzvc5jp0jhgsqw2h3t3a8rmzvx05lcrsmx48q2ehxsk" = "the operator";
+    ${import ../operator-recipient.nix} = "the operator";
   };
   # Removed by step ⑥ once every host it stands in for serves its own recipient slot. Goes with ⑥, no shim.
   interim = {

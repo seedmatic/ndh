@@ -178,7 +178,7 @@ main() {
 	cp "$(git rev-parse --show-toplevel)/.sops.yaml" "${tmpdir}/repo/.sops.yaml"
 	decrypted="${tmpdir}/repo/${fileRel}"
 	if ! sops --input-type yaml --output-type yaml -d "$file" >"$decrypted" || [[ ! -s "$decrypted" ]]; then
-		log::error "cannot decrypt ${fileRel} (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+		log::error "cannot decrypt ${fileRel} (check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator)"
 		return 1
 	fi
 

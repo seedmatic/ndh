@@ -23,18 +23,6 @@ let
 
   effectiveHostProfile = ndhContext.hostProfile;
   effectiveGenerationMode = ndhContext.generationMode;
-  userHome =
-    if config ? profile && config.profile ? user && config.profile.user ? home then
-      toString config.profile.user.home
-    else
-      "/var/empty";
-
-  userName =
-    if config ? profile && config.profile ? user && config.profile.user ? name then
-      toString config.profile.user.name
-    else
-      "";
-
   nixosbringupMode = effectiveGenerationMode == "bringup";
 
   hostSopsKeyShareMountPoint = lib.attrByPath [
@@ -46,11 +34,7 @@ let
     "mountPoint"
   ] "/srv/host/sops.d" config;
 
-  nixosHostKeyImportCandidatesDefault = lib.filter (path: path != "") [
-    "${userHome}/.config/sops/age/keys.txt"
-    (if userName != "" then "/home/${userName}/.config/sops/age/keys.txt" else "")
-    "${hostSopsKeyShareMountPoint}/age/keys.txt"
-  ];
+  nixosHostKeyImportCandidatesDefault = [ "${hostSopsKeyShareMountPoint}/age/keys.txt" ];
 
   # Canonical trampoline directory from the flake-level builder — see
   # modules/.common.d/default.nix for the rationale (single source of truth
@@ -136,12 +120,6 @@ in
       readOnly = true;
       default = sopsAgeBootstrapSystemdScript;
       description = "Store path of the generated bootstrap script for systemd ExecStart in NixOS modules.";
-    };
-
-    darwinUserKeyFile = mkOption {
-      type = types.str;
-      default = "${userHome}/.config/sops/age/keys.txt";
-      description = "The operator's own age key on a darwin seat, read only by the operator tools that run as the operator (incus-cluster-cert, keys-reconcile); never a machine's sops identity.";
     };
 
     nixosHostKeyImport = {

@@ -19,6 +19,11 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 #                                       Flux, the node bundle, the in-cluster render), as seedmatic/cluster-age/<n>;
 #                                       prints its age public, for the .sops.yaml of rke2lab and nnh
 #   ndh-keyring cluster-age-public <n>  prints that public again; generates and writes nothing
+#   ndh-keyring age-key operator        the operator's own age identity, read on STDIN (the operator names its
+#                                       file; this script never does), as seedmatic/age-key/operator: exactly
+#                                       one identity, whose public is .sops.yaml's operator recipient
+#   ndh-keyring age-key-check operator  decrypts a sops file of this build by SOPS_AGE_KEY_CMD alone, with an
+#                                       empty HOME, so no identity on disk can answer: then the file can go
 #
 # The cluster-age private leaves the keyring only on a file descriptor its consumer opens on `pass show`
 # (the grow), never through this script.
@@ -40,7 +45,7 @@ die() {
 ulimit -c 0
 
 usage="usage: ndh-keyring host-key <machine> | vz-recover-key <host> | nix-signing-public <machine>"
-usage+=" | cluster-age <n> | cluster-age-public <n>"
+usage+=" | cluster-age <n> | cluster-age-public <n> | age-key operator | age-key-check operator"
 [[ $# -eq 2 ]] || die "$usage"
 kind="$1"
 name="$2"
@@ -52,6 +57,10 @@ case "$kind" in
   cluster-age | cluster-age-public)
     [[ $name =~ ^[1-9][0-9]*$ ]] || die "a cluster-age version is a positive integer, not ${name}"
     recorded="rke2lab-cluster-age-${name}"
+    ;;
+  age-key | age-key-check)
+    [[ $name == operator ]] || die "the only age key the keyring holds is the operator's, not ${name}"
+    recorded="$operatorRecipient"
     ;;
   *) die "$usage" ;;
 esac
@@ -86,6 +95,18 @@ if [[ $kind == cluster-age-public ]]; then
   public="$(pass show "$ageEntry" | age-keygen -y 2>/dev/null)" || die "${ageEntry} does not read back as an age identity"
   [[ $public == age1* ]] || die "${ageEntry} does not read back as an age identity"
   printf '%s\n' "$public"
+  exit 0
+fi
+
+# Writes nothing: sops answers only through SOPS_AGE_KEY_CMD, as this seat's shells and GUI apps call it.
+if [[ $kind == age-key-check ]]; then
+  [[ -n ${SOPS_AGE_KEY_CMD:-} ]] || die "SOPS_AGE_KEY_CMD is not set in this shell: open a new one after the switch"
+  emptyHome="$(mktemp -d)"
+  trap 'rm -rf "$emptyHome"' EXIT
+  env -u SOPS_AGE_KEY -u SOPS_AGE_KEY_FILE HOME="$emptyHome" XDG_CONFIG_HOME="$emptyHome" \
+    sops decrypt "$sopsProbe" >/dev/null 2>&1 ||
+    die "sops cannot decrypt ${sopsProbe##*/} by SOPS_AGE_KEY_CMD alone: keep the identity file"
+  log "sops decrypts by SOPS_AGE_KEY_CMD alone (${SOPS_AGE_KEY_CMD}): the identity file can be removed"
   exit 0
 fi
 
@@ -131,6 +152,23 @@ if [[ $kind == cluster-age ]]; then
   log "3< <(pass show ${entry}); never write that into a script"
   log "replicate seedmatic/ with git subtree push — it carries seedmatic's history only while seedmatic/ is"
   log "never deleted and re-created in the store"
+  exit 0
+fi
+
+# The operator's identity, from stdin to pass: never a variable or a file here. Checked once inserted, and
+# removed again if it is not exactly the operator's.
+if [[ $kind == age-key ]]; then
+  [[ ! -t 0 ]] || die "the identity is read on stdin: ndh-keyring age-key operator < <its file>"
+  pass insert -m "$entry" >/dev/null || die "inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}"
+  checkRecipient
+  publics="$(pass show "$entry" | age-keygen -y 2>/dev/null)" || publics=""
+  if [[ $publics != "$operatorRecipient" ]]; then
+    pass rm -f "$entry" >/dev/null
+    die "stdin holds $(grep -c . <<<"$publics") identity(ies) whose public is not ${operatorRecipient} alone — ${entry} removed"
+  fi
+  printf '%s\n' "$publics"
+  log "${entry}: inserted, encrypted to ${recipient} alone, read back as ${operatorRecipient}"
+  log "next, after the switch, in a NEW shell: ndh-keyring age-key-check operator"
   exit 0
 fi
 

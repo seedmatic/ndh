@@ -100,7 +100,7 @@ info "decrypting ${KEYS_YAML}"
 decrypted="${tmp}/keys.yaml"
 sops --input-type yaml --output-type yaml -d "$KEYS_YAML" >"$decrypted"
 if [[ ! -s "$decrypted" ]]; then
-	err "sops -d produced an empty file (decryption failure; check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+	err "sops -d produced an empty file (decryption failure; check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator)"
 	exit 1
 fi
 
