@@ -1474,6 +1474,51 @@
             pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
           # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
           # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
+          # No token pull where no cache can answer: without a recorded TLS leaf a cache's nginx waits, so the machines
+          # install no pull for it and say so at activation, the leaf being the operator's next gesture. The control, a
+          # fixture leaf for bioskop: that cache alone is pulled, and only nikopol's is said to wait.
+          attic-tokens-wait-for-leaf =
+            let
+              lib = nixpkgs.lib;
+              tokensFor =
+                leaves:
+                import ./modules/.common.d/attic-tokens.d/package.nix {
+                  inherit pkgs lib leaves;
+                  inherit (catalogData) netplan;
+                };
+              today = tokensFor ./catalog/attic-leaves;
+              fixture = tokensFor ./modules/.common.d/attic-tokens.d/tests/leaves-fixture;
+              names = lib.attrNames catalogData.netplan.baremetal;
+              guests = map (n: self.nixosConfigurations."${n}-nixos".config) names;
+              seats = map (n: self.darwinConfigurations.${n}.config) names;
+              waitsFor =
+                text:
+                lib.filter (
+                  n: lib.hasInfix "no TLS leaf recorded for ${catalogData.netplan.baremetal.${n}.atticFqdn}:" text
+                ) names;
+            in
+            assert lib.assertMsg (
+              today.served == { }
+            ) "attic-tokens-wait-for-leaf: a leaf is recorded now; update this check";
+            assert lib.assertMsg (lib.all (
+              c: !(c.systemd.services ? ndh-attic-tokens)
+            ) guests) "attic-tokens-wait-for-leaf: a guest installs a token pull with no cache to answer";
+            assert lib.assertMsg (lib.all (
+              c: !(c.launchd.daemons ? ndh-attic-tokens)
+            ) seats) "attic-tokens-wait-for-leaf: a darwin host installs a token pull with no cache to answer";
+            assert lib.assertMsg (lib.all (
+              c: waitsFor c.system.activationScripts.ndhAtticTokensWaiting.text == names
+            ) guests) "attic-tokens-wait-for-leaf: a guest does not say which caches wait for their leaf";
+            assert lib.assertMsg (lib.all (
+              c: waitsFor c.system.activationScripts.postActivation.text == names
+            ) seats) "attic-tokens-wait-for-leaf: a darwin host does not say which caches wait for their leaf";
+            assert lib.assertMsg (
+              lib.attrNames fixture.served == [ "bioskop" ]
+            ) "attic-tokens-wait-for-leaf: the fixture leaf does not serve bioskop alone";
+            assert lib.assertMsg (
+              waitsFor fixture.waitingNotice == [ "nikopol" ]
+            ) "attic-tokens-wait-for-leaf: with bioskop's leaf, only nikopol must wait";
+            pkgs.runCommand "attic-tokens-wait-for-leaf" { } "touch $out";
           attic-leaves-recorded =
             let
               lib = nixpkgs.lib;

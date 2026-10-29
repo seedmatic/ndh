@@ -84,13 +84,17 @@ in
         };
       };
 
-      system.activationScripts.postActivation.text = lib.mkAfter ''
-        install -d -o ${account} -g ${account} -m 0700 ${home}
-      '';
+      system.activationScripts.postActivation.text = lib.mkAfter (
+        ''
+          install -d -o ${account} -g ${account} -m 0700 ${home}
+        ''
+        + lib.optionalString (cfg.metalspace != null) tokens.waitingNotice
+      );
 
       # Each machine pulls its own tokens from every cache (F6): at load and daily; the unseal runs at the end of
-      # each pull. A machine outside the fleet's inventory has none to pull.
-      launchd.daemons.ndh-attic-tokens = lib.mkIf (cfg.metalspace != null) {
+      # each pull. A machine outside the fleet's inventory has none to pull, nor any while no cache has a recorded
+      # leaf (no TLS listener yet).
+      launchd.daemons.ndh-attic-tokens = lib.mkIf (cfg.metalspace != null && tokens.served != { }) {
         command = lib.getExe fetch;
         serviceConfig = {
           Label = ndh.store.mkLaunchdLabel "attic-tokens";
