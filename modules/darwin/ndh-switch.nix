@@ -116,6 +116,40 @@ in
           import ../.common.d/keys-yaml.d/json-tool.nix { inherit pkgs; }
         }/bin/ndh-keys-json";
         inherit (import ../.common.d/ndh-ops.d/paths.nix) delegation;
+        # A key a machine still uses: its sshPaths.keyName, or a key whose public is in an authorized_keys it renders.
+        inUseKeys =
+          let
+            keys = config.ndh.keysYaml.keys;
+            configOf =
+              m:
+              if m.name == config.networking.hostName then
+                config
+              else if m.kind == "nixos" then
+                self.nixosConfigurations.${m.name}.config
+              else
+                self.darwinConfigurations.${m.name}.config;
+            authorizedText =
+              c:
+              lib.concatStringsSep "\n" (
+                lib.concatMap (u: u.openssh.authorizedKeys.keys or [ ]) (lib.attrValues (c.users.users or { }))
+                ++ lib.mapAttrsToList (_: e: e.text or "") (
+                  lib.filterAttrs (n: _: lib.hasPrefix "ssh/nix_authorized_keys.d/" n) (c.environment.etc or { })
+                )
+              );
+            usedBy =
+              c:
+              let
+                text = authorizedText c;
+              in
+              [ c.sshPaths.keyName ]
+              ++ lib.filter (
+                k:
+                lib.any (s: (s.public or null) != null && lib.hasInfix s.public text) (
+                  lib.attrValues (keys.${k}.slots or { })
+                )
+              ) (lib.attrNames keys);
+          in
+          lib.unique (lib.concatMap (m: usedBy (configOf m)) catalog.machines);
       };
       description = "keys-reconcile, the window step: its revision, batch and machines are this closure's.";
     };

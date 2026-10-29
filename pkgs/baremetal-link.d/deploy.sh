@@ -46,12 +46,12 @@ main() {
 	esac
 
 	# vzhost REFUSES root ssh, and the activation oneshot runs as root — so connect
-	# as the operator login (@vzUser@) with the CA-signed rdp-host identity from the
+	# as the operator login (@vzUser@) with the operator's CA-signed identity from the
 	# root-readable systemKeysDir (vzhost trusts the mammoth-skate CA inbound for that
-	# user). If that identity isn't readable (a non-root `nix run`), omit -i and let
+	# user, with the `operator` principal). If that identity isn't readable (a non-root `nix run`), omit -i and let
 	# the caller's ssh config/agent supply auth — still forcing user @vzUser@.
 	# accept-new writes known_hosts on first contact.
-	local vzId="@systemKeysDir@/rdp-host"
+	local vzId="@systemKeysDir@/@vzKeyName@"
 	local -a sshVz=(@ssh@ -l "@vzUser@" -o StrictHostKeyChecking=accept-new)
 	if [[ -r "$vzId" && -r "$vzId-cert.pub" ]]; then
 		sshVz+=(-i "$vzId" -o "CertificateFile=$vzId-cert.pub" -o IdentitiesOnly=yes)

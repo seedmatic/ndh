@@ -1,7 +1,7 @@
 # ssh-keys-certify (see ssh-keys-certify.sh), built for the operator seat (6a: the seat signs every SSH certificate
 # keys.yaml declares; the activation only installs them). One definition: the seat's module puts it in ndh-ops's
 # tools, and the flake's app is that very package.
-#   hostCertificates: the flake's fleetHostCertificates (names per machine, the interim key and machines, `own`).
+#   hostCertificates: the flake's fleetHostCertificates (names per machine).
 {
   pkgs,
   ndh,
@@ -20,9 +20,6 @@ ndh.store.installBinScript "ssh-keys-certify" (
         machine: names: "${machine}=${lib.concatStringsSep "," names}"
       ) hostCertificates.names
     );
-    interimKey = hostCertificates.interim.key;
-    interimMachines = lib.concatStringsSep " " hostCertificates.interim.machines;
-    ownMachines = lib.concatStringsSep " " hostCertificates.own;
     sha256sum = "${pkgs.coreutils}/bin/sha256sum";
     sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
     toolPath = lib.makeBinPath (

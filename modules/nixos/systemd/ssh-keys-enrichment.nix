@@ -16,7 +16,6 @@ let
   keysTargetUnit = "keys.target";
   hasSopsInstallSecretsService = builtins.hasAttr "sops-install-secrets" config.systemd.services;
   contributedTargetName = ndhSystemd.contributedTargetName;
-  hostkeyEnrollmentCheckServiceName = ndhSystemd.mkServiceName "hostkey-enrollment-check";
   profileUserName =
     if config ? profile && config.profile ? user && config.profile.user ? name then
       config.profile.user.name
@@ -101,10 +100,7 @@ in
       keysTargetUnit
     ]
     ++ lib.optionals hasSopsInstallSecretsService [ "sops-install-secrets.service" ];
-    before = [
-      "sshd.service"
-    ]
-    ++ lib.optional (!config.ndh.hostKey.own) hostkeyEnrollmentCheckServiceName;
+    before = [ "sshd.service" ];
     path = with pkgs; [
       bash
       coreutils
@@ -153,13 +149,13 @@ in
 
       # Pre-extract principals for AuthorizedPrincipalsCommand into a
       # non-secret input file.  The file contains only public principal
-      # names (e.g. "rdp-host", "linux-builder") — no keys, no secrets —
+      # names (e.g. "operator", "linux-builder") — no keys, no secrets —
       # so it is world-readable (mode 0644).  Restricting it to the
       # `_sshd` group (the previous policy) silently broke cert auth:
       # sshd's default AuthorizedPrincipalsCommandUser is `nobody`,
       # `nobody` is not in `_sshd`, the command's `[[ ! -r $INPUT_FILE ]]`
       # branch fired, it emitted only `$USER_NAME` (i.e. "root"), the
-      # cert's principal (`rdp-host`) did not match, and sshd logged
+      # cert's principal (`operator`) did not match, and sshd logged
       # "ED25519-CERT key is not allowed" with no further diagnostic.
       install -d -m 0755 "$(dirname "${authorizedPrincipalsInputPath}")"
       principals_input_tmp="$(mktemp)"
@@ -255,7 +251,7 @@ in
       ${pkgs.bash}/bin/bash ${sshKeysEnrichmentTools}/bin/ssh-trusted-user-ca "${config.sshPaths.systemKeysDir}"
 
       # 5. Materialize authorizedKeysDir/<user> from EVERY published generation of
-      #    the rdp-host pubkey. The earlier system.activationScripts.sshGroupKeys
+      #    the operator pubkey. The earlier system.activationScripts.sshGroupKeys
       #    pass reads sshPaths.secretsKeysDir which is the user home — empty on
       #    the very first boot, so authorized_keys was never written and sshd
       #    rejected pubkey auth until the operator pasted the key by hand.

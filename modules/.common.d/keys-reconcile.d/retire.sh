@@ -4,7 +4,7 @@
 # « yes » on the tty, in the window's worktree discipline.
 #
 # For host-<machine>: every `retired` slot is DELETED and its `revoked` entry written from that slot's own public.
-# And a host certificate recorded on another key (the shared rdp-host's) whose principals name ONLY machines that now
+# And a host certificate recorded on another key (a shared key's, as rdp-host's was) whose principals name ONLY machines that now
 # serve their own key is REMOVED from its slot and its `revoked_certificates` entry written, by its exact key id
 # (krl.sh never revokes by serial). krl.sh refuses a revoked id a recorded certificate still shares, so the record
 # leaves in the same change.
@@ -119,6 +119,70 @@ reconcile::retire() { # <machine>
     printf 'keys-reconcile retire: %s, at %s\n\n' "$machine" "${revision:0:12}"
     for slot in $retiredSlots; do printf 'revoked %s@%s (slot deleted)\n' "$keyName" "$slot"; done
     for k in "${certs[@]}"; do printf 'revoked_certificates %s (its host certificate removed)\n' "$k"; done
+  } >"$work/summary"
+  reconcile::tree::commit
+}
+
+# keys-reconcile retire-key <key>: end a whole key no configuration of this revision uses any more (a shared key that
+# every machine replaced by its own, a key its role lost), in ONE change: each slot's public into `revoked`, then the
+# key's entry deleted (never an authority: those live in their own map). Refused before the « yes »: a machine's own
+# host key (retire is for those), a key a configuration still names (inUseKeys: a machine's sshPaths.keyName, or a public in an authorized_keys it renders),
+# a slot without a public. keys.yaml's encrypted values other than the key's own stay byte-identical.
+reconcile::retire_key() { # <key>
+  local key="$1" slots slot answer
+  [[ $key =~ ^[a-z][a-z0-9-]*$ ]] || die "retire-key: '${key}' is not a key name"
+  K="$key" yq -e -p json '.keys | has(strenv(K))' "$keysJson" >/dev/null 2>&1 || die "retire-key: keys.yaml has no ${key} entry"
+  ! K="$key" yq -e '.[] | select(.name == strenv(K))' "$machines" >/dev/null 2>&1 ||
+    die "retire-key: ${key} is a machine's host key: keys-reconcile retire ${key} ends its old slots"
+  ! K="$key" yq -e -p json 'any_c(. == strenv(K))' "$inUseKeys" >/dev/null 2>&1 ||
+    die "retire-key: ${key} is still used by a configuration of this revision (its sshPaths.keyName or an authorized_keys line)"
+  slots=$(K="$key" yq -r -p json '.keys[strenv(K)].slots // {} | keys | .[]' "$keysJson")
+  [[ -n $slots ]] || die "retire-key: ${key} has no slot to revoke"
+  for slot in $slots; do
+    [[ "$(K="$key" S="$slot" yq -r -p json '.keys[strenv(K)].slots[strenv(S)].public // ""' "$keysJson")" != "" ]] ||
+      die "retire-key: ${key}@${slot} has no public to revoke"
+    ! K="$key@$slot" yq -e -p json '.revoked // {} | has(strenv(K))' "$keysJson" >/dev/null 2>&1 || die "retire-key: ${key}@${slot} is already revoked"
+  done
+
+  echo "retire-key at revision ${revision:0:12}, in one change:"
+  for slot in $slots; do echo "  ${key}@${slot}: its public revoked (revoked)"; done
+  echo "  ${key}: entry deleted from keys"
+  printf 'retire and revoke? [yes/no] ' >>"$ttyOut"
+  exec 7<"$ttyIn"
+  read -r answer <&7 || answer=""
+  exec 7<&-
+  [[ $answer == yes ]] || { echo "nothing written: the answer is not « yes »"; return 5; }
+
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
+  reconcile::tree::open || return 1
+  local keysYaml="$tree/modules/home-manager/ssh.d/keys.yaml" snapshot type public value
+  snapshot="$work/before.modules_home-manager_ssh.d_keys.yaml"
+  : "the key's own encrypted values leave with it: tree::check guards every other one"
+  grep -v -F "keys.${key}." "$snapshot" >"$snapshot.kept" || true
+  mv "$snapshot.kept" "$snapshot"
+  cp "$keysYaml" "$work/expected.yaml"
+  type=$(K="$key" yq -r '.keys[strenv(K)].type // "ssh-ed25519"' "$keysYaml")
+  for slot in $slots; do
+    public=$(K="$key" S="$slot" yq -r '.keys[strenv(K)].slots[strenv(S)].public' "$keysYaml")
+    value=$(T="$type" P="$public" R="no configuration uses ${key} any more (keys-reconcile retire-key)" \
+      yq -n -o json -I0 '{"type": strenv(T), "public": strenv(P), "reason": strenv(R)}')
+    reconcile::sopsSet "$keysYaml" "[\"revoked\"][\"${key}@${slot}\"]" "$value" || return 1
+    K="$key" S="$slot" V="$value" yq -i '.revoked[strenv(K) + "@" + strenv(S)] = (strenv(V) | from_json)' "$work/expected.yaml"
+  done
+  sops unset --input-type yaml --output-type yaml "$keysYaml" "[\"keys\"][\"${key}\"]" 2>/dev/null ||
+    reconcile::fail "sops unset failed on ${key}" || return 1
+  K="$key" yq -i 'del(.keys[strenv(K)])' "$work/expected.yaml"
+
+  : "postconditions: exactly the key gone and its revocations added, no other encrypted value moved but the MAC"
+  [[ "$(yq -o json -I0 'del(.sops)' "$keysYaml")" == "$(yq -o json -I0 'del(.sops)' "$work/expected.yaml")" ]] ||
+    reconcile::fail "keys.yaml changed more than the retired key and its revocations" || return 1
+  reconcile::tree::check || return 1
+  "$keysJsonTool" "$keysYaml" || reconcile::fail "keys.json could not be regenerated" || return 1
+  printf '%s\n' modules/home-manager/ssh.d/keys.yaml modules/home-manager/ssh.d/keys.json >>"$work/staged"
+  {
+    printf 'keys-reconcile retire-key: %s, at %s\n\n' "$key" "${revision:0:12}"
+    for slot in $slots; do printf 'revoked %s@%s (key deleted)\n' "$key" "$slot"; done
   } >"$work/summary"
   reconcile::tree::commit
 }

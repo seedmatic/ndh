@@ -15,11 +15,6 @@ let
   userName = profile.user.name;
   sshPaths = config.sshPaths;
   hostKeysDir = sshPaths.secretsKeysDir;
-  clientKeyName = builtins.baseNameOf sshPaths.privKeyFile;
-  ownsHostKey = config.ndh.hostKey.own;
-  # Until the seat owns its host key: rdp-host, extracted to the user's directory with its certificate.
-  hostKeyPrivateFile = sshPaths.privKeyFile;
-  hostKeyPublicCert = "${sshPaths.secretsKeysDir}/${clientKeyName}-server-cert.pub";
   caPublicKeyFile = "${config.opensshPolicy.keysDir}/trusted-user-ca.pub";
   authorizedPrincipalsInputPath = "${config.opensshPolicy.canonicalCommandDir}/authorized-principals-command.yaml";
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
@@ -35,7 +30,8 @@ let
 
   # The NixOS guest that mounts this operator seat's git stores (roles × keys S3b), by the inventory.
   sshfsGuest = (catalog.netplan.baremetal.${config.networking.hostName} or { }).nixosHostname or null;
-  sshfsKeyName = "sshfs-${sshfsGuest}";
+  # The guest mounts this seat with its own host key, named after it (roles × keys: no sshfs key of its own).
+  sshfsKeyName = sshfsGuest;
   ndhSshdConfigText =
     let
       boolToYesNo = v: if v then "yes" else "no";
@@ -84,7 +80,7 @@ in
     type = lib.types.str;
     readOnly = true;
     default = ''restrict,command="internal-sftp -R"'';
-    description = "The authorized_keys options of the guest's sshfs key on its operator seat.";
+    description = "The authorized_keys options of the guest's host key on its operator seat, for its sshfs mounts.";
   };
 
   # Not read-only only so the eval checks can give a test configuration a public that keys.yaml does not hold.
@@ -95,14 +91,14 @@ in
       config.ndh.keysYaml.authorizedLinesFor [ sshfsKeyName ]
     );
     description = ''
-      The authorized_keys lines of this seat's NixOS guest's sshfs key, from its public recorded in keys.yaml
-      (`sshfs-<guest>`), one per slot; none until it is recorded. Authorized for the operator with
-      read-only sftp only.
+      The authorized_keys lines of this seat's NixOS guest's host key, from its publics recorded in keys.yaml
+      (`<guest>`), one per slot, so a rotation's both generations mount. Authorized for the operator with
+      read-only sftp only: the key that is the guest's sshd identity opens nothing else here.
     '';
   };
 
   config = {
-    # The guest's sshfs key: an authorized_keys line, not a certificate, because it must hold on THIS seat
+    # The guest's host key, for its sshfs mounts: an authorized_keys line, not a certificate, because it must hold on THIS seat
     # only, with its forced command; a certificate principal is honored by every sshd trusting the
     # authority. nix-darwin writes the lines to /etc/ssh/nix_authorized_keys.d/<user>, which the group-keys
     # AuthorizedKeysCommand reads: a command, because sshd does not read that store symlink as a file.
@@ -121,9 +117,8 @@ in
       principalsCommandUser = "_sshd";
       groupKeysCommandSource = groupKeysScriptStore;
       groupCommandUser = "_sshd";
-      hostKeyPaths = [ (if ownsHostKey then config.ndh.hostKey.file else hostKeyPrivateFile) ];
-      hostCertificatePath =
-        if ownsHostKey then "${config.ndh.hostKey.certificateFile}" else hostKeyPublicCert;
+      hostKeyPaths = [ config.ndh.hostKey.file ];
+      hostCertificatePath = "${config.ndh.hostKey.certificateFile}";
 
       # The operator and the restricted service accounts (nix-store), nobody else: not root, whose
       # PermitRootLogin is no.
@@ -199,11 +194,9 @@ in
       hostKeys = lib.mkForce [ ];
     };
 
-    # The seat's sops identity, named explicitly (roles × keys S4b): its own host key once it serves it, the
-    # system's /etc/ssh key before. Never chosen by what /etc/ssh happens to hold, which the rescue aliases link.
-    sops.age.sshKeyPaths = [
-      (if ownsHostKey then config.ndh.hostKey.file else "/etc/ssh/ssh_host_ed25519_key")
-    ];
+    # The seat's sops identity, named explicitly (roles × keys S4b): its own host key. Never chosen by what
+    # /etc/ssh happens to hold, which the rescue aliases link.
+    sops.age.sshKeyPaths = [ config.ndh.hostKey.file ];
 
     # Ensure OpenSSH helper scripts are installed during the etc phase. launchd starts sshd per
     # connection, so a missing owned key is said here, without failing the rest of the activation.
@@ -211,7 +204,7 @@ in
       ''
         bash ${opensshActivationScript}/bin/openssh-activation
       ''
-      + lib.optionalString ownsHostKey ''
+      + ''
         ${config.ndh.hostKey.check} || true
       ''
     );

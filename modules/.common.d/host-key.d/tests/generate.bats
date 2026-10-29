@@ -36,11 +36,11 @@ render() { # <recorded old public> [bootstrap]
 
 mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 key() { echo "$t/var/host-key/slots/26-11-01/ssh_host_ed25519_key"; }
-pub() { echo "$t/var/host-key/published/host-m@26-11-01.$1"; }
+pub() { echo "$t/var/host-key/published/m@26-11-01.$1"; }
 
 verify() { # the statement against the OLD key's public, as the seat will
-  printf 'host-m %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
-  ssh-keygen -q -Y verify -f "$t/allowed" -I host-m -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
+  printf 'm %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
+  ssh-keygen -q -Y verify -f "$t/allowed" -I m -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
 }
 
 @test "the key is born 0600 in a 0700 directory, and its public and F1 statement are published" {
@@ -59,12 +59,12 @@ verify() { # the statement against the OLD key's public, as the seat will
 
 @test "the statement does not verify under another namespace, nor against another key" {
   bash "$t/generate"
-  printf 'host-m %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
-  run ssh-keygen -q -Y verify -f "$t/allowed" -I host-m -n seedmatic-attest -s "$(pub statement.sig)" <"$(pub statement)"
+  printf 'm %s\n' "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/allowed"
+  run ssh-keygen -q -Y verify -f "$t/allowed" -I m -n seedmatic-attest -s "$(pub statement.sig)" <"$(pub statement)"
   [ "$status" -ne 0 ]
   ssh-keygen -q -t ed25519 -N "" -C other -f "$t/other"
-  printf 'host-m %s\n' "$(cut -d' ' -f1,2 "$t/other.pub")" >"$t/allowed"
-  run ssh-keygen -q -Y verify -f "$t/allowed" -I host-m -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
+  printf 'm %s\n' "$(cut -d' ' -f1,2 "$t/other.pub")" >"$t/allowed"
+  run ssh-keygen -q -Y verify -f "$t/allowed" -I m -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
   [ "$status" -ne 0 ]
 }
 

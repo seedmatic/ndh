@@ -4,8 +4,7 @@
 # Its one argument is a MACHINE NAME, checked against the frozen machine list; everything else is derived from the
 # revision's keys.yaml: the slot is today's date and must sort after every slot the key has; `origin: host`;
 # `bootstrap: console` (the operator's witness: their eyes at its console, or their tailnet node list) exactly when the
-# machine serves no key of its own (its current host slot is not `serving`, as
-# for a machine on the shared rdp-host). Refused while a rotation is in flight: a slot `pending`, or `recorded` with
+# machine serves no key of its own (its current host slot is not `serving`). Refused while a rotation is in flight: a slot `pending`, or `recorded` with
 # `origin: host` (a born key not yet served). A `recorded, origin: keyring` slot does not block: it is the pushed key
 # this rotation retires. Written in the window's worktree discipline (reconcile::tree::open/check/commit).
 

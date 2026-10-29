@@ -100,7 +100,7 @@ let
         "26-10-17" = serving;
         "26-11-01" = slot "recorded" "host";
       };
-      sshfs-g2.slots = {
+      g2.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "recorded" "host";
       };
@@ -143,7 +143,7 @@ let
     assert expect "the later step names why" (map (e: lib.last e.checked) q.mixed.blocked) [
       "the previous step is not done on the whole fleet"
     ];
-    assert expect "serve: host keys and sshfs keys alike, in order" (steps q.serve.head) [
+    assert expect "serve: the host keys, in order" (steps q.serve.head) [
       "serve:g2"
       "serve:mac"
     ];
@@ -173,7 +173,7 @@ assert lib.assertMsg
               )
             )
           )
-        ) (lib.filterAttrs (k: _: lib.hasPrefix "host-" k || lib.hasPrefix "sshfs-" k) repoKeys)
+        ) (lib.filterAttrs (k: _: lib.elem k (map (m: m.name) catalog.machines)) repoKeys)
       )
     )
   )

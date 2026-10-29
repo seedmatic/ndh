@@ -231,7 +231,7 @@ in
       #
       # Pass perUserSecretsKeysDir as the 4th arg (systemPrivateOutputDir) so
       # split-exp's "system-private" routing (for keys with profiles ∋ system
-      # that *also* ∋ user, e.g. rdp-host) lands the private at
+      # that *also* ∋ user, e.g. operator) lands the private at
       # $perUserSecretsKeysDir/<name> — where sshPaths.privKeyFile points —
       # rather than the default .authority.d/ fallback which sshd cannot
       # find.

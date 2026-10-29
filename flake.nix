@@ -110,15 +110,8 @@
       # `hostForms` lets the catalog derive each vz-host's kind instead of declaring it: the
       # vz-host is nix-managed exactly when the config named <host> is the bare metal itself.
       # Injected from here because this file owns the host tree; see catalog/default.nix.
-      # The ONE identity the incus cluster-cert closure reaches a member with: the OPERATOR
-      # principal's key on the operator seat, read from bioskop's configuration (sshPaths, the profile
-      # user) so it is never retyped. Step 9 moves it from rdp-host to the `operator` key here.
       # Roles × keys S3a: what ssh-keys-certify signs host certificates for on the operator seat, computed,
-      # never retyped. `names`: each machine's own names (host-names.nix refuses a name two machines
-      # claim). `own`: the machines whose configuration serves their own host key (ndh.hostKey.own), the
-      # interim's gate; read from each machine's configuration, which consumes nothing of certify, so no
-      # cycle. `interim` (decided 2026-10-15, ends at nikopol's push): the shared key nikopol's sshd still
-      # serves, certified for nikopol's machines only.
+      # never retyped: each machine's own names (host-names.nix refuses a name two machines claim).
       fleetHostCertificates =
         let
           lib = nixpkgs.lib;
@@ -137,23 +130,9 @@
           names = import ./modules/.common.d/ssh-keys-certify.d/host-names.nix { inherit lib; } {
             inherit domain hosts guests;
           };
-          configs =
-            lib.genAttrs (lib.filter (host: self.darwinConfigurations ? ${host}) hosts) (
-              host: self.darwinConfigurations.${host}.config
-            )
-            // lib.listToAttrs (map (config: lib.nameValuePair config.vm.guestHostName config) guestConfigs);
         in
         {
           inherit names;
-          # A machine without a configuration is not on its own key: the gate stays closed on it.
-          own = lib.filter (machine: configs.${machine}.ndh.hostKey.own or false) (lib.attrNames names);
-          interim = {
-            key = builtins.baseNameOf self.darwinConfigurations.nikopol.config.sshPaths.privKeyFile;
-            machines = [
-              "nikopol"
-            ]
-            ++ map (vm: vm.guestHostName) (lib.filter (vm: vm.hostName == "nikopol") guests);
-          };
         };
 
       catalogData = import ./catalog/default.nix {
@@ -895,9 +874,10 @@
             # ssh-host → root-owned systemKeysDir). Read at runtime by deploy.sh and
             # shipped to the target so link-up.sh can auth the guest nudge. Matches
             # modules/.common.d/ssh-paths.nix `systemKeysDir` default. deploy.sh also
-            # reads ${systemKeysDir}/rdp-host{,-cert.pub} from here as the vzhost
-            # login identity (root-readable; the activation oneshot runs as root).
+            # reads the operator's key and certificate from here as the vzhost login
+            # identity (root-readable; the activation oneshot runs as root).
             systemKeysDir = "/var/lib/ndh/ssh-keys";
+            vzKeyName = self.darwinConfigurations.bioskop.config.sshPaths.keyName;
             # vzhost's OS login — read from the catalog, which now holds it beside the vz-host's
             # other identity facts. It used to be written here with a comment conceding that no
             # single source existed and that the string was already duplicated in
@@ -1253,6 +1233,43 @@
             certify = ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh;
             renew = ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh;
           };
+          # rdp-host retired (2026-10-29): every catalog machine serves its own host key, and a configuration that is no
+          # catalog machine (the generic runtime layer, the bringup alias) serves only the key NixOS generates at its first
+          # boot, so no configuration bakes a private host key or still names rdp-host.
+          hosts-serve-their-own-key =
+            let
+              lib = nixpkgs.lib;
+              catalog = map (m: m.name) (import ./catalog/machines.nix);
+              configOf =
+                name:
+                if self.nixosConfigurations ? ${name} then
+                  self.nixosConfigurations.${name}.config
+                else
+                  self.darwinConfigurations.${name}.config;
+              notOwn = lib.filter (name: !(configOf name).ndh.hostKey.own) catalog;
+              generic = [
+                "nerd-runtime"
+                "nerd-nixos"
+              ];
+              baked =
+                name:
+                lib.filter (k: !(lib.hasPrefix "/etc/ssh/ssh_host_" k)) (
+                  self.nixosConfigurations.${name}.config.opensshPolicy.hostKeys
+                  ++ map (k: k.path) self.nixosConfigurations.${name}.config.services.openssh.hostKeys
+                );
+              namesRdpHost =
+                name:
+                lib.any (k: lib.hasInfix "rdp-host" k) (
+                  self.nixosConfigurations.${name}.config.opensshPolicy.hostKeys
+                  ++ [ (toString self.nixosConfigurations.${name}.config.services.openssh.settings.HostKey or "") ]
+                );
+            in
+            assert lib.assertMsg (
+              notOwn == [ ]
+            ) "hosts-serve-their-own-key: catalog machines not on their own host key: ${toString notOwn}";
+            assert lib.assertMsg (lib.all (n: baked n == [ ] && !(namesRdpHost n)) generic)
+              "hosts-serve-their-own-key: a generic configuration bakes a host key: ${builtins.toJSON (map baked generic)}";
+            pkgs.runCommand "hosts-serve-their-own-key" { } "touch $out";
           # The schema names the machines whose host keys carry the frame's slot fields: exactly the catalog's.
           keys-schema-machines =
             let
@@ -1929,6 +1946,7 @@
                   atticCaches = [ ];
                   keysJsonTool = "/dev/null";
                   delegation = "/dev/null";
+                  inUseKeys = [ ];
                 }).passthru.batch;
             in
             assert lib.assertMsg
@@ -2001,6 +2019,7 @@
                   atticCaches = [ ];
                   keysJsonTool = "/dev/null";
                   delegation = "/dev/null";
+                  inUseKeys = [ ];
                 }).passthru.batch;
               batch = batchOf ./modules/.common.d/keys-reconcile.d/package.nix;
               mutantText =
@@ -2106,6 +2125,7 @@
                       ];
                   keysJsonTool = "/dev/null";
                   delegation = "/dev/null";
+                  inUseKeys = [ ];
                 }).passthru.batch;
               seen = map (e: "${e.class}:${e.machine}") batch;
             in
@@ -2122,6 +2142,36 @@
           tart-recreate-guard-bats = import ./modules/darwin/tart-config.d/tests/package.nix {
             inherit pkgs;
           };
+          # retire-key's refusal list, read from the seat's own keys-reconcile: the operator key is in use, and a key
+          # becomes in use the moment a configuration authorizes it (the control: bioskop's root authorizes nix-store).
+          keys-reconcile-in-use =
+            let
+              lib = nixpkgs.lib;
+              inUse = c: c.config.ndh.ndhSwitch.keysReconcile.passthru.inUseKeys;
+              seat = self.darwinConfigurations.bioskop;
+              authorizing = seat.extendModules {
+                modules = [
+                  (
+                    { config, ... }:
+                    {
+                      users.users.root.openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [
+                        "nix-store"
+                      ];
+                    }
+                  )
+                ];
+              };
+            in
+            assert lib.assertMsg (lib.elem "operator" (
+              inUse seat
+            )) "keys-reconcile-in-use: operator is not in use: ${toString (inUse seat)}";
+            assert lib.assertMsg (
+              !(lib.elem "nix-store" (inUse seat))
+            ) "keys-reconcile-in-use: nix-store is in use before the control";
+            assert lib.assertMsg (lib.elem "nix-store" (
+              inUse authorizing
+            )) "keys-reconcile-in-use: a key bioskop authorizes is not in use: ${toString (inUse authorizing)}";
+            pkgs.runCommand "keys-reconcile-in-use" { } "touch $out";
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -3692,7 +3742,7 @@
           }
         )
         # The guests' sshfs mounts of their operator seats' git stores, and what each seat authorizes for them
-        # (ndh.sshfs.ownKey, roles × keys S3b).
+        # (each guest's own host key, roles × keys S3b).
         // (
           let
             lib = nixpkgs.lib;
@@ -4572,7 +4622,7 @@
           ssh-keys-renew = {
             type = "app";
             program = "${sshKeysRenewPackage}/bin/ssh-keys-renew";
-            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host or sshfs key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
+            meta.description = "Phase 1 of an SSH key renewal: add a dated slot and generate into it — [--key NAME] [--authority NAME] [--older-than Nd] [--apply], or declare a new entry with --create NAME --usage TAG (record a host key public from stdin with --public -), dry run by default, run from repo root — src: modules/.common.d/ssh-keys-renew.d/";
           };
           cache-signing-key-rotate = {
             type = "app";
