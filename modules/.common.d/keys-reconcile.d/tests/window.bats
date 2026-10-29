@@ -286,29 +286,41 @@ close() { # <answer> <rev12>
   [ -d "$(tree)" ]
 }
 
-@test "close: a window already merged into develop is refused, nothing removed" {
+@test "close: a window already merged into develop is removed after « yes », said merged, its commit kept on develop" {
+  window yes
+  head="$(git -C "$(tree)" rev-parse HEAD)"
+  git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$head"
+  run --separate-stderr close yes "${rev:0:12}"
+  [ "$status" -eq 0 ]
+  [[ $output == *"merged already: keys-reconcile/${rev:0:12} (${head:0:12}) is on develop, nothing is lost"* ]]
+  [[ $output == *"closed: keys-reconcile/${rev:0:12} deleted, its commit stays on develop."* ]]
+  [ ! -e "$(tree)" ]
+  ! git -C "$t/cache/keys-reconcile/ndh.git" rev-parse --verify -q "refs/heads/keys-reconcile/${rev:0:12}"
+  [ "$(git -C "$t/cache/keys-reconcile/ndh.git" rev-parse refs/heads/develop)" = "$head" ]
+}
+
+@test "close: a merged window with uncommitted changes is still refused, nothing removed" {
   window yes
   git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
+  echo stray >"$(tree)/stray"
   run --separate-stderr close yes "${rev:0:12}"
   [ "$status" -eq 3 ]
-  [[ $stderr == *"is already on develop: nothing to discard"* ]]
+  [[ $stderr == *"has uncommitted changes"* ]]
   [ -d "$(tree)" ]
 }
 
-@test "mutant: a close that skips the merged check removes a merged window" {
+@test "mutant: a close that does not see the merge says it discards a merged window, and fails the case above" {
   window yes
   git -C "$t/cache/keys-reconcile/ndh.git" update-ref refs/heads/develop "$(git -C "$(tree)" rev-parse HEAD)"
-  : "the mutant keeps the loop and empties its body"
-  sed -e 's|^    ! git -C "\$bare" merge-base --is-ancestor "\$head" "refs/heads/\$ref" 2>/dev/null \|\||    :|' \
-    -e '/nothing to discard"$/d' "$BATS_TEST_DIRNAME/../close.sh" >"$t/close.sh"
-  [ "$(grep -c 'nothing to discard' "$t/close.sh")" -eq 0 ]
+  : "the mutant never finds the merge"
+  sed 's|then mergedOn=$ref \&\& break; fi|then :; fi|' "$BATS_TEST_DIRNAME/../close.sh" >"$t/close.sh"
+  ! cmp -s "$BATS_TEST_DIRNAME/../close.sh" "$t/close.sh"
   bash -n "$t/close.sh"
   sed -i "s|^source .*/close.sh\$|source $t/close.sh|" "$t/keys-reconcile"
   grep -q "^source $t/close.sh\$" "$t/keys-reconcile"
   run --separate-stderr close yes "${rev:0:12}"
-  : "under the mutant the merged window is deleted: what the case above guards"
-  [ "$status" -eq 0 ]
-  [ ! -e "$(tree)" ]
+  [[ $output == *"without merging it"* ]]
+  [[ $output != *"nothing is lost"* ]]
 }
 
 @test "without the trampoline's secret window, nothing is decrypted" {

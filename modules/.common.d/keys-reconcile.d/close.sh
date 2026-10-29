@@ -1,10 +1,11 @@
-# keys-reconcile close <rev12> (design §p's discipline): discard ONE window left open, unmerged — its worktree and its
-# branch in the fetch cache. Sourced by keys-reconcile.sh; armed (F3). The only gesture that removes a window: a
-# window holds a key commit, which only the operator's armed gesture writes, so only theirs removes it.
+# keys-reconcile close <rev12> (design §p's discipline): remove ONE window — its worktree and its branch in the fetch
+# cache — left open unmerged (its commit is discarded), or merged already (nothing is lost: its commit is on develop or
+# main of the cache). Sourced by keys-reconcile.sh; armed (F3). The only gesture that removes a window: a window holds
+# a key commit, which only the operator's armed gesture writes, so only theirs removes it.
 #
 # Refused, nothing removed, unless: the argument is a revision's 12-character prefix (never a path); that window exists
 # under the state directory; its worktree is on the branch keys-reconcile/<rev12> of the fetch cache, with nothing
-# uncommitted; and its commit is on neither develop nor main of the cache (a merged window is gone already).
+# uncommitted.
 
 reconcile::close() { # <rev12>
   local rev12="$1" state tree branch head
@@ -19,13 +20,16 @@ reconcile::close() { # <rev12>
     die "close: ${tree} is not on ${branch}"
   [[ -z "$(git -C "$tree" status --porcelain 2>/dev/null)" ]] || die "close: ${tree} has uncommitted changes"
   head=$(git -C "$tree" rev-parse HEAD)
-  local ref
+  local ref mergedOn=""
   for ref in develop main; do
-    ! git -C "$bare" merge-base --is-ancestor "$head" "refs/heads/$ref" 2>/dev/null ||
-      die "close: ${branch} (${head:0:12}) is already on ${ref}: nothing to discard"
+    if git -C "$bare" merge-base --is-ancestor "$head" "refs/heads/$ref" 2>/dev/null; then mergedOn=$ref && break; fi
   done
 
-  echo "close window ${rev12} without merging it: ${branch}, $(git -C "$tree" log -1 --format='%h %s')"
+  if [[ -n $mergedOn ]]; then
+    echo "close window ${rev12}, merged already: ${branch} (${head:0:12}) is on ${mergedOn}, nothing is lost"
+  else
+    echo "close window ${rev12} without merging it: ${branch}, $(git -C "$tree" log -1 --format='%h %s')"
+  fi
   local answer
   printf 'delete this window and its branch? [yes/no] ' >>"$ttyOut"
   exec 7<"$ttyIn"
@@ -36,5 +40,9 @@ reconcile::close() { # <rev12>
   git -C "$bare" branch -D "$branch" >/dev/null || die "close: the branch ${branch} could not be deleted"
   [[ ! -e $tree ]] || die "close: ${tree} is still there"
   ! git -C "$bare" rev-parse --verify -q "refs/heads/${branch}" >/dev/null || die "close: ${branch} is still there"
-  echo "closed: ${branch} deleted, nothing was merged."
+  if [[ -n $mergedOn ]]; then
+    echo "closed: ${branch} deleted, its commit stays on ${mergedOn}."
+  else
+    echo "closed: ${branch} deleted, nothing was merged."
+  fi
 }
