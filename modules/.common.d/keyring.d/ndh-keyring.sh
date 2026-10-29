@@ -20,8 +20,10 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 #                                       prints its age public, for the .sops.yaml of rke2lab and nnh
 #   ndh-keyring cluster-age-public <n>  prints that public again; generates and writes nothing
 #   ndh-keyring age-key operator        the operator's own age identity, read on STDIN (the operator names its
-#                                       file; this script never does), as seedmatic/age-key/operator: exactly
-#                                       one identity, whose public is .sops.yaml's operator recipient
+#                                       file; this script never does), as seedmatic/age-key/operator: the one
+#                                       identity whose public is .sops.yaml's operator recipient; any other
+#                                       identity in it is kept, as seedmatic/age-key/retired/<its public's 12
+#                                       first characters>, never lost
 #   ndh-keyring age-key-check operator  decrypts a sops file of this build by SOPS_AGE_KEY_CMD alone, with an
 #                                       empty HOME, so no identity on disk can answer: then the file can go
 #
@@ -155,19 +157,53 @@ if [[ $kind == cluster-age ]]; then
   exit 0
 fi
 
-# The operator's identity, from stdin to pass: never a variable or a file here. Checked once inserted, and
-# removed again if it is not exactly the operator's.
+# The operator's identity, from stdin to pass: never a variable or a file here. Stdin goes whole into a pending
+# entry; each identity is then taken from it BY ITS INDEX, through pipes, into its own entry: the operator's, and
+# every other one under retired/, never lost. Every target is checked free before any is written, and the pending
+# entry is removed however the run ends.
 if [[ $kind == age-key ]]; then
   [[ ! -t 0 ]] || die "the identity is read on stdin: ndh-keyring age-key operator < <its file>"
-  pass insert -m "$entry" >/dev/null || die "inserting ${entry} failed — an empty entry may exist: check with pass find ${kind}"
-  checkRecipient
-  publics="$(pass show "$entry" | age-keygen -y 2>/dev/null)" || publics=""
-  if [[ $publics != "$operatorRecipient" ]]; then
-    pass rm -f "$entry" >/dev/null
-    die "stdin holds $(grep -c . <<<"$publics") identity(ies) whose public is not ${operatorRecipient} alone — ${entry} removed"
-  fi
-  printf '%s\n' "$publics"
-  log "${entry}: inserted, encrypted to ${recipient} alone, read back as ${operatorRecipient}"
+  [[ ! -e "$store/seedmatic/age-key/retired/.gpg-id" ]] ||
+    die "${store}/seedmatic/age-key/retired/.gpg-id would override the seedmatic recipient — refused, nothing written"
+  operatorEntry="$entry"
+  pending="seedmatic/age-key/import-pending"
+  [[ ! -e "$store/${pending}.gpg" ]] || die "${pending} exists: a previous import did not finish — check it, then pass rm ${pending}"
+  identityOf() { pass show "$pending" | grep '^AGE-SECRET-KEY-' | sed -n "${1}p"; } # <index>, on stdout, to a pipe
+  trap 'pass rm -f "$pending" >/dev/null 2>&1; rm -rf "$work"' EXIT
+  pass insert -m "$pending" >/dev/null || die "reading the identities into ${pending} failed"
+  entry="$pending" && checkRecipient
+  count="$(pass show "$pending" | grep -c '^AGE-SECRET-KEY-')" || count=0
+  ((count > 0)) || die "stdin holds no age identity — nothing written"
+  publics=()
+  for ((n = 1; n <= count; n++)); do
+    publics+=("$(identityOf "$n" | age-keygen -y 2>/dev/null)") || die "identity ${n} on stdin does not read as an age identity — nothing written"
+  done
+  operatorAt=0 targets=()
+  for ((n = 1; n <= count; n++)); do
+    p="${publics[n - 1]}"
+    [[ $p == age1* ]] || die "identity ${n} on stdin does not read as an age identity — nothing written"
+    if [[ $p == "$operatorRecipient" ]]; then
+      ((operatorAt == 0)) || die "stdin holds the operator identity twice — nothing written"
+      operatorAt=$n targets+=("$operatorEntry")
+    else
+      targets+=("seedmatic/age-key/retired/${p:0:12}")
+    fi
+  done
+  ((operatorAt > 0)) || die "stdin holds ${count} identity(ies), none of them ${operatorRecipient}: ${publics[*]} — nothing written"
+  for target in "${targets[@]}"; do
+    [[ ! -e "$store/${target}.gpg" ]] || die "${target} exists; a key is never overwritten — nothing written"
+  done
+  [[ $(printf '%s\n' "${targets[@]}" | sort -u | wc -l) -eq $count ]] || die "two identities share a retired name — nothing written"
+  for ((n = 1; n <= count; n++)); do
+    entry="${targets[n - 1]}"
+    identityOf "$n" | pass insert -m "$entry" >/dev/null || die "inserting ${entry} failed — check with pass find age-key"
+    checkRecipient
+    [[ "$(pass show "$entry" | age-keygen -y 2>/dev/null)" == "${publics[n - 1]}" ]] ||
+      die "${entry} reads back as another identity than ${publics[n - 1]} — check it"
+    printf '%s %s\n' "${publics[n - 1]}" "$entry"
+  done
+  log "${operatorEntry}: inserted, encrypted to ${recipient} alone, read back as ${operatorRecipient}"
+  ((count == 1)) || log "the $((count - 1)) other identity(ies): kept under seedmatic/age-key/retired/"
   log "next, after the switch, in a NEW shell: ndh-keyring age-key-check operator"
   exit 0
 fi

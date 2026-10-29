@@ -268,9 +268,14 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   [ -z "$output" ]
 }
 
-age_key() { # <identity file>: the import, the identity on stdin
-  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash -c 'bash "$1" age-key operator <"$2"' _ "$t/keyring" "$1"
+age_key() { # <identity file> [script]: the import, the identities on stdin
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash -c 'bash "$1" age-key operator <"$2"' _ "${2:-$t/keyring}" "$1"
 }
+mutant() { # <sed expression>: the keyring with one change, which must apply
+  sed "$1" "$t/keyring" >"$t/mutant"
+  ! cmp -s "$t/keyring" "$t/mutant"
+}
+retired() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/age-key/retired/${1:0:12}.gpg"; }
 age_check() { # [env arguments]: the check, in an environment the caller sets
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr env "$@" bash "$t/keyring" age-key-check operator
 }
@@ -278,8 +283,10 @@ age_check() { # [env arguments]: the check, in an environment the caller sets
 @test "age-key: the operator's one identity, inserted to the seedmatic subkey alone, read back; only its public printed" {
   age_key "$t/op.txt"
   [ "$status" -eq 0 ]
-  [ "$output" = "$opPublic" ]
+  [ "$output" = "$opPublic seedmatic/age-key/operator" ]
   [[ "$output$stderr" != *AGE-SECRET-KEY* ]]
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/age-key/import-pending.gpg" ]
+  [ ! -d "$PASSWORD_STORE_DIR/seedmatic/age-key/retired" ]
   [ "$(pass show seedmatic/age-key/operator | age-keygen -y)" = "$opPublic" ]
   run gpg --batch --list-only --list-packets "$(entry operator age-key)"
   [ "$(grep -c ':pubkey enc packet:' <<<"$output")" -eq 1 ]
@@ -287,17 +294,54 @@ age_check() { # [env arguments]: the check, in an environment the caller sets
   grep -qx 'insert -m seedmatic/age-key/operator' "$t/pass.argv"
 }
 
-@test "age-key: another identity, or the operator's beside another, is refused and removed" {
+@test "mutant: an import that files the operator's one identity under retired/ fails the case above" {
+  mutant 's#operatorAt=$n targets+=("$operatorEntry")#operatorAt=$n targets+=("seedmatic/age-key/retired/${p:0:12}")#'
+  age_key "$t/op.txt" "$t/mutant"
+  run pass show seedmatic/age-key/operator
+  [ "$status" -ne 0 ]
+}
+
+@test "age-key: the operator's beside another, both kept: the operator's in place, the other under retired/" {
   age-keygen -o "$t/other.txt" 2>/dev/null
+  other="$(age-keygen -y "$t/other.txt")"
+  cat "$t/other.txt" "$t/op.txt" >"$t/both.txt"
+  age_key "$t/both.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s %s\n%s %s' "$other" "seedmatic/age-key/retired/${other:0:12}" "$opPublic" seedmatic/age-key/operator)" ]
+  [[ "$output$stderr" != *AGE-SECRET-KEY* ]]
+  [ "$(pass show seedmatic/age-key/operator | age-keygen -y)" = "$opPublic" ]
+  [ "$(pass show "seedmatic/age-key/retired/${other:0:12}" | age-keygen -y)" = "$other" ]
+  run gpg --batch --list-only --list-packets "$(retired "$other")"
+  [ "$(grep -c ':pubkey enc packet:' <<<"$output")" -eq 1 ]
+  [[ $output == *"keyid ${seedmatic}"* ]]
+  [ ! -e "$PASSWORD_STORE_DIR/seedmatic/age-key/import-pending.gpg" ]
+}
+
+@test "mutant: an import that keeps the operator's identity alone loses the other, and fails the case above" {
+  mutant 's#^    identityOf "$n" | pass insert -m "$entry"#    ((n == operatorAt)) || continue\n    identityOf "$n" | pass insert -m "$entry"#'
+  age-keygen -o "$t/other.txt" 2>/dev/null
+  other="$(age-keygen -y "$t/other.txt")"
+  cat "$t/other.txt" "$t/op.txt" >"$t/both.txt"
+  age_key "$t/both.txt" "$t/mutant"
+  [ ! -e "$(retired "$other")" ]
+}
+
+@test "age-key: no identity is the operator's: refused, nothing written, the publics named" {
+  age-keygen -o "$t/other.txt" 2>/dev/null
+  other="$(age-keygen -y "$t/other.txt")"
   age_key "$t/other.txt"
   [ "$status" -eq 1 ]
-  [[ $stderr == *"is not ${opPublic} alone"*"removed"* ]]
-  [ ! -e "$(entry operator age-key)" ]
-  cat "$t/op.txt" "$t/other.txt" >"$t/both.txt"
-  age_key "$t/both.txt"
-  [ "$status" -eq 1 ]
-  [[ $stderr == *"2 identity(ies)"* ]]
-  [ ! -e "$(entry operator age-key)" ]
+  [[ $stderr == *"1 identity(ies), none of them ${opPublic}: ${other}"*"nothing written"* ]]
+  [[ "$output$stderr" != *AGE-SECRET-KEY* ]]
+  [ -z "$(find "$PASSWORD_STORE_DIR/seedmatic" -path '*age-key*' -name '*.gpg')" ]
+}
+
+@test "mutant: an import without the refusal files a stranger's identity, and fails the case above" {
+  mutant '/((operatorAt > 0)) || die/d'
+  age-keygen -o "$t/other.txt" 2>/dev/null
+  age_key "$t/other.txt" "$t/mutant"
+  [ "$status" -eq 0 ]
+  [ -n "$(find "$PASSWORD_STORE_DIR/seedmatic" -path '*age-key*' -name '*.gpg')" ]
 }
 
 @test "age-key: never overwritten, and only the operator's" {
