@@ -238,6 +238,21 @@ let
         Persistent = true;
       };
     };
+    # A mint at every start of the container (a cold start included), and at every switch that changes who gets a
+    # token (a seat's new host key): a oneshot that stays active, restarted when the targets change, starting the
+    # mint. Not RemainAfterExit on the mint itself: its timer would then never run it again.
+    systemd.services.attic-token-mint-on-change = {
+      description = "Mint now: at start, and whenever the token targets change";
+      wantedBy = [ "multi-user.target" ];
+      requires = [ "attic-cache-ensure.service" ];
+      after = [ "attic-cache-ensure.service" ];
+      restartTriggers = [ (builtins.toJSON cfg.tokenTargets) ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${pkgs.systemd}/bin/systemctl start --no-block attic-token-mint.service";
+      };
+    };
 
     systemd.services.attic-cache-ensure = {
       description = "The private cache ${cfg.cacheName}, created and configured";

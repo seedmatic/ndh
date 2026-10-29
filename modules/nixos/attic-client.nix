@@ -55,6 +55,15 @@ in
 
     # A machine outside the fleet's inventory (a generic bringup image) has no token to pull.
     (lib.mkIf (cfg.metalspace != null) {
+      system.activationScripts.ndhAtticTokensWaiting = lib.mkIf (tokens.waitingNotice != "") {
+        deps = [ ];
+        supportsDryActivation = false;
+        text = tokens.waitingNotice;
+      };
+    })
+
+    # Nor while no cache can answer: no recorded leaf, no TLS listener (attic-cache.nix), so nothing to pull yet.
+    (lib.mkIf (cfg.metalspace != null && tokens.served != { }) {
       # The tokens rest as ciphertext; their tmpfs paths are filled at boot and at every pull, once the identity is
       # placed. Each machine pulls its own from every cache (F6): daily, and at boot after the identity; the unseal
       # runs at the end of each pull.
