@@ -13,6 +13,9 @@
   lib,
   stdenvNoCC,
   bash,
+  ssh-to-age,
+  # keyring@keyhole's ssh private key, from which the filters derive keyhole's age identity; "" for none.
+  ageSshKeyFile ? "",
 }:
 let
   formats = [
@@ -43,6 +46,8 @@ stdenvNoCC.mkDerivation {
     # The dispatcher, its @sopsConfigHome@ pointed at this output's sops.d, on the store's bash: git runs it as
     # every repository's clean/smudge filter, and /usr/bin/env is neither ours nor reachable in a build sandbox.
     substitute ${./sops.sh} $out/sops-dispatch --subst-var-by sopsConfigHome "$out/sops.d" \
+      --subst-var-by ageSshKeyFile ${lib.escapeShellArg ageSshKeyFile} \
+      --subst-var-by sshToAge ${ssh-to-age}/bin/ssh-to-age \
       --replace-fail '#!/usr/bin/env bash' '#!${bash}/bin/bash'
     chmod +x $out/sops-dispatch
 

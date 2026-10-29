@@ -110,3 +110,25 @@ index_blob() { git cat-file blob ":$1"; }
   [ "$status" -ne 0 ]
   [[ "$output" == *"no .sops.yaml"* ]]
 }
+
+: "keyhole's identity is an ssh key: the packaged dispatcher, given its path, decrypts by it alone; empty, it does not"
+ssh_dispatch() { # <key path>: a copy of the packaged dispatcher with that path baked, as the package bakes it
+  sed "s#^ageSshKeyFile=\"\"\$#ageSshKeyFile=\"$1\"#" "$GIT_SOPS/sops-dispatch" >"$t/dispatch"
+  ! cmp -s "$GIT_SOPS/sops-dispatch" "$t/dispatch"
+}
+
+@test "smudge decrypts a file encrypted to keyring@keyhole's ssh-to-age by its ssh key alone; a missing key decrypts nothing" {
+  ssh-keygen -q -t ed25519 -N '' -f "$t/keyring" -C keyring@keyhole
+  printf 'token: plain-by-ssh\n' >"$t/plain.yaml"
+  : "encrypted as keyhole's files are, to the key's ssh-to-age"
+  sops encrypt --age "$(ssh-to-age <"$t/keyring.pub")" --input-type yaml --output-type yaml "$t/plain.yaml" >"$t/enc.yaml"
+  unset SOPS_AGE_KEY_FILE SOPS_AGE_KEY_CMD
+  ssh_dispatch "$t/keyring"
+  run --separate-stderr bash -c 'bash "$1" smudge yaml secret.yaml <"$2"' _ "$t/dispatch" "$t/enc.yaml"
+  [ "$status" -eq 0 ]
+  [[ $output == *plain-by-ssh* ]]
+  ssh_dispatch "$t/absent"
+  run --separate-stderr bash -c 'bash "$1" smudge yaml secret.yaml <"$2"' _ "$t/dispatch" "$t/enc.yaml"
+  [ "$status" -ne 0 ]
+  [[ $output != *plain-by-ssh* ]]
+}

@@ -13,7 +13,9 @@ pkgs.runCommand "git-sops-filters-bats"
       diffutils
       git
       gnugrep
+      openssh
       sops
+      ssh-to-age
       yq-go
     ];
     GIT_SOPS = gitSopsDiff;
