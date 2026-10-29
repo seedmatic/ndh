@@ -14,7 +14,7 @@ setup() {
   age-keygen -o "$t/age.txt" 2>/dev/null
   export SOPS_AGE_KEY_FILE="$t/age.txt"
   operator=$(age-keygen -y "$SOPS_AGE_KEY_FILE")
-  for n in ca old new shared; do ssh-keygen -q -t ed25519 -N '' -C "$n" -f "$t/$n"; done
+  for n in ca old new shared spare; do ssh-keygen -q -t ed25519 -N '' -C "$n" -f "$t/$n"; done
   : "a shared key (as rdp-host was) whose ssh-host certificate names the seat alone, with a known id: retire revokes it"
   ssh-keygen -q -s "$t/ca" -I shared-host-cert -h -z 7 -n seat,seat.lan "$t/shared.pub"
   mv "$t/shared-cert.pub" "$t/shared-host-cert.pub"
@@ -36,7 +36,7 @@ creation_rules:
       - '$operator'
 EOF
   CAPUB="$(cut -d' ' -f2 "$t/ca.pub")" CAPRIV="$(<"$t/ca")" OLDPUB="$(cut -d' ' -f2 "$t/old.pub")" \
-    SHAREDPUB="$(cut -d' ' -f2 "$t/shared.pub")" SHAREDCERT="$(cut -d' ' -f1,2 "$t/shared-host-cert.pub")" SHAREDUSER="$(cut -d' ' -f1,2 "$t/shared-user-cert.pub")" \
+    SHAREDPUB="$(cut -d' ' -f2 "$t/shared.pub")" SPAREPUB="$(cut -d' ' -f2 "$t/spare.pub")" SHAREDCERT="$(cut -d' ' -f1,2 "$t/shared-host-cert.pub")" SHAREDUSER="$(cut -d' ' -f1,2 "$t/shared-user-cert.pub")" \
     yq -n '
       .authorities.fabric.type = "ssh-ed25519" | .authorities.fabric.usage = ["ssh-authority"] |
       .authorities.fabric.slots."26-01-01".public = strenv(CAPUB) |
@@ -47,6 +47,8 @@ EOF
       .keys."seat".slots."26-10-17" = {"public": strenv(OLDPUB), "state": "serving", "origin": "keyring"} |
       .keys."seat".slots."26-11-01" = {"state": "pending", "origin": "host"} |
       .keys."shared".type = "ssh-ed25519" | .keys."shared".usage = ["user-signing"] | .keys."shared".profiles = [] |
+      .keys."spare".type = "ssh-ed25519" | .keys."spare".usage = ["user-signing"] | .keys."spare".profiles = [] |
+      .keys."spare".slots."26-02-01".public = strenv(SPAREPUB) |
       .keys."shared".slots."26-01-01".public = strenv(SHAREDPUB) |
       .keys."shared".slots."26-01-01".private = "shared-private-fixture" |
       (.keys."shared".slots."26-01-01".private | key) headComment = "sops:encrypted" |
@@ -610,9 +612,10 @@ substring_cert() {
 }
 
 # keys-reconcile retire-key: a whole key no configuration uses, at the fixture's pushed revision.
-retire_key() { # <answer> <key>
+retire_key() { # <answer> <key>…
   printf '%s\n' "$1" >"$t/tty"
-  GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" retire-key "$2"
+  shift
+  GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t HOME="$t/home" XDG_CACHE_HOME="$t/cache" XDG_STATE_HOME="$t/state" bash "$t/keys-reconcile" retire-key "$@"
 }
 
 @test "retire-key: each slot's public revoked and the key deleted, every other encrypted value kept, in one commit" {
@@ -650,13 +653,13 @@ retire_key() { # <answer> <key>
 
 @test "mutant: a retire-key that keeps the key in keys.yaml is refused by its postcondition" {
   grep -F -v 'sops unset --input-type yaml --output-type yaml "$keysYaml" "[\"keys\"][\"${key}\"]"' "$BATS_TEST_DIRNAME/../retire.sh" |
-    sed 's/^    reconcile::fail "sops unset failed on ${key}" || return 1$/    :/' >"$t/retire.sh"
+    sed 's/^      reconcile::fail "sops unset failed on ${key}" || return 1$/      :/' >"$t/retire.sh"
   [ "$(grep -c -F 'sops unset failed on ${key}"' "$t/retire.sh")" -eq 0 ]
   bash -n "$t/retire.sh"
   sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
   run --separate-stderr retire_key yes shared
   [ "$status" -ne 0 ]
-  [[ $stderr == *"keys.yaml changed more than the retired key and its revocations"* ]]
+  [[ $stderr == *"keys.yaml changed more than the retired keys and their revocations"* ]]
 }
 
 @test "mutant: a retire-key that keeps the key's encrypted values in the snapshot is refused by tree::check" {
@@ -668,6 +671,62 @@ retire_key() { # <answer> <key>
   run --separate-stderr retire_key yes shared
   [ "$status" -ne 0 ]
   [[ $stderr == *"an encrypted value changed"* ]]
+}
+
+@test "retire-key: several keys in one window, one commit, each slot revoked" {
+  run --separate-stderr retire_key yes shared spare
+  [ "$status" -eq 0 ]
+  k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
+  [ "$(yq -r '.keys | has("shared") or has("spare")' "$k")" = false ]
+  [ "$(yq -r '.revoked."shared@26-01-01".public' "$k")" = "$(cut -d' ' -f2 "$t/shared.pub")" ]
+  [ "$(yq -r '.revoked."spare@26-02-01".public' "$k")" = "$(cut -d' ' -f2 "$t/spare.pub")" ]
+  [ "$(git -C "$(tree)" rev-list --count "${rev}..HEAD")" -eq 1 ]
+  [ "$(git -C "$(tree)" log -1 --format=%s)" = "keys-reconcile retire-key: shared spare, at ${rev:0:12}" ]
+}
+
+@test "retire-key: one refused key refuses them all before the « yes » — a machine's key among them, a key named twice" {
+  run --separate-stderr retire_key yes shared seat
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"seat is a machine's host key"* ]]
+  run --separate-stderr retire_key yes shared shared
+  [ "$status" -eq 3 ]
+  [[ $stderr == *"shared is named twice"* ]]
+  [ ! -e "$(tree)" ]
+  run grep -q 'retire and revoke' "$t/prompt"
+  [ "$status" -eq 1 ]
+}
+
+: "a window of this revision left open: retire and retire-key refuse BEFORE the plan, nothing asked"
+open_window() {
+  window yes
+  : >"$t/prompt"
+}
+
+@test "retire-key and retire: a window of this revision still open is refused before the plan, nothing asked" {
+  open_window
+  run --separate-stderr retire_key yes shared
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is still open"* ]]
+  [[ $output != *"retire-key at revision"* ]]
+  run --separate-stderr retire yes seat
+  [ "$status" -ne 0 ]
+  [[ $stderr == *"is still open"* ]]
+  [[ $output != *"retire at revision"* ]]
+  run grep -q 'retire and revoke' "$t/prompt"
+  [ "$status" -eq 1 ]
+}
+
+@test "mutant: without the guard, retire-key and retire print their plan and ask, though they cannot write" {
+  open_window
+  grep -v -F 'reconcile::tree::free || return 1' "$BATS_TEST_DIRNAME/../retire.sh" >"$t/retire.sh"
+  [ "$(grep -c -F 'reconcile::tree::free' "$t/retire.sh")" -eq 0 ]
+  sed -i "s|^source .*/retire.sh\$|source $t/retire.sh|" "$t/keys-reconcile"
+  run --separate-stderr retire_key yes shared
+  [ "$status" -ne 0 ]
+  [[ $output == *"retire-key at revision"* ]]
+  run --separate-stderr retire yes seat
+  [[ $output == *"retire at revision"* ]]
+  [ "$(grep -c 'retire and revoke' "$t/prompt")" -eq 2 ]
 }
 
 : "the window's output holds to keys.schema.yaml: a bootstrap slot, declared so, keeps its bootstrap once recorded and"
