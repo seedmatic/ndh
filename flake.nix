@@ -1557,11 +1557,11 @@
               line =
                 name: c:
                 let
-                  conf = lib.head (
-                    builtins.match ".*-c '([^']+)'.*" (nginxOf c).systemd.services.nginx.serviceConfig.ExecStart
-                  );
+                  # builtins.match drops the string context: the file is put back as an input by the ExecStart it came from.
+                  exec = (nginxOf c).systemd.services.nginx.serviceConfig.ExecStart;
+                  conf = lib.head (builtins.match ".*-c '([^']+)'.*" exec);
                 in
-                "${name} ${conf}";
+                builtins.appendContext "${name} ${conf}" (builtins.getContext exec);
             in
             assert lib.assertMsg (guests != { }) "attic-nginx-config-parses: no guest runs the attic container";
             assert lib.assertMsg (bad == { })
