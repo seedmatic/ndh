@@ -18,6 +18,7 @@ pkgs.runCommand "keyring-bats"
       openssh
       pass
       (python3.withPackages (ps: [ ps.cryptography ]))
+      sops
       ssh-to-age
     ];
   }

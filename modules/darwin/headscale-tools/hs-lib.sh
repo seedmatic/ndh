@@ -79,7 +79,7 @@ sops::edit::set_string() {
 		return 1
 	fi
 	if [ ! -s "$decrypted" ]; then
-		log::error "sops -d produced an empty file (decryption failure; check SOPS_AGE_KEY_FILE)"
+		log::error "sops -d produced an empty file (decryption failure; check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator)"
 		return 1
 	fi
 

@@ -291,7 +291,7 @@ authority::load() { # <authority> <authority slot>
 	{ sops --decrypt --extract "[\"authorities\"][\"$1\"][\"slots\"][\"$2\"][\"private\"]" "$keysYaml" 2>"$sopsErr" && echo; } |
 		SSH_AUTH_SOCK="$sock" "$sshAdd" -t 120 -q - || rcs=("${PIPESTATUS[@]}")
 	if ((rcs[0] != 0)); then
-		log::error "sops decrypt failed (exit ${rcs[0]}) (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+		log::error "sops decrypt failed (exit ${rcs[0]}) (check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator)"
 		return 1
 	fi
 	if ((rcs[1] != 0)); then

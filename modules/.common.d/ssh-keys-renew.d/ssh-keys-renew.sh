@@ -1165,7 +1165,7 @@ main() {
 	decrypted="${tmpdir}/repo/${keysRel}"
 	sops --input-type yaml --output-type yaml -d "$keysYaml" >"$decrypted"
 	if [[ ! -s "$decrypted" ]]; then
-		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_FILE / sops.age.keyFile)"
+		log::error "sops -d produced an empty file (check SOPS_AGE_KEY_CMD: the keyring's seedmatic/age-key/operator)"
 		return 1
 	fi
 

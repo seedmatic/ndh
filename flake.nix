@@ -2172,6 +2172,63 @@
               inUse authorizing
             )) "keys-reconcile-in-use: a key bioskop authorizes is not in use: ${toString (inUse authorizing)}";
             pkgs.runCommand "keys-reconcile-in-use" { } "touch $out";
+          # The operator's age identity is read from the keyring, never from disk: on the seat, shells and GUI apps get
+          # the same SOPS_AGE_KEY_CMD, a command that carries its own pass, store and gpg home; the incus renewal at
+          # activation uses it; no NixOS configuration imports from a home directory. Then the pinned sops decrypts by
+          # that variable alone, and fails with no identity (the control).
+          operator-age-key-in-keyring =
+            let
+              lib = nixpkgs.lib;
+              c = self.darwinConfigurations.bioskop.config;
+              hm = c.home-manager.users.${c.profile.user.name};
+              # Compared as text: lib.hasInfix builds a regex, which refuses a store path's context.
+              plain = builtins.unsafeDiscardStringContext;
+              cmd = plain "${c.ndh.keyring.ageKeyCommand}";
+              script = plain (builtins.readFile c.ndh.keyring.ageKeyCommand);
+              importing = lib.filter (
+                n:
+                lib.any (lib.hasPrefix "/home/")
+                  self.nixosConfigurations.${n}.config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates
+                ||
+                  lib.any (lib.hasInfix "/Users/")
+                    self.nixosConfigurations.${n}.config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates
+              ) (lib.attrNames self.nixosConfigurations);
+            in
+            assert lib.assertMsg (
+              plain hm.home.sessionVariables.SOPS_AGE_KEY_CMD == cmd
+            ) "operator-age-key: the shells' SOPS_AGE_KEY_CMD is not the keyring command";
+            assert lib.assertMsg (lib.hasSuffix cmd (
+              plain c.launchd.user.agents.sops-age-key-cmd.command
+            )) "operator-age-key: the GUI session's SOPS_AGE_KEY_CMD is not the keyring command";
+            assert lib.assertMsg (
+              lib.hasInfix (plain "${hm.programs.password-store.package}/bin/pass show seedmatic/age-key/operator") script
+              && lib.hasInfix "PASSWORD_STORE_DIR=${hm.programs.password-store.settings.PASSWORD_STORE_DIR}" script
+              && lib.hasInfix "GNUPGHOME=${hm.programs.gpg.homedir}" script
+            ) "operator-age-key: the command does not carry the seat's pass, store and gpg home";
+            assert lib.assertMsg (lib.hasInfix "SOPS_AGE_KEY_CMD=${cmd}" (
+              plain c.system.activationScripts.postActivation.text
+            )) "operator-age-key: the incus renewal at activation does not read the keyring";
+            assert lib.assertMsg (importing == [ ])
+              "operator-age-key: these configurations import an age key from a home directory: ${toString importing}";
+            pkgs.runCommand "operator-age-key-in-keyring"
+              {
+                nativeBuildInputs = [
+                  pkgs.age
+                  pkgs.sops
+                ];
+              }
+              ''
+                export HOME=$TMPDIR XDG_CONFIG_HOME=$TMPDIR/none
+                age-keygen -o id.txt 2>/dev/null
+                printf '#!${pkgs.runtimeShell}\ncat %s\n' "$PWD/id.txt" >key-cmd && chmod +x key-cmd
+                printf 'a: secret\n' >f.yaml
+                sops encrypt --age "$(age-keygen -y id.txt)" -i f.yaml
+                [ "$(SOPS_AGE_KEY_CMD=$PWD/key-cmd sops decrypt --extract '["a"]' f.yaml)" = secret ]
+                ! sops decrypt f.yaml >/dev/null 2>&1
+                # A failing command leaves the key file answering: between the switch and the keyring import, sops still works.
+                SOPS_AGE_KEY_FILE=$PWD/id.txt SOPS_AGE_KEY_CMD=false sops decrypt f.yaml >/dev/null
+                touch $out
+              '';
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };

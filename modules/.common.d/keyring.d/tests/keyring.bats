@@ -22,6 +22,11 @@ setup() {
   pass init -p seedmatic "${seedmatic}!" >/dev/null
 
   vzOptions='restrict,command="/Users/corp/.nix-profile/bin/ndh-vz-recover"'
+  : "the operator's age identity, and a sops file encrypted to it alone"
+  age-keygen -o "$t/op.txt" 2>/dev/null
+  opPublic="$(age-keygen -y "$t/op.txt")"
+  printf 'a: secret\n' >"$t/probe.yaml"
+  sops encrypt --age "$opPublic" -i "$t/probe.yaml"
   realPass="$(command -v pass)"
   cat >"$t/bin/pass" <<EOF
 $shebang
@@ -31,7 +36,8 @@ EOF
   chmod +x "$t/bin/pass"
   {
     printf 'set -euo pipefail\n'
-    printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos) guests=(bioskop-nixos nikopol-nixos)\n'
+    printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos)\n'
+    printf 'operatorRecipient=%s sopsProbe=%q\n' "$opPublic" "$t/probe.yaml"
     printf 'vzHosts=(nikopol)\ndeclare -A vzRecoverOptions=([nikopol]=%q)\n' "$vzOptions"
     printf 'recipient=%s generate=%q derive=%q nixSigningVersion=1\n' \
       "$seedmatic" "$t/gen" "${NIX_SIGNING_DERIVE:?the ndh-nix-signing-derive binary}"
@@ -260,4 +266,65 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   [ "$status" -eq 1 ]
   [[ $stderr == *"not in the keyring"* ]]
   [ -z "$output" ]
+}
+
+age_key() { # <identity file>: the import, the identity on stdin
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash -c 'bash "$1" age-key operator <"$2"' _ "$t/keyring" "$1"
+}
+age_check() { # [env arguments]: the check, in an environment the caller sets
+  TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr env "$@" bash "$t/keyring" age-key-check operator
+}
+
+@test "age-key: the operator's one identity, inserted to the seedmatic subkey alone, read back; only its public printed" {
+  age_key "$t/op.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$opPublic" ]
+  [[ "$output$stderr" != *AGE-SECRET-KEY* ]]
+  [ "$(pass show seedmatic/age-key/operator | age-keygen -y)" = "$opPublic" ]
+  run gpg --batch --list-only --list-packets "$(entry operator age-key)"
+  [ "$(grep -c ':pubkey enc packet:' <<<"$output")" -eq 1 ]
+  [[ $output == *"keyid ${seedmatic}"* ]]
+  grep -qx 'insert -m seedmatic/age-key/operator' "$t/pass.argv"
+}
+
+@test "age-key: another identity, or the operator's beside another, is refused and removed" {
+  age-keygen -o "$t/other.txt" 2>/dev/null
+  age_key "$t/other.txt"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"is not ${opPublic} alone"*"removed"* ]]
+  [ ! -e "$(entry operator age-key)" ]
+  cat "$t/op.txt" "$t/other.txt" >"$t/both.txt"
+  age_key "$t/both.txt"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"2 identity(ies)"* ]]
+  [ ! -e "$(entry operator age-key)" ]
+}
+
+@test "age-key: never overwritten, and only the operator's" {
+  age_key "$t/op.txt"
+  before="$(sha256sum "$(entry operator age-key)")"
+  age_key "$t/op.txt"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"never overwritten"* ]]
+  [ "$(sha256sum "$(entry operator age-key)")" = "$before" ]
+  keyring age-key someone
+  [ "$status" -eq 1 ]
+  [[ $output == *"the only age key the keyring holds is the operator's"* ]]
+}
+
+@test "age-key-check: sops decrypts by SOPS_AGE_KEY_CMD alone; refused without it, or when only a key file could answer" {
+  age_key "$t/op.txt"
+  printf '%s\nexec pass show seedmatic/age-key/operator\n' "$shebang" >"$t/key-cmd"
+  printf '%s\nexit 0\n' "$shebang" >"$t/no-key"
+  chmod +x "$t/key-cmd" "$t/no-key"
+  age_check SOPS_AGE_KEY_CMD="$t/key-cmd"
+  [ "$status" -eq 0 ]
+  [[ $stderr == *"the identity file can be removed"* ]]
+  age_check -u SOPS_AGE_KEY_CMD
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"SOPS_AGE_KEY_CMD is not set"* ]]
+  : "the identity in a key file alone, the command empty: the check must not count the file"
+  age_check SOPS_AGE_KEY_CMD="$t/no-key" SOPS_AGE_KEY_FILE="$t/op.txt"
+  [ "$status" -eq 1 ]
+  [[ $stderr == *"keep the identity file"* ]]
 }

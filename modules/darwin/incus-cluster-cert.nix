@@ -40,7 +40,7 @@ in
     system.activationScripts.postActivation.text = lib.mkOrder config.ndh.darwin.postActivationOrder.incusClusterCert ''
       # A failure here is loud but does not stop the rest of the activation: the cluster may be down.
       if ! /usr/bin/sudo -u ${lib.escapeShellArg user} -H \
-        SOPS_AGE_KEY_FILE=${lib.escapeShellArg config.ndh.sopsAgeKeyBootstrap.darwinUserKeyFile} \
+        SOPS_AGE_KEY_CMD=${config.ndh.keyring.ageKeyCommand} \
         ${cfg.package}/bin/incus-cluster-cert-renew --activation; then
         echo "[incus-cluster-cert] FAILED at activation — run incus-cluster-cert-renew by hand" >&2
       fi
