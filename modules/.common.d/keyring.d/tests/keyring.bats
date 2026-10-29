@@ -25,6 +25,8 @@ setup() {
   : "the operator's age identity, and a sops file encrypted to it alone"
   age-keygen -o "$t/op.txt" 2>/dev/null
   opPublic="$(age-keygen -y "$t/op.txt")"
+  age-keygen -o "$t/keyhole.txt" 2>/dev/null
+  keyholePublic="$(age-keygen -y "$t/keyhole.txt")"
   printf 'a: secret\n' >"$t/probe.yaml"
   sops encrypt --age "$opPublic" -i "$t/probe.yaml"
   realPass="$(command -v pass)"
@@ -37,7 +39,7 @@ EOF
   {
     printf 'set -euo pipefail\n'
     printf 'machines=(bioskop nikopol bioskop-nixos nikopol-nixos)\n'
-    printf 'operatorRecipient=%s sopsProbe=%q\n' "$opPublic" "$t/probe.yaml"
+    printf 'operatorRecipient=%s keyringRecipient=%s sopsProbe=%q\n' "$opPublic" "$keyholePublic" "$t/probe.yaml"
     printf 'vzHosts=(nikopol)\ndeclare -A vzRecoverOptions=([nikopol]=%q)\n' "$vzOptions"
     printf 'recipient=%s generate=%q derive=%q nixSigningVersion=1\n' \
       "$seedmatic" "$t/gen" "${NIX_SIGNING_DERIVE:?the ndh-nix-signing-derive binary}"
@@ -324,6 +326,27 @@ age_check() { # [env arguments]: the check, in an environment the caller sets
   cat "$t/other.txt" "$t/op.txt" >"$t/both.txt"
   age_key "$t/both.txt" "$t/mutant"
   [ ! -e "$(retired "$other")" ]
+}
+
+@test "age-key: keyhole's online identity is filed as keyhole@nxmatic, the operator's in place, any other under retired/" {
+  age-keygen -o "$t/other.txt" 2>/dev/null
+  other="$(age-keygen -y "$t/other.txt")"
+  cat "$t/keyhole.txt" "$t/op.txt" "$t/other.txt" >"$t/three.txt"
+  age_key "$t/three.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '%s %s\n%s %s\n%s %s' "$keyholePublic" seedmatic/age-key/keyhole@nxmatic "$opPublic" seedmatic/age-key/operator "$other" "seedmatic/age-key/retired/${other:0:12}")" ]
+  [ "$(pass show seedmatic/age-key/keyhole@nxmatic | age-keygen -y)" = "$keyholePublic" ]
+  [ ! -e "$(retired "$keyholePublic")" ]
+}
+
+@test "mutant: an import that does not know keyhole's recipient files it under retired/, and fails the case above" {
+  mutant 's#elif \[\[ $p == "$keyringRecipient" \]\]; then#elif false; then#'
+  cat "$t/keyhole.txt" "$t/op.txt" >"$t/two.txt"
+  age_key "$t/two.txt" "$t/mutant"
+  [ "$status" -eq 0 ]
+  [ -e "$(retired "$keyholePublic")" ]
+  run pass show seedmatic/age-key/keyhole@nxmatic
+  [ "$status" -ne 0 ]
 }
 
 @test "age-key: no identity is the operator's: refused, nothing written, the publics named" {

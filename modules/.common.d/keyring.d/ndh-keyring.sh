@@ -21,9 +21,10 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 #   ndh-keyring cluster-age-public <n>  prints that public again; generates and writes nothing
 #   ndh-keyring age-key operator        the operator's own age identity, read on STDIN (the operator names its
 #                                       file; this script never does), as seedmatic/age-key/operator: the one
-#                                       identity whose public is .sops.yaml's operator recipient; any other
-#                                       identity in it is kept, as seedmatic/age-key/retired/<its public's 12
-#                                       first characters>, never lost
+#                                       identity whose public is .sops.yaml's operator recipient; keyhole's
+#                                       online recipient (keyring@keyhole's), as seedmatic/age-key/keyhole@nxmatic; any
+#                                       other identity in it is kept, as seedmatic/age-key/retired/<its public's
+#                                       12 first characters>, never lost
 #   ndh-keyring age-key-check operator  decrypts a sops file of this build by SOPS_AGE_KEY_CMD alone, with an
 #                                       empty HOME, so no identity on disk can answer: then the file can go
 #
@@ -185,6 +186,8 @@ if [[ $kind == age-key ]]; then
     if [[ $p == "$operatorRecipient" ]]; then
       ((operatorAt == 0)) || die "stdin holds the operator identity twice — nothing written"
       operatorAt=$n targets+=("$operatorEntry")
+    elif [[ $p == "$keyringRecipient" ]]; then
+      targets+=("seedmatic/age-key/keyhole@nxmatic")
     else
       targets+=("seedmatic/age-key/retired/${p:0:12}")
     fi
@@ -193,7 +196,7 @@ if [[ $kind == age-key ]]; then
   for target in "${targets[@]}"; do
     [[ ! -e "$store/${target}.gpg" ]] || die "${target} exists; a key is never overwritten — nothing written"
   done
-  [[ $(printf '%s\n' "${targets[@]}" | sort -u | wc -l) -eq $count ]] || die "two identities share a retired name — nothing written"
+  [[ $(printf '%s\n' "${targets[@]}" | sort -u | wc -l) -eq $count ]] || die "two identities share an entry name — nothing written"
   for ((n = 1; n <= count; n++)); do
     entry="${targets[n - 1]}"
     identityOf "$n" | pass insert -m "$entry" >/dev/null || die "inserting ${entry} failed — check with pass find age-key"
@@ -203,7 +206,7 @@ if [[ $kind == age-key ]]; then
     printf '%s %s\n' "${publics[n - 1]}" "$entry"
   done
   log "${operatorEntry}: inserted, encrypted to ${recipient} alone, read back as ${operatorRecipient}"
-  ((count == 1)) || log "the $((count - 1)) other identity(ies): kept under seedmatic/age-key/retired/"
+  ((count == 1)) || log "the $((count - 1)) other identity(ies): kept as named above (keyhole's as keyhole@nxmatic, the rest under retired/)"
   log "next, after the switch, in a NEW shell: ndh-keyring age-key-check operator"
   exit 0
 fi

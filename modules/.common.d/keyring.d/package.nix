@@ -45,6 +45,7 @@ pkgs.writeShellApplication {
     })
     recipient=${import ./seedmatic-recipient.nix}
     operatorRecipient=${import ../keys-yaml.d/operator-recipient.nix}
+    keyringRecipient=${import ../keys-yaml.d/keyring-recipient.nix}
     sopsProbe=${../../home-manager/ssh.d/keys.yaml}
     generate=${generate}
     derive=${pkgs.callPackage ../../../packages/ndh-nix-signing-derive { }}/bin/ndh-nix-signing-derive
