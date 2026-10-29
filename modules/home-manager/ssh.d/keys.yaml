@@ -335,19 +335,6 @@ keys:
           mammoth-skate:
             ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAINz0+0mk2V9+kIxaSYYF6/JFQ2SzBs1SCFpdwNICVV8MAAAAIDfvn66YNMMKMSP/MaIiysnOKYy6ROsP5OlrjIueS6zAAAAAAAAAABAAAAACAAAA1HsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Im5pa29wb2wiLCJ1c2FnZSI6WyJzc2gtaG9zdCJdLCJuYW1lcyI6IjgwM2NlZThjNGUwMmQ0NmRiYTBmMDAwZjc5ZTYyZDdjNTQxMjU0MTAyZWI0OTljZWM3ZDliMjVkZWRkZjhjM2MiLCJpc3N1ZWQiOiIyMDI2LTEwLTI5VDA3OjU4OjUwWiJ9AAAASwAAAAduaWtvcG9sAAAAC25pa29wb2wubGFuAAAADW5pa29wb2wubG9jYWwAAAAcbmlrb3BvbC5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAECOOMwu8NhHGn7A4j6N+isnqTHDtLyLJA/g7CXyFfdEoCb4GkdQrk8TF+YcItvch8OlvPeBbm8LFunA1jV6ew4G nikopol
         recipient: true
-  sshfs-nikopol-nixos:
-    type: ssh-ed25519
-    comment: sshfs-nikopol-nixos
-    usage:
-      - ssh-user
-    profiles: []
-    slots:
-      26-10-18:
-        public: AAAAC3NzaC1lZDI1NTE5AAAAIGlm4SkZY2PZITrqiQBhasyGZAA4g5Cppg1PTRjbX3f+
-        state: recorded
-        origin: keyring
-        age: age1wepqpfd8ww04f87tm44lz8pzn8nq2v5nrqc2kgkdggh7a2p4tg5qpdd6qj
-        recipient: false
   operator:
     type: ssh-ed25519
     authority: mammoth-skate
@@ -459,6 +446,10 @@ revoked:
     type: ssh-ed25519
     public: AAAAC3NzaC1lZDI1NTE5AAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9y
     reason: no configuration uses rdp-host any more (keys-reconcile retire-key)
+  sshfs-nikopol-nixos@26-10-18:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAIGlm4SkZY2PZITrqiQBhasyGZAA4g5Cppg1PTRjbX3f+
+    reason: no configuration uses sshfs-nikopol-nixos any more (keys-reconcile retire-key)
 revoked_certificates:
   rdp-host@26-10-10/0:
     authority: mammoth-skate
@@ -542,6 +533,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-29T13:33:40Z"
-  mac: ENC[AES256_GCM,data:Ga0ma1xA8wikfl35i97B4MzpDnzzAGvO5YWGRprAiNoHku1xIFU33hniFTp4TuXZdp9BvIkGpY5rhrJO6P/6noAszGEzOi9mz+NjUVRuGV0g/RUPPr/Kml7JETFnZsH11RHc1vRJh1CA2R0PKDSDHRKWOJRttIxhJmvvIiuKp0s=,iv:SJWgmgZczaqRJNbILVF9m/LrjikIGdMDoTKtfsVAD3A=,tag:yiJvYT0ba+omHodH5v6sOw==,type:str]
+  lastmodified: "2026-10-29T14:03:03Z"
+  mac: ENC[AES256_GCM,data:s76BSTKQ2xoQo1Ucmcza8pnu0lGU6cYHFXkU4mSp6ZON7sT0psTlkWWxJ64XfgGR53N0gl4KnN9Uh7qdSe1L4asUWojsujkxj7CgaeLlZHvOD6eZBv+xGjXrBHu6wnYapg3dYwBV+unCzqYiGWIy3Om2wnh0Qparxf6tLTGc5hY=,iv:nwpFrx3alm4wKSGXVp6t/FDS1IoS8sDIV/3BsDjVZLg=,tag:xp7lfoKCWi2nfLmuePMPqQ==,type:str]
   version: 3.13.3
