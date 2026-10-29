@@ -377,23 +377,6 @@
         }
       }
     },
-    "sshfs-nikopol-nixos": {
-      "type": "ssh-ed25519",
-      "comment": "sshfs-nikopol-nixos",
-      "usage": [
-        "ssh-user"
-      ],
-      "profiles": [],
-      "slots": {
-        "26-10-18": {
-          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIGlm4SkZY2PZITrqiQBhasyGZAA4g5Cppg1PTRjbX3f+",
-          "state": "recorded",
-          "origin": "keyring",
-          "age": "age1wepqpfd8ww04f87tm44lz8pzn8nq2v5nrqc2kgkdggh7a2p4tg5qpdd6qj",
-          "recipient": false
-        }
-      }
-    },
     "operator": {
       "type": "ssh-ed25519",
       "authority": "mammoth-skate",
@@ -564,6 +547,11 @@
       "type": "ssh-ed25519",
       "public": "AAAAC3NzaC1lZDI1NTE5AAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9y",
       "reason": "no configuration uses rdp-host any more (keys-reconcile retire-key)"
+    },
+    "sshfs-nikopol-nixos@26-10-18": {
+      "type": "ssh-ed25519",
+      "public": "AAAAC3NzaC1lZDI1NTE5AAAAIGlm4SkZY2PZITrqiQBhasyGZAA4g5Cppg1PTRjbX3f+",
+      "reason": "no configuration uses sshfs-nikopol-nixos any more (keys-reconcile retire-key)"
     }
   },
   "revoked_certificates": {
