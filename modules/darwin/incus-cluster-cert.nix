@@ -26,8 +26,8 @@ in
         netplan = catalog.netplan;
         operatorIdentity = {
           inherit user;
-          keyFile = config.sshPaths.privKeyFile;
-          certFile = config.sshPaths.userCertPublic;
+          keyFile = config.sshPaths.operatorKeyFile;
+          certFile = config.sshPaths.operatorCertFile;
         };
       };
       description = "incus-cluster-cert-renew, built for this operator seat's operator identity.";

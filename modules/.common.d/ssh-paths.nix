@@ -88,6 +88,24 @@ in
       description = "Canonical SSH key basename used by SSH consumers.";
     };
 
+    operatorKeyName = lib.mkOption {
+      type = lib.types.str;
+      default = "operator";
+      description = "The operator's client key: its ssh-user certificate (principal `operator`) opens the fleet's accounts.";
+    };
+
+    operatorKeyFile = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.operatorKeyName}";
+      description = "The operator's client private key, installed by the keys.yaml extraction like every profile key.";
+    };
+
+    operatorCertFile = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.operatorKeyName}-cert.pub";
+      description = "The operator's ssh-user certificate, beside operatorKeyFile.";
+    };
+
     privKeyFile = lib.mkOption {
       type = lib.types.str;
       default = "${config.sshPaths.secretsKeysDir}/${config.sshPaths.keyName}";

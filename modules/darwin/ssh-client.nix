@@ -181,8 +181,8 @@ in
 
       identityRelativePath = mkOption {
         type = types.str;
-        default = "rdp-host";
-        description = "Host identity private key path. By default this follows the basename of sshPaths.privKeyFile; relative paths are resolved against sshPaths.secretsKeysDir and absolute paths are used as-is.";
+        default = "operator";
+        description = "Host identity private key path. By default the operator's client key (sshPaths.operatorKeyName); relative paths are resolved against sshPaths.secretsKeysDir and absolute paths are used as-is.";
       };
     };
   };
@@ -369,9 +369,7 @@ in
       extraText = concatStringsSep "\n" (map renderStanza allExtraStanzas);
     in
     {
-      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault (
-        builtins.baseNameOf config.sshPaths.privKeyFile
-      );
+      sshClient.hostIdentityDomains.identityRelativePath = lib.mkDefault config.sshPaths.operatorKeyName;
 
       environment.etc."ssh/ssh_config".text = cfg.baseConfig + "\n";
       environment.etc."ssh/ssh_config.d/50-guest.conf" = mkIf (cfg.guest.enable) {

@@ -30,7 +30,7 @@ in
     extraGroups = nixosUserExtraGroups;
     linger = true;
     openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
-      config.ndh.keysYaml.authorizedLinesFor [ "rdp-host" ]
+      config.ndh.keysYaml.authorizedLinesFor [ "operator" ]
     );
   };
   users.groups.${cfgUserName} = lib.optionalAttrs (cfgUser.gid != null) { gid = cfgUser.gid; };
@@ -42,7 +42,7 @@ in
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf runtimeMode (
     config.ndh.keysYaml.authorizedLinesFor [
       "linux-builder"
-      "rdp-host"
+      "operator"
     ]
   );
 }
