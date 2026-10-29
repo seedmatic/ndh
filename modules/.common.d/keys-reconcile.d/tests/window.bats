@@ -42,10 +42,10 @@ EOF
       .authorities.fabric.slots."26-01-01".public = strenv(CAPUB) |
       .authorities.fabric.slots."26-01-01".private = strenv(CAPRIV) |
       (.authorities.fabric.slots."26-01-01".private | key) headComment = "sops:encrypted" |
-      .keys."host-seat".type = "ssh-ed25519" | .keys."host-seat".usage = ["ssh-host"] | .keys."host-seat".profiles = [] |
-      .keys."host-seat".authority = "fabric" | .keys."host-seat".cert_usage = ["ssh-host"] |
-      .keys."host-seat".slots."26-10-17" = {"public": strenv(OLDPUB), "state": "serving", "origin": "keyring"} |
-      .keys."host-seat".slots."26-11-01" = {"state": "pending", "origin": "host"} |
+      .keys."seat".type = "ssh-ed25519" | .keys."seat".usage = ["ssh-host"] | .keys."seat".profiles = [] |
+      .keys."seat".authority = "fabric" | .keys."seat".cert_usage = ["ssh-host"] |
+      .keys."seat".slots."26-10-17" = {"public": strenv(OLDPUB), "state": "serving", "origin": "keyring"} |
+      .keys."seat".slots."26-11-01" = {"state": "pending", "origin": "host"} |
       .keys."shared".type = "ssh-ed25519" | .keys."shared".usage = ["user-signing"] | .keys."shared".profiles = [] |
       .keys."shared".slots."26-01-01".public = strenv(SHAREDPUB) |
       .keys."shared".slots."26-01-01".certificates.fabric."ssh-host" = strenv(SHAREDCERT) |
@@ -67,7 +67,7 @@ EOF
   install -d -m 0755 "$t/published"
   publish "$t/new.pub" "$t/old"
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' \
+  printf '[{"class": "host-key", "machine": "seat", "key": "seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' \
     "$(cut -d' ' -f1,2 "$t/old.pub")" >"$t/batch.json"
   arm "$(($(date +%s) + 600))" keys-reconcile
   echo '{"seat": ["seat", "seat.lan"]}' >"$t/host-names.json"
@@ -77,10 +77,10 @@ EOF
 publish() { # <new public file> <old private>
   local public
   public="$(cut -d' ' -f1,2 "$1")"
-  printf '%s\n' "$public" >"$t/published/host-seat@26-11-01.public"
-  printf 'seedmatic-rotate v1\nname host-seat\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-seat@26-11-01.statement"
-  rm -f "$t/published/host-seat@26-11-01.statement.sig"
-  ssh-keygen -q -Y sign -f "$2" -n seedmatic-rotate "$t/published/host-seat@26-11-01.statement" </dev/null
+  printf '%s\n' "$public" >"$t/published/seat@26-11-01.public"
+  printf 'seedmatic-rotate v1\nname seat\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/seat@26-11-01.statement"
+  rm -f "$t/published/seat@26-11-01.statement.sig"
+  ssh-keygen -q -Y sign -f "$2" -n seedmatic-rotate "$t/published/seat@26-11-01.statement" </dev/null
 }
 
 arm() { # <expires> <tools>: the delegation as ndh-ops writes it (owned by the test's uid, which stands for root here)
@@ -123,12 +123,12 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
   [ "$status" -eq 0 ]
   [[ $output == *"written in $(tree)"* ]]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
-  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$k")" = retired ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".public' "$k")" = "$(cut -d' ' -f2 "$t/new.pub")" ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".age' "$k")" = "$(ssh-to-age <"$t/new.pub")" ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".recipient' "$k")" = true ]
-  yq -r '.keys."host-seat".slots."26-11-01".certificates.fabric."ssh-host"' "$k" >"$t/cert.pub"
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$k")" = serving ]
+  [ "$(yq -r '.keys."seat".slots."26-10-17".state' "$k")" = retired ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".public' "$k")" = "$(cut -d' ' -f2 "$t/new.pub")" ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".age' "$k")" = "$(ssh-to-age <"$t/new.pub")" ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".recipient' "$k")" = true ]
+  yq -r '.keys."seat".slots."26-11-01".certificates.fabric."ssh-host"' "$k" >"$t/cert.pub"
   ssh-keygen -L -f "$t/cert.pub" | grep -q "host certificate"
   ssh-keygen -L -f "$t/cert.pub" | grep -qE "^ +seat$"
   [ "$(yq -r '.creation_rules[1].age | length' "$(tree)/.sops.yaml")" = 2 ]
@@ -179,7 +179,7 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
 @test "mutant: a public swapped between the measure and the write is refused" {
   ssh-keygen -q -t ed25519 -N '' -C other -f "$t/other"
   : "a writer racing the window: the publication changes right after the « yes » (injected into a test copy)"
-  printf 'swap() { cut -d" " -f1,2 %q >%q; }\n' "$t/other.pub" "$t/published/host-seat@26-11-01.public" >"$t/swap.sh"
+  printf 'swap() { cut -d" " -f1,2 %q >%q; }\n' "$t/other.pub" "$t/published/seat@26-11-01.public" >"$t/swap.sh"
   sed -i -e "s|^source .*/write.sh\$|&\nsource $t/swap.sh|" \
     -e 's|^  local again class$|  swap\n&|' "$t/keys-reconcile"
   grep -q '^  swap$' "$t/keys-reconcile"
@@ -213,8 +213,8 @@ encrypted() { yq -r 'del(.sops) | .. | select(tag == "!!str" and test("^ENC\["))
 
 @test "mutant: a field set beyond the window's is refused, nothing committed" {
   cp "$BATS_TEST_DIRNAME/../write.sh" "$t/write.sh"
-  sed -i 's|^  kill "\$agentPid" 2>/dev/null \|\| true$|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"host-seat\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/write.sh"
-  grep -q 'host-seat\\"\]\[\\"comment' "$t/write.sh"
+  sed -i 's|^  kill "\$agentPid" 2>/dev/null \|\| true$|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"seat\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/write.sh"
+  grep -q 'seat\\"\]\[\\"comment' "$t/write.sh"
   sed -i "s|^source .*/write.sh\$|source $t/write.sh|" "$t/keys-reconcile"
   run --separate-stderr window yes
   [ "$status" -ne 0 ]
@@ -333,8 +333,8 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
   attic
   run --separate-stderr window yes
   [ "$status" -eq 0 ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
-  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+  [ "$(yq -r '.keys."seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
   [ "$(yq -r -p json -o json '.m1.publicKey' "$(tree)/catalog/private-caches.json")" = "$(cat "$t/attic/attic-m1.cache-key.public")" ]
   [ "$(yq -r -p json -o json '.m1.consumers[0]' "$(tree)/catalog/private-caches.json")" = attic.m1 ]
   [ "$(yq -r -p json -o json '.m1.origin.revision' "$(tree)/catalog/private-caches.json")" = "$rev" ]
@@ -393,8 +393,8 @@ attic() { # the guest's attic publication, signed by the seat's serving (old) ke
 }
 
 bootstrap_batch() { # <console|tailnet|…>: the slot as a bootstrap: no old public, no statement published
-  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "", "bootstrap": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' "$1" >"$t/batch.json"
-  rm -f "$t/published/host-seat@26-11-01".statement{,.sig}
+  printf '[{"class": "host-key", "machine": "seat", "key": "seat", "slot": "26-11-01", "oldPublic": "", "bootstrap": "%s", "files": [".secrets"], "principals": ["seat", "seat.lan"]}]\n' "$1" >"$t/batch.json"
+  rm -f "$t/published/seat@26-11-01".statement{,.sig}
 }
 fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 
@@ -402,10 +402,10 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
   bootstrap_batch console
   run --separate-stderr window yes
   [ "$status" -eq 0 ]
-  [[ $output == *"host-seat@26-11-01 $(fp)"* ]]
+  [[ $output == *"seat@26-11-01 $(fp)"* ]]
   [[ $output == *"witness: you, at the console of seat, or the node list of your tailnet"* ]]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
-  [ "$(yq -r '.keys."host-seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+  [ "$(yq -r '.keys."seat".slots."26-10-17".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = retired ]
   : "no question but the « yes »: each layer trusts the one below (the operator, 2026-10-26)"
   [ "$(grep -o '\[yes/no\]' "$t/prompt" | wc -l)" -eq 1 ]
   run grep -q '8 premiers' "$t/prompt"
@@ -417,7 +417,7 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
   run --separate-stderr window yes
   [ "$status" -eq 0 ]
   [[ $output == *"witness: the node list of your tailnet (seat alone under its name)"* ]]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$(tree)/modules/home-manager/ssh.d/keys.yaml")" = serving ]
 }
 
 @test "a bootstrap without « yes » writes nothing" {
@@ -429,7 +429,7 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
 
 @test "a bootstrap still refuses a reused public (F2)" {
   bootstrap_batch tailnet
-  cut -d' ' -f1,2 "$t/old.pub" >"$t/published/host-seat@26-11-01.public"
+  cut -d' ' -f1,2 "$t/old.pub" >"$t/published/seat@26-11-01.public"
   run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"already in keys.yaml"* ]]
@@ -456,11 +456,11 @@ fp() { ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2; }
   : "the published files list keeps the statement for an unknown value (keys-reconcile.sh's own allow-list), so here"
   : "the mutant's verify accepts the public alone: the slot measures as ready, which the case above refuses"
   run --separate-stderr bash -c 'HOME="$1/home" XDG_CACHE_HOME="$1/cache" bash "$1/keys-reconcile" plan' _ "$t"
-  [[ $output == *"✓ seat — host-seat@26-11-01"* ]]
+  [[ $output == *"✓ seat — seat@26-11-01"* ]]
 }
 
 @test "a normal slot never takes the bootstrap path: its statement stays required" {
-  rm -f "$t/published/host-seat@26-11-01.statement.sig"
+  rm -f "$t/published/seat@26-11-01.statement.sig"
   run --separate-stderr window yes
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
@@ -486,9 +486,9 @@ retire() { # <answer> <machine>
   run --separate-stderr retire yes seat
   [ "$status" -eq 0 ]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
-  [ "$(yq -r '.keys."host-seat".slots | has("26-10-17")' "$k")" = false ]
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
-  [ "$(yq -r '.revoked."host-seat@26-10-17".public' "$k")" = "$(cut -d' ' -f2 "$t/old.pub")" ]
+  [ "$(yq -r '.keys."seat".slots | has("26-10-17")' "$k")" = false ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$k")" = serving ]
+  [ "$(yq -r '.revoked."seat@26-10-17".public' "$k")" = "$(cut -d' ' -f2 "$t/old.pub")" ]
   [ "$(yq -r '.keys.shared.slots."26-01-01".certificates.fabric | has("ssh-host")' "$k")" = false ]
   : "the shared key's user certificate is another certificate: byte-identical"
   [ "$(yq -r '.keys.shared.slots."26-01-01".certificates.fabric."ssh-user"' "$k")" = "$(cut -d' ' -f1,2 "$t/shared-user-cert.pub")" ]
@@ -511,7 +511,7 @@ retire() { # <answer> <machine>
   [[ $output == *"REVOKED"* ]]
   run ssh-keygen -Q -f "$t/krl" "$t/shared-host-cert.pub"
   [[ $output == *"REVOKED"* ]]
-  yq -r '.keys."host-seat".slots."26-11-01".certificates.fabric."ssh-host"' "$k" >"$t/new-cert.pub"
+  yq -r '.keys."seat".slots."26-11-01".certificates.fabric."ssh-host"' "$k" >"$t/new-cert.pub"
   run ssh-keygen -Q -f "$t/krl" "$t/new-cert.pub"
   [[ $output == *": ok"* ]]
   run ssh-keygen -Q -f "$t/krl" "$t/shared-user-cert.pub"
@@ -527,7 +527,7 @@ retire() { # <answer> <machine>
 }
 
 @test "retire: refused before the « yes » — the current slot not serving, an unknown machine, unarmed" {
-  yq -i -p json -o json '.keys."host-seat".slots."26-10-17".state = "recorded"' "$t/keys.json"
+  yq -i -p json -o json '.keys."seat".slots."26-10-17".state = "recorded"' "$t/keys.json"
   run --separate-stderr retire yes seat
   [ "$status" -eq 3 ]
   [[ $stderr == *"current slot is not serving"* ]]
@@ -613,12 +613,14 @@ substring_cert() {
   run --separate-stderr window yes
   [ "$status" -eq 0 ]
   k="$(tree)/modules/home-manager/ssh.d/keys.yaml"
-  [ "$(yq -r '.keys."host-seat".slots."26-11-01".state' "$k")" = serving ]
+  [ "$(yq -r '.keys."seat".slots."26-11-01".state' "$k")" = serving ]
   : "the fixture declares no bootstrap on the slot (the batch carries it): put it as declare writes it, then validate"
-  yq 'del(.sops) | .keys."host-seat".slots."26-11-01".bootstrap = "console"' "$k" >"$t/plain.yaml"
-  check-jsonschema --schemafile "$KEYS_SCHEMA" "$t/plain.yaml"
+  yq 'del(.sops) | .keys."seat".slots."26-11-01".bootstrap = "console"' "$k" >"$t/plain.yaml"
+  : "the schema names the fleet's machines; this fixture's machine is seat"
+  yq '.properties.keys.patternProperties |= with_entries(.key |= sub("^\\^\\(\\(", "^((seat|"))' "$KEYS_SCHEMA" >"$t/schema.yaml"
+  check-jsonschema --schemafile "$t/schema.yaml" "$t/plain.yaml"
   : "the control: the schema as it was, a bootstrap only while pending, refuses the same output"
-  yq '.["$defs"].machineSlots.additionalProperties.then.properties.state = {"const": "pending"}' "$KEYS_SCHEMA" >"$t/old.yaml"
+  yq '.["$defs"].machineSlots.additionalProperties.then.properties.state = {"const": "pending"}' "$t/schema.yaml" >"$t/old.yaml"
   run check-jsonschema --schemafile "$t/old.yaml" "$t/plain.yaml"
   [ "$status" -ne 0 ]
   [[ $output == *"'pending' was expected"* ]]

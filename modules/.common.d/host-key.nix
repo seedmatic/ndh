@@ -21,7 +21,7 @@ in
         ((import ./host-key.d/slots.nix { inherit lib; } cfg.entry).current.state or "") == "serving";
       description = ''
         Whether this machine serves its own host key, at `ndh.hostKey.file`, with the certificate keys.yaml records
-        for `host-<hostName>`: read from keys.yaml, true exactly when its current slot is `serving` (roles × keys
+        for `<hostName>`: read from keys.yaml, true exactly when its current slot is `serving` (roles × keys
         K5). Never set by hand: a slot reaches `serving` only once its key is there and certified.
       '';
     };
@@ -48,13 +48,13 @@ in
       type = lib.types.str;
       internal = true;
       default = import ./host-key.d/certificate.nix { inherit lib; } config.ndh.keysYaml.keys machine;
-      description = "The ssh-host certificate recorded in keys.yaml for host-<hostName>; refuses to evaluate without one.";
+      description = "The ssh-host certificate recorded in keys.yaml for <hostName>; refuses to evaluate without one.";
     };
 
     certificateFile = lib.mkOption {
       type = lib.types.path;
       readOnly = true;
-      default = pkgs.writeText "host-${machine}-cert.pub" "${cfg.certificate}\n";
+      default = pkgs.writeText "${machine}-host-cert.pub" "${cfg.certificate}\n";
       description = "HostCertificate: a store file, as the certificate is public.";
     };
 
@@ -74,8 +74,8 @@ in
     entry = lib.mkOption {
       type = lib.types.attrsOf lib.types.anything;
       internal = true;
-      default = config.ndh.keysYaml.allSlots."host-${machine}" or { };
-      description = "keys.yaml's host-<hostName> entry, the slots this module reads.";
+      default = config.ndh.keysYaml.allSlots.${machine} or { };
+      description = "keys.yaml's <hostName> entry, the slots this module reads.";
     };
 
     slotDir = lib.mkOption {
@@ -132,7 +132,7 @@ in
           # slots.nix takes the newest usable slot for the current one: a pending slot named before it would be
           # generated, recorded, and then never served.
           assertion = pendingName == null || roles.currentName == null || roles.currentName < pendingName;
-          message = "${machine}: host-${machine}@${toString pendingName} is pending, but it does not sort after the current slot ${toString roles.currentName}: name the new slot by a later date.";
+          message = "${machine}: ${machine}@${toString pendingName} is pending, but it does not sort after the current slot ${toString roles.currentName}: name the new slot by a later date.";
         }
       ];
 

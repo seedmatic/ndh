@@ -84,6 +84,7 @@ in
     keyFile = effectiveSSHKeysYamlPath;
     allowedKeyNames = [
       sshPaths.keyName
+      sshPaths.operatorKeyName
       "linux-builder"
     ];
   };

@@ -42,9 +42,9 @@ let
   #   darwin.{host} → the darwin host (via MagicDNS)
   #   nixos.{host}  → the NixOS guest of the same bare-metal (on bioskop it runs on
   #                   the darwin host; on nikopol beside it, on the corporate bare-metal)
-  # Both present the profile user's rdp-host key+cert so mammoth-skate's
+  # Both present the profile user's operator key+cert so mammoth-skate's
   # TrustedUserCAKeys check accepts the login without per-host key
-  # pinning.  The SSH cert *principal* stays `rdp-host` (server-side
+  # pinning.  The SSH cert *principal* is `operator` (server-side
   # identity, internal); only the operator-facing alias prefix is `darwin`.
   #
   # `vzhost.{host}` is intentionally NOT in operatorAliasesForHost
@@ -64,9 +64,9 @@ let
   # otherwise the literal `.local` name (a bringup fallback that does NOT match
   # the darwin./nixos. operator aliases nor the `*.nikopol` zone block) would fall
   # through to OpenSSH's built-in default identities (none of which carry the
-  # rdp-host key+cert) and be rejected by the CA-cert sshd.
+  # operator key+cert) and be rejected by the CA-cert sshd.
   operatorIdentityLines = ''
-    IdentityFile ${config.sshPaths.privKeyFile}
+    IdentityFile ${config.sshPaths.operatorKeyFile}
     IdentitiesOnly yes
     IdentityAgent none
     PreferredAuthentications publickey
@@ -147,7 +147,7 @@ let
     ''
       Host vzhost.${bm.domain} ${bm.vzHostLanName}${catalog.netplan.lan.domain}
         User ${bm.vzHostUser}
-        IdentityFile ${config.sshPaths.privKeyFile}
+        IdentityFile ${config.sshPaths.operatorKeyFile}
         IdentitiesOnly yes
         PreferredAuthentications publickey
     '';
@@ -202,7 +202,7 @@ let
   # Darwin host), so the per-host loop above never emits it; this single alias is
   # rendered uniformly on every managed host.  Reached by its mDNS `.local` name
   # because the guest carries no MagicDNS/tailnet alias of its own during bring-up.
-  # `User root` + the operator rdp-host key/cert; the `*-nixos` wildcard block above
+  # `User root` + the operator key/cert; the `*-nixos` wildcard block above
   # already relaxes known_hosts for it (host keys rotate across re-materialisation).
   # The `IdentityFile none` reset clears the default identities accumulated by the
   # `Host *` blocks so IdentitiesOnly offers only the rdp-host key.
@@ -211,7 +211,7 @@ let
       HostName nerd-nixos.local
       User root
       IdentityFile none
-      IdentityFile ${config.sshPaths.privKeyFile}
+      IdentityFile ${config.sshPaths.operatorKeyFile}
       IdentitiesOnly yes
   '';
 

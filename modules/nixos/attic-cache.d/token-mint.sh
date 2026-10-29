@@ -33,7 +33,7 @@ mint() { # <sub> <scope flags>... — the token on stdout, straight into the nex
   atticd-atticadm make-token --sub "$sub" --validity "$VALIDITY" "$@" </dev/null
 }
 
-[ -n "$TARGETS" ] || die "no machine to mint for (no host-<seat> key recorded with a current slot)"
+[ -n "$TARGETS" ] || die "no machine to mint for (no <seat> key recorded with a current slot)"
 umask 022
 mkdir -p "$out"
 # A failed mint leaves no partial ciphertext behind; the previous generation stays served.

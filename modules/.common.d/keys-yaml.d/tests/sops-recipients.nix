@@ -19,13 +19,13 @@ let
     "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j" = {
       why = "the NixOS guests' shared interim identity";
       hosts = [
-        "host-bioskop-nixos"
-        "host-nikopol-nixos"
+        "bioskop-nixos"
+        "nikopol-nixos"
       ];
     };
     "age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4" = {
       why = "darwin.nikopol's interim identity";
-      hosts = [ "host-nikopol" ];
+      hosts = [ "nikopol" ];
     };
   };
   interimLines = pkgs.writeText "interim" (
@@ -93,7 +93,7 @@ pkgs.runCommand "sops-recipients"
     R=$first yq '.creation_rules[].age |= map(select(. != strenv(R)))' ${sopsYaml} >removed.yaml
     mutant "a recorded one removed" removed.yaml ${keysJson} "missing"
     # Every host fe9g stands in for now serves its own recipient slot: ⑥ is due, so fe9g must be gone.
-    yq -p json -o json '(.keys["host-bioskop-nixos", "host-nikopol-nixos"].slots[] | select(.age != null)) |= (.state = "serving" | .recipient = true)' ${keysJson} >served.json
+    yq -p json -o json '(.keys["bioskop-nixos", "nikopol-nixos"].slots[] | select(.age != null)) |= (.state = "serving" | .recipient = true)' ${keysJson} >served.json
     mutant "an interim one that outlived its step" ${sopsYaml} served.json "extra"
     touch $out
   ''

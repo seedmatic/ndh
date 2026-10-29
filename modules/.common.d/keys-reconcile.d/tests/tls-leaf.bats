@@ -37,7 +37,7 @@ EOF
       .authorities.tls.slots."26-10-10".ca_crt = strenv(CACRT) |
       .authorities.tls.slots."26-10-10".private = strenv(CAPRIV) |
       (.authorities.tls.slots."26-10-10".private | key) headComment = "sops:encrypted" |
-      .keys."host-g1".type = "ssh-ed25519" | .keys."host-g1".slots."26-10-17" = {"public": strenv(GUESTPUB), "state": "serving"}
+      .keys."g1".type = "ssh-ed25519" | .keys."g1".slots."26-10-17" = {"public": strenv(GUESTPUB), "state": "serving"}
     ' >"$src/modules/home-manager/ssh.d/keys.yaml"
   printf 'caches:\n  k: v1\n  # sops:encrypted\n  s: secret\n' >"$src/catalog/cache-trust.yaml"
   printf 'a: one\n' >"$src/.secrets"

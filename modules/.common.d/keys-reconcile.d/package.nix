@@ -36,7 +36,7 @@ let
   hostKeyReady =
     machine:
     let
-      r = roles (keys."host-${machine}" or { });
+      r = roles (keys.${machine} or { });
     in
     (r.current.state or "") == "serving" && r.pendingName == null;
   readyCaches = lib.filter (c: hostKeyReady c.machine) atticCaches;
@@ -44,7 +44,7 @@ let
     lib.concatMap (
       machine:
       let
-        key = "host-${machine}";
+        key = machine;
         entry = keys.${key} or { };
         r = roles entry;
       in
@@ -70,7 +70,7 @@ let
     ++ lib.concatMap (
       c:
       let
-        host = roles (keys."host-${c.machine}" or { });
+        host = roles (keys.${c.machine} or { });
       in
       lib.optional (!(catalog.privateCaches.entries ? ${c.metalspace})) {
         class = "attic-cache-key";
@@ -80,7 +80,7 @@ let
         # The guest's SERVING slot, as keys.yaml records it: what the statement must be signed by.
         servingPublic =
           if (host.current.state or "") == "serving" then
-            "${(keys."host-${c.machine}").type or "ssh-ed25519"} ${host.current.public}"
+            "${(keys.${c.machine}).type or "ssh-ed25519"} ${host.current.public}"
           else
             "";
       }
@@ -88,7 +88,7 @@ let
     ++ map (
       c:
       let
-        host = roles (keys."host-${c.machine}" or { });
+        host = roles (keys.${c.machine} or { });
         leaf = ../../../catalog/attic-leaves + "/${c.metalspace}.crt";
       in
       {
@@ -97,7 +97,7 @@ let
         cache = c.metalspace;
         servingPublic =
           if (host.current.state or "") == "serving" then
-            "${(keys."host-${c.machine}").type or "ssh-ed25519"} ${host.current.public}"
+            "${(keys.${c.machine}).type or "ssh-ed25519"} ${host.current.public}"
           else
             "";
         recordedLeaf = if builtins.pathExists leaf then "${leaf}" else "";

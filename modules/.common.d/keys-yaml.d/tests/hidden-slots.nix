@@ -15,7 +15,7 @@
 }:
 let
   fixture = {
-    keys.host-x = {
+    keys.x = {
       type = "ssh-ed25519";
       usage = [ "ssh-host" ];
       profiles = [ "system" ];
@@ -26,13 +26,13 @@ let
           public = "AAAAretired";
           state = "retired";
           origin = "keyring";
-          certificates.fabric.ssh-host = "ssh-ed25519-cert-v01@openssh.com AAAAretiredcert host-x";
+          certificates.fabric.ssh-host = "ssh-ed25519-cert-v01@openssh.com AAAAretiredcert x";
         };
         "26-05-01" = {
           public = "AAAAserving";
           state = "serving";
           origin = "keyring";
-          certificates.fabric.ssh-host = "ssh-ed25519-cert-v01@openssh.com AAAAservingcert host-x";
+          certificates.fabric.ssh-host = "ssh-ed25519-cert-v01@openssh.com AAAAservingcert x";
         };
         "26-11-01" = {
           state = "pending";
@@ -61,7 +61,7 @@ let
         }
       ];
     }).config.ndh.keysYaml;
-  seen = lib.attrNames evaluated.keys.host-x.slots;
+  seen = lib.attrNames evaluated.keys.x.slots;
   # The projection's mutant: keys-yaml.nix with its `hidden` list emptied must show every slot.
   mutantModule = pkgs.writeText "keys-yaml-mutant.nix" (
     builtins.replaceStrings [ "hidden = [\n    \"pending\"\n    \"retired\"\n  ];" ] [ "hidden = [ ];" ]
@@ -79,14 +79,14 @@ let
             };
           }
         ];
-      }).config.ndh.keysYaml.keys.host-x.slots;
-  all = lib.attrNames evaluated.allSlots.host-x.slots;
+      }).config.ndh.keysYaml.keys.x.slots;
+  all = lib.attrNames evaluated.allSlots.x.slots;
 
   # A key revoked while a RETIRED slot still carries it: keys-yaml.nix must refuse it, retired slots included in what
   # it guards (`keys-reconcile retire` deletes the slot in the same change). Forced through krlFile, where the guard
   # throws (forcing `.keys` would reach no guard and prove nothing).
   revokedWhileRetired = fixture // {
-    revoked."host-x@26-01-01" = {
+    revoked."x@26-01-01" = {
       type = "ssh-ed25519";
       public = "AAAAretired";
       reason = "fixture";
@@ -172,25 +172,25 @@ pkgs.runCommand "keys-yaml-hidden-slots"
     # Its output is a stream of documents, one per file to write: gathered into one list.
     splitexp() { yq eval --from-file "$1" keys.yaml | yq ea -o json -I0 '[.]'; }
     files=$(splitexp ${splitExp})
-    if [ "$(yq -r '[.[] | select((.rel_path | test("^host-x")) and .content == "")] | length' <<<"$files")" != 0 ]; then
-      echo "FAIL split-exp installs an empty line for host-x"; exit 1
+    if [ "$(yq -r '[.[] | select((.rel_path | test("^x")) and .content == "")] | length' <<<"$files")" != 0 ]; then
+      echo "FAIL split-exp installs an empty line for x"; exit 1
     fi
-    presented=$(yq -r '[.[] | select(.rel_path == "host-x.pub")][0].content' <<<"$files")
-    [ "$presented" = "ssh-ed25519 AAAAserving host-x" ] || { echo "FAIL split-exp presents: $presented"; exit 1; }
-    if grep -qE 'host-x-26-(01|11)-01' <<<"$files"; then echo "FAIL split-exp installs a hidden slot"; exit 1; fi
+    presented=$(yq -r '[.[] | select(.rel_path == "x.pub")][0].content' <<<"$files")
+    [ "$presented" = "ssh-ed25519 AAAAserving x" ] || { echo "FAIL split-exp presents: $presented"; exit 1; }
+    if grep -qE 'x-26-(01|11)-01' <<<"$files"; then echo "FAIL split-exp installs a hidden slot"; exit 1; fi
     echo "ok   split-exp: the serving slot is presented, the pending and retired ones install nothing"
 
     # The mutant: split-exp without its filter must see the pending slot.
     sed 's/map(select((.value.state \/\/ "") != "pending" and (.value.state \/\/ "") != "retired")) | //' ${splitExp} >split-exp.mutant
     ! cmp -s split-exp.mutant ${splitExp} || { echo "FAIL the split-exp mutant changed nothing"; exit 1; }
     mutant=$(splitexp split-exp.mutant)
-    [ "$(yq -r '[.[] | select(.rel_path == "host-x.pub")][0].content' <<<"$mutant")" != "ssh-ed25519 AAAAserving host-x" ] ||
+    [ "$(yq -r '[.[] | select(.rel_path == "x.pub")][0].content' <<<"$mutant")" != "ssh-ed25519 AAAAserving x" ] ||
       { echo "FAIL the split-exp mutant still presents the serving slot: the filter proves nothing"; exit 1; }
     echo "ok   mutant: split-exp without its filter presents another slot"
 
     # The enrichment's slot list (sourced, its functions alone).
     enrichslots() { # <script>
-      inputFile=keys.yaml bash -c 'log::error() { echo "$*" >&2; }; source <(sed -n "/^usableSlots=/,/^key::assert_slots/p" "$1"); key::slots host-x' _ "$1"
+      inputFile=keys.yaml bash -c 'log::error() { echo "$*" >&2; }; source <(sed -n "/^usableSlots=/,/^key::assert_slots/p" "$1"); key::slots x' _ "$1"
     }
     [ "$(enrichslots ${enrich} | tr '\n' ' ')" = "26-05-01 " ] || { echo "FAIL enrichment slots: $(enrichslots ${enrich})"; exit 1; }
     sed 's/^usableSlots=.*/usableSlots=""/' ${enrich} >enrich.mutant

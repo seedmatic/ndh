@@ -39,8 +39,8 @@ render() {
 pub() { echo "$t/var/attic/published/attic-m1.cache-key.$1"; }
 
 verify() { # the statement, against the key the guest serves, in namespace seedmatic-attic
-  printf 'host-m1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
-  ssh-keygen -q -Y verify -f "$t/allowed" -I host-m1-nixos -n seedmatic-attic -s "$(pub statement.sig)" <"$(pub statement)"
+  printf 'm1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
+  ssh-keygen -q -Y verify -f "$t/allowed" -I m1-nixos -n seedmatic-attic -s "$(pub statement.sig)" <"$(pub statement)"
 }
 
 nothing_published() { [ ! -e "$(pub public)" ] && [ ! -e "$(pub statement.sig)" ]; }
@@ -57,8 +57,8 @@ nothing_published() { [ ! -e "$(pub public)" ] && [ ! -e "$(pub statement.sig)" 
 
 @test "the statement does not verify under another namespace" {
   bash "$t/publish"
-  printf 'host-m1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
-  run ssh-keygen -q -Y verify -f "$t/allowed" -I host-m1-nixos -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
+  printf 'm1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
+  run ssh-keygen -q -Y verify -f "$t/allowed" -I m1-nixos -n seedmatic-rotate -s "$(pub statement.sig)" <"$(pub statement)"
   [ "$status" -ne 0 ]
 }
 
@@ -86,8 +86,8 @@ csr() { echo "$t/var/attic/published/attic-m1.tls-csr.$1"; }
   openssl req -in "$(csr csr)" -noout -verify 2>/dev/null
   [ "$(openssl req -in "$(csr csr)" -noout -pubkey)" = "$(openssl pkey -in "$t/tls.key" -pubout)" ]
   [ "$(cat "$(csr statement)")" = "$(printf 'seedmatic-attic v1\nclass attic-tls-csr\ncache m1\nmachine m1-nixos\nsha256 %s' "$(sha256sum "$(csr csr)" | cut -d' ' -f1)")" ]
-  printf 'host-m1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
-  ssh-keygen -q -Y verify -f "$t/allowed" -I host-m1-nixos -n seedmatic-attic -s "$(csr statement.sig)" <"$(csr statement)"
+  printf 'm1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
+  ssh-keygen -q -Y verify -f "$t/allowed" -I m1-nixos -n seedmatic-attic -s "$(csr statement.sig)" <"$(csr statement)"
   [[ $stderr == *"m1 TLS CSR published by m1-nixos: CN=attic.m1"* ]]
 }
 

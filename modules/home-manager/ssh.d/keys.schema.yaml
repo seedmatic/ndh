@@ -35,7 +35,9 @@ properties:
       `linux-builder`). Each entry references a top-level authority by name
       instead of inlining the authority block.
     patternProperties:
-      "^(host|sshfs)-[a-z0-9-]+$":
+      # A machine's own key: its host key, named after the machine (catalog/machines.nix; held to it by
+      # checks.<system>.keys-schema-machines), or a guest's sshfs key.
+      "^((bioskop|bioskop-nixos|nikopol|nikopol-nixos)|sshfs-[a-z0-9-]+)$":
         allOf:
           - $ref: "#/$defs/key"
           - properties:

@@ -14,7 +14,7 @@ reconcile::declare() { # <machine>
   [[ $machine =~ ^[a-z][a-z0-9-]*$ ]] || die "declare: '${machine}' is not a machine name"
   m=$machine yq -e '.[] | select(.name == strenv(m))' "$machines" >/dev/null 2>&1 ||
     die "declare: ${machine} is not in the machine list"
-  keyName="host-${machine}"
+  keyName="${machine}"
   K="$keyName" yq -e -p json '.keys | has(strenv(K))' "$keysJson" >/dev/null 2>&1 ||
     die "declare: keys.yaml has no ${keyName} entry"
 

@@ -1,5 +1,5 @@
 # The operator's queue (roles × keys K2): the migration's steps, per machine and in fleet-switch's order, DERIVED
-# from keys.yaml's machine slots (host-<m>, sshfs-<m>), so no step is recorded by hand. A slot goes through the queue
+# from keys.yaml's machine slots (<m>, sshfs-<m>), so no step is recorded by hand. A slot goes through the queue
 # only when it was born on its machine (`origin: host`, K3); a keyring slot is never offered, it waits for a
 # declaration and retires with the next migration (design §d).
 #
@@ -35,15 +35,14 @@ let
     machine:
     lib.concatMap
       (
-        kind:
-        lib.optional (keys ? "${kind}-${machine}") {
-          key = "${kind}-${machine}";
-          inherit machine;
+        key:
+        lib.optional (keys ? ${key}) {
+          inherit key machine;
         }
       )
       [
-        "host"
-        "sshfs"
+        machine
+        "sshfs-${machine}"
       ]
   ) order;
 

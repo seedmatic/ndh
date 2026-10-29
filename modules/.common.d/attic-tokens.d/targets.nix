@@ -18,7 +18,7 @@ lib.concatLists (
   lib.mapAttrsToList (
     host: bm:
     let
-      entry = keys."host-${host}" or { };
+      entry = keys.${host} or { };
       current = (roles entry).current;
       publicKey = "${entry.type or "ssh-ed25519"} ${current.public}";
     in

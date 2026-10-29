@@ -1,7 +1,7 @@
 # Must FAIL the schema, for ONE reason only: a slot's state is not one of the frame's. Everything else here is valid.
 authorities: {}
 keys:
-  host-fixture:
+  bioskop:
     type: ssh-ed25519
     usage: [ssh-host]
     profiles: []

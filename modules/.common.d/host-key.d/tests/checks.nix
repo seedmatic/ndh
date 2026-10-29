@@ -210,7 +210,7 @@ in
       refused = keys: !(builtins.tryEval (certificateOf keys "m")).success;
     in
     assert expect "the newest slot's certificate" (certificateOf { host-m = entry; } "m") "NEW";
-    assert lib.assertMsg (refused { }) "a machine with no host-<machine> entry evaluated";
+    assert lib.assertMsg (refused { }) "a machine with no <machine> entry evaluated";
     assert lib.assertMsg (refused {
       host-m = entry // {
         slots = entry.slots // {
