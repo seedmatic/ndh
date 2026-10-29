@@ -23,7 +23,7 @@ setup() {
   git -C "$t/remote.git" update-ref refs/heads/main "$rev"
 
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '{"keys": {"host-seat": {"slots": {"26-10-17": {"public": "%s"}}}}, "authorities": {}}\n' "${old#ssh-ed25519 }" >"$t/keys.json"
+  printf '{"keys": {"seat": {"slots": {"26-10-17": {"public": "%s"}}}}, "authorities": {}}\n' "${old#ssh-ed25519 }" >"$t/keys.json"
   batch "$old"
   echo '{}' >"$t/host-names.json"
   render "$rev"
@@ -32,14 +32,14 @@ setup() {
 publish() { # <new public file> <old private>: what K3's generate.sh publishes
   local public statement
   public="$(cut -d' ' -f1,2 "$1")"
-  printf '%s\n' "$public" >"$t/published/host-seat@26-11-01.public"
-  printf 'seedmatic-rotate v1\nname host-seat\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-seat@26-11-01.statement"
-  rm -f "$t/published/host-seat@26-11-01.statement.sig"
-  ssh-keygen -q -Y sign -f "$2" -n seedmatic-rotate "$t/published/host-seat@26-11-01.statement" </dev/null
+  printf '%s\n' "$public" >"$t/published/seat@26-11-01.public"
+  printf 'seedmatic-rotate v1\nname seat\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/seat@26-11-01.statement"
+  rm -f "$t/published/seat@26-11-01.statement.sig"
+  ssh-keygen -q -Y sign -f "$2" -n seedmatic-rotate "$t/published/seat@26-11-01.statement" </dev/null
 }
 
 batch() { # <recorded old public>
-  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
+  printf '[{"class": "host-key", "machine": "seat", "key": "seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' "$1" >"$t/batch.json"
 }
 
 render() { # <revision>
@@ -65,7 +65,7 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
 @test "a verified publication: ready, with its fingerprint, its age and the files it joins" {
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
-  [[ $output == *"✓ seat — host-seat@26-11-01 $(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2)"* ]]
+  [[ $output == *"✓ seat — seat@26-11-01 $(ssh-keygen -lf "$t/new.pub" | cut -d' ' -f2)"* ]]
   [[ $output == *"recipient $(ssh-to-age <"$t/new.pub") added to: .secrets"* ]]
   [[ $output == *"ready: the window (ops next) will record them"* ]]
 }
@@ -75,20 +75,20 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   publish "$t/new.pub" "$t/forger"
   run --separate-stderr kr plan
   [ "$status" -eq 4 ]
-  [[ $output == *"✗ seat — host-seat@26-11-01: host-seat@26-11-01: its statement is not signed by the old public keys.yaml records"* ]]
+  [[ $output == *"✗ seat — seat@26-11-01: seat@26-11-01: its statement is not signed by the old public keys.yaml records"* ]]
   [[ $output == *"nothing will be written"* ]]
 }
 
 @test "mutant: a .public replaced after signing is refused (the statement names another public)" {
   ssh-keygen -q -t ed25519 -N "" -C other -f "$t/other"
-  cut -d' ' -f1,2 "$t/other.pub" >"$t/published/host-seat@26-11-01.public"
+  cut -d' ' -f1,2 "$t/other.pub" >"$t/published/seat@26-11-01.public"
   run --separate-stderr kr plan
   [ "$status" -eq 4 ]
   [[ $output == *"its statement does not name this key, slot and public"* ]]
 }
 
 @test "mutant: a publication missing its signature is refused, not read as present" {
-  rm -f "$t/published/host-seat@26-11-01.statement.sig"
+  rm -f "$t/published/seat@26-11-01.statement.sig"
   run --separate-stderr kr plan
   [ "$status" -eq 4 ]
   [[ $output == *"statement.sig was not published"* ]]
@@ -106,17 +106,17 @@ kr() { HOME="$t/home" XDG_CACHE_HOME="$t/cache" bash "$t/keys-reconcile" "$@"; }
   ssh-keygen -q -t ed25519 -N "" -C old2 -f "$t/old2"
   ssh-keygen -q -t ed25519 -N "" -C new2 -f "$t/new2"
   public="$(cut -d' ' -f1,2 "$t/new2.pub")"
-  printf '%s\n' "$public" >"$t/published/host-mate@26-11-01.public"
-  printf 'seedmatic-rotate v1\nname host-mate\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/host-mate@26-11-01.statement"
-  ssh-keygen -q -Y sign -f "$t/old2" -n seedmatic-rotate "$t/published/host-mate@26-11-01.statement" </dev/null
+  printf '%s\n' "$public" >"$t/published/mate@26-11-01.public"
+  printf 'seedmatic-rotate v1\nname mate\nslot 26-11-01\nkey %s\n' "$public" >"$t/published/mate@26-11-01.statement"
+  ssh-keygen -q -Y sign -f "$t/old2" -n seedmatic-rotate "$t/published/mate@26-11-01.statement" </dev/null
   printf -- '- {name: seat, kind: darwin, ssh: "", ssh_opts: []}\n- {name: mate, kind: darwin, ssh: "", ssh_opts: []}\n- {name: other, kind: nixos, ssh: "", ssh_opts: []}\n' >"$t/machines.yaml"
-  printf '[{"class": "host-key", "machine": "seat", "key": "host-seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"class": "host-key", "machine": "mate", "key": "host-mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
+  printf '[{"class": "host-key", "machine": "seat", "key": "seat", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}, {"class": "host-key", "machine": "mate", "key": "mate", "slot": "26-11-01", "oldPublic": "%s", "files": [".secrets"]}]\n' \
     "$old" "$(cut -d' ' -f1,2 "$t/old2.pub")" >"$t/batch.json"
   run --separate-stderr kr plan
   [ "$status" -eq 0 ]
   [[ $output == *"2 key(s)"* ]]
-  [[ $output == *"✓ seat — host-seat@26-11-01"* ]]
-  [[ $output == *"✓ mate — host-mate@26-11-01"* ]]
+  [[ $output == *"✓ seat — seat@26-11-01"* ]]
+  [[ $output == *"✓ mate — mate@26-11-01"* ]]
   [[ $output != *"other"* ]]
 }
 

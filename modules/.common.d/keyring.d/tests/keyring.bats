@@ -47,7 +47,7 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
 @test "a host key is generated into seedmatic/, to the seedmatic subkey alone, and its public printed" {
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" host-key bioskop-nixos
   [ "$status" -eq 0 ]
-  [[ $output == "ssh-ed25519 "*" host-bioskop-nixos" ]]
+  [[ $output == "ssh-ed25519 "*" bioskop-nixos" ]]
   # The printed public is the stored key's.
   [ "$(printf '%s\n' "$output" | ssh-to-age)" = "$(pass show seedmatic/host-key/bioskop-nixos | ssh-to-age -private-key | age-keygen -y)" ]
   # Exactly one recipient, the seedmatic subkey.
@@ -81,7 +81,7 @@ entry() { printf '%s' "$PASSWORD_STORE_DIR/seedmatic/${2:-host-key}/$1.gpg"; }
   TMPDIR="$t/tmp" PATH="$t/bin:$PATH" run --separate-stderr bash "$t/keyring" nix-signing-public bioskop
   [ "$status" -eq 0 ]
   [[ $output =~ ^seedmatic-bioskop-1:[A-Za-z0-9+/]{43}=$ ]]
-  [[ $stderr == *"ssh-keys-renew --record-nix-signing host-bioskop --public -"* ]]
+  [[ $stderr == *"ssh-keys-renew --record-nix-signing bioskop --public -"* ]]
   # The deriver run directly on the same host key gives the same line (it refuses one equal to the host key).
   [ "$output" = "$(pass show seedmatic/host-key/bioskop |
     "$NIX_SIGNING_DERIVE" --name seedmatic-bioskop-1 --label seedmatic/nix-signing/1 --public)" ]

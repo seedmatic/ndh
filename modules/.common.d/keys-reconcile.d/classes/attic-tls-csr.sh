@@ -59,8 +59,8 @@ reconcile::attic-tls-csr::verify() {
     { reconcile::refuse "attic-${cache}: its statement does not name this class, cache, guest and CSR"; return 1; }
   [[ -n $servingPublic ]] || { reconcile::refuse "attic-${cache}: keys.yaml records no serving host key for ${machine}"; return 1; }
   allowed="$(mktemp)"
-  printf 'host-%s %s\n' "$machine" "$servingPublic" >"$allowed"
-  if ! ssh-keygen -q -Y verify -f "$allowed" -I "host-${machine}" -n seedmatic-attic -s "${stem}.statement.sig" <"${stem}.statement" >/dev/null 2>&1; then
+  printf '%s %s\n' "$machine" "$servingPublic" >"$allowed"
+  if ! ssh-keygen -q -Y verify -f "$allowed" -I "${machine}" -n seedmatic-attic -s "${stem}.statement.sig" <"${stem}.statement" >/dev/null 2>&1; then
     rm -f "$allowed"
     reconcile::refuse "attic-${cache}: its statement is not signed by the host key keys.yaml records as ${machine}'s serving one"
     return 1

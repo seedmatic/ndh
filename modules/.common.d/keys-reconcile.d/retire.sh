@@ -14,7 +14,7 @@
 # Not checked here, and the operator's step before it: the new key seen served live (keys.yaml cannot know it).
 
 retire::serving() { # <machine>: whether its host key's current slot (the newest neither pending nor retired) serves
-  M="$1" yq -e -p json '.keys["host-" + strenv(M)].slots // {} | to_entries
+  M="$1" yq -e -p json '.keys[strenv(M)].slots // {} | to_entries
     | map(select((.value.state // "") != "pending" and (.value.state // "") != "retired"))
     | sort_by(.key) | .[-1].value.state == "serving"' "$keysJson" >/dev/null 2>&1
 }
@@ -28,7 +28,7 @@ reconcile::retire() { # <machine>
   [[ $machine =~ ^[a-z][a-z0-9-]*$ ]] || die "retire: '${machine}' is not a machine name"
   m=$machine yq -e '.[] | select(.name == strenv(m))' "$machines" >/dev/null 2>&1 ||
     die "retire: ${machine} is not in the machine list"
-  keyName="host-${machine}"
+  keyName="${machine}"
   K="$keyName" yq -e -p json '.keys | has(strenv(K))' "$keysJson" >/dev/null 2>&1 ||
     die "retire: keys.yaml has no ${keyName} entry"
 
@@ -44,8 +44,10 @@ reconcile::retire() { # <machine>
   : "a host certificate on another key, every principal's machine now serving its own key: it is revoked too"
   local -a certs=()
   local certSlots
-  certSlots=$(yq -r -p json '.keys | to_entries[] | select(.key | test("^host-") | not) | .key as $k
-    | .value.slots // {} | to_entries[] | select(.value.certificates) | [$k, .key] | @tsv' "$keysJson") ||
+  : "every key but a machine's own host key (named after its machine)"
+  certSlots=$(MACHINES="$(yq -o json -I0 '[.[].name]' "$machines")" yq -r -p json '
+    (strenv(MACHINES) | from_json) as $machines | .keys | to_entries[] | select(.key as $n | $machines | any_c(. == $n) | not)
+    | .key as $k | .value.slots // {} | to_entries[] | select(.value.certificates) | [$k, .key] | @tsv' "$keysJson") ||
     die "retire: keys.json's certified slots could not be listed"
   while IFS=$'\t' read -r k s; do
     [[ -n $k ]] || continue

@@ -36,7 +36,7 @@ ops_on() { # $1 = a queue.json
   run --separate-stderr ops "$OPS_KEYRING" queue
   [ "$status" -eq 0 ]
   [[ $output == *"waiting for a declaration"* ]]
-  [[ $output == *"host-mac@26-10-18 (recorded, born in the keyring)"* ]]
+  [[ $output == *"mac@26-10-18 (recorded, born in the keyring)"* ]]
 }
 
 @test "generate: the machines in fleet-switch's order, the seat last" {
@@ -73,7 +73,7 @@ ops_on() { # $1 = a queue.json
 }
 
 @test "a head whose condition is unmet is refused, the condition named" {
-  echo '{"head": [{"step": "serve", "key": "host-g1", "machine": "g1", "slot": "26-11-01", "checked": ["a condition"], "unchecked": [], "does": "servir"}], "blocked": [], "waiting": []}' >"$BATS_TEST_TMPDIR/q.json"
+  echo '{"head": [{"step": "serve", "key": "g1", "machine": "g1", "slot": "26-11-01", "checked": ["a condition"], "unchecked": [], "does": "servir"}], "blocked": [], "waiting": []}' >"$BATS_TEST_TMPDIR/q.json"
   run --separate-stderr ops_on "$BATS_TEST_TMPDIR/q.json" next
   [ "$status" -eq 0 ]
   [[ $output == *"✗ unmet: a condition"* ]]
@@ -93,7 +93,7 @@ ops_on() { # $1 = a queue.json
   run --separate-stderr ops "$OPS_SERVE" next
   [[ $output == *"next step: serve"* ]]
   [[ $output == *"• g2 — switch g2: it serves sshfs-g2@26-11-01"* ]]
-  [[ $output == *"• mac — switch mac: it serves host-mac@26-11-01"* ]]
+  [[ $output == *"• mac — switch mac: it serves mac@26-11-01"* ]]
 }
 
 @test "ops never writes: the same output twice, and nothing created under an empty HOME" {

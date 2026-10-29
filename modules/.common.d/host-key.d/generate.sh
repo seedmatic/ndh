@@ -61,7 +61,7 @@ born() { # the private, into a 0700 temp dir beside its place, then renamed: abs
   local tmp
   tmp="$(mktemp -d "$(dirname "$keyFile")/.generate.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
-  ssh-keygen -q -t ed25519 -N "" -C "host-${machine}@${slot}" -f "$tmp/key" </dev/null || die "ssh-keygen failed"
+  ssh-keygen -q -t ed25519 -N "" -C "${machine}@${slot}" -f "$tmp/key" </dev/null || die "ssh-keygen failed"
   chmod 0600 "$tmp/key"
   mv -f "$tmp/key" "$keyFile"
   rm -rf "$tmp"
@@ -72,13 +72,13 @@ public_of() { ssh-keygen -y -f "$1" | cut -d' ' -f1,2; }
 
 main() {
   umask 077
-  : "host-${machine}@${slot}: the key is born here; the one sshd serves stays until keys.yaml records this slot"
+  : "${machine}@${slot}: the key is born here; the one sshd serves stays until keys.yaml records this slot"
   owned_dirs "$(dirname "$keyFile")" "$publishDir"
 
   if [[ ! -e $keyFile && ! -L $keyFile ]]; then
-    : "generating host-${machine}@${slot}"
+    : "generating ${machine}@${slot}"
     born
-    printf '[ndh-host-key-generate] host-%s@%s generated at %s\n' "$machine" "$slot" "$keyFile" >&2
+    printf '[ndh-host-key-generate] %s@%s generated at %s\n' "$machine" "$slot" "$keyFile" >&2
   fi
   [[ -f $keyFile && ! -L $keyFile ]] || die "${keyFile} is not a regular file"
 
@@ -91,13 +91,13 @@ main() {
     trap 'rm -rf "$work"' EXIT
     printf '%s\n' "$public" >"$work/public"
     chmod 0644 "$work/public"
-    mv -f "$work/public" "${publishDir}/host-${machine}@${slot}.public"
-    rm -f "${publishDir}/host-${machine}@${slot}".statement{,.sig}
+    mv -f "$work/public" "${publishDir}/${machine}@${slot}.public"
+    rm -f "${publishDir}/${machine}@${slot}".statement{,.sig}
     rm -rf "$work"
     trap - EXIT
     local line
-    line=$(printf '[ndh-host-key-generate] host-%s@%s born; type it at keys-reconcile window: %s' "$machine" "$slot" \
-      "$(ssh-keygen -lf "${publishDir}/host-${machine}@${slot}.public" | cut -d' ' -f2)")
+    line=$(printf '[ndh-host-key-generate] %s@%s born; type it at keys-reconcile window: %s' "$machine" "$slot" \
+      "$(ssh-keygen -lf "${publishDir}/${machine}@${slot}.public" | cut -d' ' -f2)")
     printf '%s\n' "$line" >&2
     : "the console line is a convenience for the operator's eyes; a console that refuses it changes nothing"
     { printf '%s\n' "$line" >>"$console"; } 2>/dev/null || true
@@ -111,14 +111,14 @@ main() {
 
   work="$(mktemp -d "${publishDir}/.publish.XXXXXX")"
   trap 'rm -rf "$work"' EXIT
-  printf 'seedmatic-rotate v1\nname host-%s\nslot %s\nkey %s\n' "$machine" "$slot" "$public" >"$work/statement"
+  printf 'seedmatic-rotate v1\nname %s\nslot %s\nkey %s\n' "$machine" "$slot" "$public" >"$work/statement"
   ssh-keygen -q -Y sign -f "$oldKey" -n seedmatic-rotate "$work/statement" </dev/null || die "signing the statement failed"
   printf '%s\n' "$public" >"$work/public"
   chmod 0644 "$work/public" "$work/statement" "$work/statement.sig"
-  for f in public statement statement.sig; do mv -f "$work/$f" "${publishDir}/host-${machine}@${slot}.${f}"; done
+  for f in public statement statement.sig; do mv -f "$work/$f" "${publishDir}/${machine}@${slot}.${f}"; done
   rm -rf "$work"
   trap - EXIT
-  printf '[ndh-host-key-generate] host-%s@%s published: %s\n' "$machine" "$slot" "$(ssh-keygen -lf "${publishDir}/host-${machine}@${slot}.public" | cut -d' ' -f2)" >&2
+  printf '[ndh-host-key-generate] %s@%s published: %s\n' "$machine" "$slot" "$(ssh-keygen -lf "${publishDir}/${machine}@${slot}.public" | cut -d' ' -f2)" >&2
 }
 
 ndh::logger:command:run host-key.generate main "$@"

@@ -22,7 +22,7 @@
 # schema requires one slot per entry, so an entry cannot be committed empty and filled
 # later, and an entry with no slots at all is refused as one that predates the model.
 #
-# --create host-<machine> --public - --usage ssh-host RECORDS a machine's host key instead of
+# --create <machine> --public - --usage ssh-host RECORDS a machine's host key instead of
 # generating one: its private lives in the operator's keyring only (ndh-keyring host-key <machine>
 # prints the public), so the slot holds the public and nothing else. The evaluation then refuses the
 # uncertified public until ssh-keys-certify signs it, which is meant: both land in one commit.
@@ -37,7 +37,7 @@
 # key the sessions recover a foreign vz-host's VMs with (ndh-keyring vz-recover-key <host>): that vz-host's
 # account authorizes it by a line the operator places, forcing ndh-vz-recover.
 #
-# --record-nix-signing host-<machine> --public - records the nix signing public derived from that machine's
+# --record-nix-signing <machine> --public - records the nix signing public derived from that machine's
 # host key (ndh-keyring nix-signing-public <machine>, roles × keys B2) as its newest slot's `nixSigning`, with
 # `sops set` and nothing decrypted, like the revocation below. A new host-key slot records a new one.
 #
@@ -53,7 +53,7 @@
 #                  [--replace --reason TEXT] [--apply]
 #   ssh-keys-renew --create NAME --usage TAG... [--profile NAME]... [--comment TEXT]
 #                  [--type TYPE] [--apply]
-#   ndh-keyring host-key MACHINE | ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+#   ndh-keyring host-key MACHINE | ssh-keys-renew --create MACHINE --public - --usage ssh-host
 #                  [--comment TEXT] [--apply]
 #   ndh-keyring sshfs-key GUEST | ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
 #                  [--comment TEXT] [--apply]
@@ -129,7 +129,7 @@ usage() {
 		       ssh-keys-renew --create NAME --usage TAG... [--profile NAME]...
 		                      [--comment TEXT] [--type TYPE] [--apply]
 		       ndh-keyring host-key MACHINE |
-		         ssh-keys-renew --create host-MACHINE --public - --usage ssh-host
+		         ssh-keys-renew --create MACHINE --public - --usage ssh-host
 		                      [--comment TEXT] [--apply]
 		       ndh-keyring sshfs-key GUEST |
 		         ssh-keys-renew --create sshfs-GUEST --public - --usage ssh-user
@@ -140,7 +140,7 @@ usage() {
 		       ssh-keys-renew --revoke-certificate KEY@SLOT --from-revision REV
 		                      --reason TEXT [--apply]
 		       ndh-keyring nix-signing-public MACHINE |
-		         ssh-keys-renew --record-nix-signing host-MACHINE --public - [--apply]
+		         ssh-keys-renew --record-nix-signing MACHINE --public - [--apply]
 
 		  --key NAME        Renew keys.<NAME>. Repeatable.
 		  --authority NAME   Renew authorities.<NAME>. Repeatable. The new generation
@@ -163,7 +163,7 @@ usage() {
 		  --type TYPE        The new entry's key type (default: ssh-ed25519).
 		  --public -         Record the ONE ssh-ed25519 public line read from stdin instead of
 		                     generating, a key whose private stays in the keyring: a
-		                     machine's host key, with --create host-MACHINE (${machines[*]})
+		                     machine's host key, with --create MACHINE (${machines[*]})
 		                     and --usage ssh-host, then ssh-keys-certify before committing;
 		                     or a NixOS guest's sshfs key, with --create sshfs-GUEST
 		                     (${guests[*]}) and --usage ssh-user, never certified;
@@ -177,7 +177,7 @@ usage() {
 		                     while keys.yaml still records it (or its id). Decrypts nothing.
 		  --from-revision REV
 		                     The commit whose keys.yaml recorded the certificate.
-		  --record-nix-signing host-MACHINE
+		  --record-nix-signing MACHINE
 		                     Record, with --public -, the nix signing public derived from that
 		                     machine's host key (seedmatic-MACHINE-N:<base64>) in its newest slot,
 		                     as nixSigning. Refused if that slot already has one, or if it equals
@@ -662,7 +662,7 @@ renew::apply() {
 	EOF
 }
 
-# A recorded key is ed25519, on no profile (keys.yaml carries no installation for it), of one role: a machine's host key (host-MACHINE, ssh-host), a NixOS guest's sshfs key
+# A recorded key is ed25519, on no profile (keys.yaml carries no installation for it), of one role: a machine's host key (MACHINE, ssh-host), a NixOS guest's sshfs key
 # (sshfs-GUEST, ssh-user), or a foreign vz-host's vz-recover key (vz-recover-HOST, ssh-user).
 public::check_record() {
 	local name role usageTag prefix placeholder
@@ -670,7 +670,7 @@ public::check_record() {
 	case "$createName" in
 		sshfs-*) role="an sshfs key" usageTag=ssh-user prefix=sshfs- placeholder=GUEST allowed=("${guests[@]}") ;;
 		vz-recover-*) role="a vz-recover key" usageTag=ssh-user prefix=vz-recover- placeholder=HOST allowed=("${vzHosts[@]}") ;;
-		*) role="a host key" usageTag=ssh-host prefix=host- placeholder=MACHINE allowed=("${machines[@]}") ;;
+		*) role="a host key" usageTag=ssh-host prefix="" placeholder=MACHINE allowed=("${machines[@]}") ;;
 	esac
 	if [[ "${createUsages[*]}" != "$usageTag" ]]; then
 		log::error "--public records ${role}: its one --usage is ${usageTag}"
@@ -857,13 +857,13 @@ nixsign::rest() { # <file> <key> <slot>
 	K="$2" S="$3" yq eval -o json --indent=0 'del(.sops) | del(.keys[strenv(K)].slots[strenv(S)].nixSigning)' "$1"
 }
 
-# Record the nix signing public of keys.<host-MACHINE>'s newest slot, read from stdin. Nothing read is ever
+# Record the nix signing public of keys.<MACHINE>'s newest slot, read from stdin. Nothing read is ever
 # printed: a mistaken pipe may carry a secret.
 nixsign::run() {
-	local key="$nixSigningKey" machine="${nixSigningKey#host-}" m known=0 input name pk slot hostBlob hostRaw updated
+	local key="$nixSigningKey" machine="$nixSigningKey" m known=0 input name pk slot hostBlob hostRaw updated
 	for m in "${machines[@]}"; do [[ "$m" == "$machine" ]] && known=1; done
-	if [[ "$key" != host-* ]] || ((known == 0)); then
-		log::error "--record-nix-signing ${key@Q}: host-MACHINE, MACHINE one of: ${machines[*]}"
+	if ((known == 0)); then
+		log::error "--record-nix-signing ${key@Q}: a MACHINE, one of: ${machines[*]}"
 		return 1
 	fi
 	local public=0

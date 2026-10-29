@@ -142,7 +142,7 @@ cert::host_names() { # <key> → one name per line
 	if [[ "$1" == "$interimKey" ]]; then
 		for machine in "${interimMachines[@]}"; do tr ',' '\n' <<<"${hostNames[$machine]}"; done
 	else
-		tr ',' '\n' <<<"${hostNames[${1#host-}]}"
+		tr ',' '\n' <<<"${hostNames[$1]}"
 	fi
 }
 
@@ -243,12 +243,8 @@ plan::build() {
 			while IFS= read -r usage; do
 				[[ "$usage" == ssh-host || "$usage" == ssh-user ]] || continue
 				if [[ "$usage" == ssh-host && "$key" != "$interimKey" ]]; then
-					if [[ "$key" != host-* ]]; then
-						log::error "${key}: an ssh-host key is host-<machine> or ${interimKey} — refusing to certify it for any machine"
-						return 1
-					fi
-					if [[ ! -v "hostNames[${key#host-}]" ]]; then
-						log::error "${key}: no machine ${key#host-} in this build's inventory — refusing to guess its names"
+					if [[ ! -v "hostNames[${key}]" ]]; then
+						log::error "${key}: an ssh-host key is named after a machine of this build's inventory, or is ${interimKey} — refusing to certify it for any machine"
 						return 1
 					fi
 				fi
@@ -280,7 +276,7 @@ plan::build() {
 	if [[ -n "$interimWaiting" ]]; then
 		interimKept=(${interimPending[@]+"${interimPending[@]}"})
 	else
-		# Last, so the host-<machine> certificates the gate counted are signed before it in the run.
+		# Last, so the <machine> certificates the gate counted are signed before it in the run.
 		plan+=(${interimPending[@]+"${interimPending[@]}"})
 	fi
 	serial::next
@@ -303,18 +299,18 @@ interim::waiting() {
 		found=0
 		for line in ${current[@]+"${current[@]}"}; do
 			IFS=$'\t' read -r key _ usage <<<"$line"
-			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=1
+			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=1
 		done
 		for line in ${plan[@]+"${plan[@]}"}; do
 			IFS=$'\t' read -r key _ _ _ usage _ <<<"$line"
-			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=1
+			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=1
 		done
 		# a slot of its key with no recorded public is not certified: not yet its own
 		for line in ${unrecorded[@]+"${unrecorded[@]}"}; do
 			IFS=$'\t' read -r key _ usage <<<"$line"
-			[[ "$key" == "host-${machine}" && "$usage" == ssh-host ]] && found=0
+			[[ "$key" == "${machine}" && "$usage" == ssh-host ]] && found=0
 		done
-		((found)) || why="${why:+${why}, }host-${machine} not certified"
+		((found)) || why="${why:+${why}, }${machine} not certified"
 		[[ -z "$why" ]] || waiting="${waiting:+${waiting}; }${machine} (${why})"
 	done < <(printf '%s\n' "${!hostNames[@]}" | LC_ALL=C sort)
 	printf '%s\n' "$waiting"

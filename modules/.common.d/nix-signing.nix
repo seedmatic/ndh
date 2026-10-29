@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  ndh,
   ...
 }:
 # A builder's nix signing key, derived from its own host key (roles × keys B2): one declaration for NixOS guests
@@ -13,7 +14,7 @@
 let
   cfg = config.ndh.nixSigning;
   machine = config.networking.hostName;
-  hostEntry = config.ndh.keysYaml.keys."host-${machine}" or { };
+  hostEntry = config.ndh.keysYaml.keys.${machine} or { };
   current = (import ./host-key.d/slots.nix { inherit lib; } hostEntry).current;
   newest = if current == { } then null else current;
   recorded = cfg.recorded;
@@ -52,6 +53,7 @@ in
     {
       nix.settings.extra-trusted-public-keys = import ./nix-signing.d/trust.nix {
         inherit lib;
+        machines = map (m: m.name) ndh.context.catalog.machines;
       } config.ndh.keysYaml.keys;
     }
     (lib.mkIf cfg.signs {

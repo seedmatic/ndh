@@ -4,7 +4,7 @@
 { lib }:
 keys: machine:
 let
-  name = "host-${machine}";
+  name = machine;
   entry = keys.${name} or { };
   newest = (import ./slots.nix { inherit lib; } entry).current;
   certificate = ((newest.certificates or { }).${entry.authority or ""} or { }).ssh-host or "";

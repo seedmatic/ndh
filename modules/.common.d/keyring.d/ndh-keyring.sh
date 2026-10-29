@@ -48,7 +48,7 @@ kind="$1"
 name="$2"
 allowed=()
 case "$kind" in
-  host-key | nix-signing-public) allowed=("${machines[@]}") among="machines" recorded="host-${name}" usageTag=ssh-host ;;
+  host-key | nix-signing-public) allowed=("${machines[@]}") among="machines" recorded="${name}" usageTag=ssh-host ;;
   sshfs-key) allowed=("${guests[@]}") among="NixOS guests" recorded="sshfs-${name}" usageTag=ssh-user ;;
   vz-recover-key) allowed=("${vzHosts[@]}") among="foreign vz-hosts" recorded="vz-recover-${name}" usageTag=ssh-user ;;
   # Not a machine: a version. A new <n> is a new key, so the version is the rotation.

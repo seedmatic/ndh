@@ -68,35 +68,35 @@ let
   fixtures = {
     empty = { };
     keyring-only = keysOf {
-      host-g1.slots."26-10-17" = serving;
-      host-mac.slots."26-10-18" = slot "recorded" "keyring";
+      g1.slots."26-10-17" = serving;
+      mac.slots."26-10-18" = slot "recorded" "keyring";
     };
     generate = keysOf {
-      host-seat.slots = {
+      seat.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "pending" "host";
       };
-      host-g1.slots = {
+      g1.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "pending" "host";
       };
-      host-mac.slots = {
+      mac.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "pending" "host";
       };
     };
     mixed = keysOf {
-      host-g1.slots = {
+      g1.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "recorded" "host";
       };
-      host-g2.slots = {
+      g2.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "pending" "host";
       };
     };
     serve = keysOf {
-      host-mac.slots = {
+      mac.slots = {
         "26-10-17" = serving;
         "26-11-01" = slot "recorded" "host";
       };
@@ -119,7 +119,7 @@ let
     assert expect "empty: no head" q.empty.head [ ];
     assert expect "keyring slots are never offered" q.keyring-only.head [ ];
     assert expect "keyring slots wait for a declaration" (map (w: w.key) q.keyring-only.waiting) [
-      "host-mac"
+      "mac"
     ];
     assert expect "generate, in fleet-switch's order (guests, darwin, seat last)"
       (steps q.generate.head)
@@ -133,7 +133,7 @@ let
         e:
         e.unchecked == [
           "${e.machine} reachable"
-          "host-${e.machine}@26-11-01's public published and verified (keys-reconcile plan)"
+          "${e.machine}@26-11-01's public published and verified (keys-reconcile plan)"
         ]
       ) q.generate.head)
       true;

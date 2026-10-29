@@ -1253,6 +1253,17 @@
             certify = ./modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh;
             renew = ./modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh;
           };
+          # The schema names the machines whose host keys carry the frame's slot fields: exactly the catalog's.
+          keys-schema-machines =
+            let
+              lib = nixpkgs.lib;
+              schema = builtins.readFile ./modules/home-manager/ssh.d/keys.schema.yaml;
+              machines = lib.sort lib.lessThan (map (m: m.name) (import ./catalog/machines.nix));
+              pattern = "\"^((${lib.concatStringsSep "|" machines})|sshfs-[a-z0-9-]+)$\":";
+            in
+            assert lib.assertMsg (lib.hasInfix pattern schema)
+              "keys-schema-machines: keys.schema.yaml's machine-key pattern is not the catalog's machines (${lib.concatStringsSep " " machines})";
+            pkgs.runCommand "keys-schema-machines" { } "touch $out";
           keys-yaml-schema = import ./modules/.common.d/keys-yaml.d/tests/keys-yaml-schema.nix {
             inherit pkgs;
             keysYaml = ./modules/home-manager/ssh.d/keys.yaml;
@@ -1293,7 +1304,7 @@
                     let
                       a = c.config.ndh.atticCache;
                       machine = c.config.networking.hostName;
-                      key = keys."host-${machine}" or { };
+                      key = keys.${machine} or { };
                     in
                     lib.optional a.enable {
                       name = a.metalspace;
@@ -1329,7 +1340,7 @@
                 atticFqdn = "attic.m1";
                 nixosHostname = "m1-nixos";
               };
-              keys."host-m1" = {
+              keys.m1 = {
                 type = "ssh-ed25519";
                 slots = {
                   "26-10-17" = {
@@ -1467,7 +1478,7 @@
                     let
                       a = c.config.ndh.atticCache;
                       machine = c.config.networking.hostName;
-                      key = keys."host-${machine}" or { };
+                      key = keys.${machine} or { };
                     in
                     lib.optional a.enable {
                       name = a.metalspace;
@@ -1866,22 +1877,22 @@
               lib = nixpkgs.lib;
               slot = state: origin: public: { inherit state origin public; };
               keys = {
-                host-g1.slots = {
+                g1.slots = {
                   "26-10-17" = slot "serving" "keyring" "AAAAg1old";
                   "26-11-01" = {
                     state = "pending";
                     origin = "host";
                   };
                 };
-                host-g2.slots = {
+                g2.slots = {
                   "26-10-17" = slot "serving" "keyring" "AAAAg2old";
                   "26-11-01" = {
                     state = "pending";
                     origin = "host";
                   };
                 };
-                host-mac.slots."26-10-18" = slot "recorded" "keyring" "AAAAmac";
-                host-seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+                mac.slots."26-10-18" = slot "recorded" "keyring" "AAAAmac";
+                seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
               };
               catalog.machines = [
                 {
@@ -2029,20 +2040,20 @@
               lib = nixpkgs.lib;
               slot = state: origin: public: { inherit state origin public; };
               keys = {
-                host-g1.slots."26-10-17" = slot "serving" "keyring" "AAAAg1";
-                host-g2.slots = {
+                g1.slots."26-10-17" = slot "serving" "keyring" "AAAAg1";
+                g2.slots = {
                   "26-10-17" = slot "serving" "keyring" "AAAAg2old";
                   "26-11-01" = {
                     state = "pending";
                     origin = "host";
                   };
                 };
-                host-g3.slots."26-11-01" = {
+                g3.slots."26-11-01" = {
                   state = "pending";
                   origin = "host";
                   bootstrap = "tailnet";
                 };
-                host-seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+                seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
               };
               catalog = {
                 machines =
@@ -2135,7 +2146,7 @@
                       { config, ... }:
                       {
                         ndh.hostKey.entry = lib.mkForce (
-                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                          lib.recursiveUpdate config.ndh.keysYaml.keys.${config.networking.hostName} {
                             slots."99-01-01".state = "pending";
                           }
                         );
@@ -2182,7 +2193,7 @@
                       { config, ... }:
                       {
                         ndh.hostKey.entry = lib.mkForce (
-                          lib.recursiveUpdate config.ndh.keysYaml.keys."host-${config.networking.hostName}" {
+                          lib.recursiveUpdate config.ndh.keysYaml.keys.${config.networking.hostName} {
                             slots."00-01-01".state = "pending";
                           }
                         );
@@ -2857,16 +2868,22 @@
           nix-signing-trust =
             let
               lib = nixpkgs.lib;
-              trust = import ./modules/.common.d/nix-signing.d/trust.nix { inherit lib; };
+              trust = import ./modules/.common.d/nix-signing.d/trust.nix {
+                inherit lib;
+                machines = [
+                  "a"
+                  "b"
+                ];
+              };
               fixture = {
-                host-a.slots."26-01-01".nixSigning = "seedmatic-a-1:old";
-                host-a.slots."26-10-01".nixSigning = "seedmatic-a-2:new";
-                host-b.slots."26-01-01".public = "no-nix-signing";
+                a.slots."26-01-01".nixSigning = "seedmatic-a-1:old";
+                a.slots."26-10-01".nixSigning = "seedmatic-a-2:new";
+                b.slots."26-01-01".public = "no-nix-signing";
                 sshfs-c.slots."26-01-01".nixSigning = "seedmatic-c-1:not-a-host";
               };
               # The superseded slot deleted, as phase 2 of a renewal leaves keys.yaml.
               retired = fixture // {
-                host-a.slots = removeAttrs fixture.host-a.slots [ "26-01-01" ];
+                a.slots = removeAttrs fixture.a.slots [ "26-01-01" ];
               };
               machines =
                 map (n: self.darwinConfigurations.${n}.config) [
@@ -3450,7 +3467,7 @@
           sops-access-point-recipients-bioskop-nixos =
             let
               c = self.nixosConfigurations.bioskop-nixos.config;
-              seat = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys."host-bioskop";
+              seat = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys.bioskop;
             in
             import ./modules/.common.d/sops.d/tests/access-point-recipients.nix {
               inherit pkgs;
@@ -3527,7 +3544,7 @@
           sops-access-point-recipients-bioskop =
             let
               c = self.darwinConfigurations.bioskop.config;
-              seat = c.ndh.keysYaml.keys."host-bioskop";
+              seat = c.ndh.keysYaml.keys.bioskop;
             in
             import ./modules/.common.d/sops.d/tests/access-point-recipients.nix {
               inherit pkgs;

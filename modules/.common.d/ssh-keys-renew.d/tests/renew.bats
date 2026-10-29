@@ -147,7 +147,7 @@ hostile() { # <cmd>... — runs <cmd> under it
 
 @test "traced, a private piped to --public is refused and never reaches the trace" {
   host_public >/dev/null
-  (cd "$repo" && bash -x "$BATS_TEST_TMPDIR/ssh-keys-renew" --create host-bioskop-nixos --public - --usage ssh-host --apply) \
+  (cd "$repo" && bash -x "$BATS_TEST_TMPDIR/ssh-keys-renew" --create bioskop-nixos --public - --usage ssh-host --apply) \
     <"$BATS_TEST_TMPDIR/machine-ed25519" >/dev/null 2>"$BATS_TEST_TMPDIR/trace" || true
   grep -qF 'secret window: stdin is read' "$BATS_TEST_TMPDIR/trace"
   run ! grep -qF -f <(sed -n 2p "$BATS_TEST_TMPDIR/machine-ed25519") "$BATS_TEST_TMPDIR/trace"
@@ -225,17 +225,17 @@ hostile() { # <cmd>... — runs <cmd> under it
 # A machine's host key, as ndh-keyring host-key prints it: generated here, its private thrown away.
 host_public() {
   rm -f "$BATS_TEST_TMPDIR/machine-${1:-ed25519}" "$BATS_TEST_TMPDIR/machine-${1:-ed25519}.pub"
-  ssh-keygen -q -t "${1:-ed25519}" -N "" -f "$BATS_TEST_TMPDIR/machine-${1:-ed25519}" -C host-bioskop-nixos
+  ssh-keygen -q -t "${1:-ed25519}" -N "" -f "$BATS_TEST_TMPDIR/machine-${1:-ed25519}" -C bioskop-nixos
   cat "$BATS_TEST_TMPDIR/machine-${1:-ed25519}.pub"
 }
 
 record() {
-  (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" --create host-bioskop-nixos --public - --usage ssh-host "$@")
+  (cd "$repo" && bash -euo pipefail "$BATS_TEST_TMPDIR/ssh-keys-renew" --create bioskop-nixos --public - --usage ssh-host "$@")
 }
 
 @test "--public --apply records a public-only slot, in clear, under the host certificates' authority" {
   host_public >"$BATS_TEST_TMPDIR/line"
-  entry='.keys."host-bioskop-nixos"'
+  entry='.keys."bioskop-nixos"'
   decrypted | yq eval "del($entry)" - >"$BATS_TEST_TMPDIR/before.yaml"
   run record --comment "bioskop-nixos host" --apply <"$BATS_TEST_TMPDIR/line"
   [ "$status" -eq 0 ]
@@ -260,7 +260,7 @@ record() {
   cp "$keys" "$BATS_TEST_TMPDIR/before"
   run record < <(host_public)
   [ "$status" -eq 0 ]
-  [[ "$output" == *"host-bioskop-nixos"*"${today} (new entry, public only, under fabric)"* ]]
+  [[ "$output" == *"bioskop-nixos"*"${today} (new entry, public only, under fabric)"* ]]
   [[ "$output" == *"dry run"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }
@@ -291,7 +291,7 @@ record() {
   run record --apply </dev/null
   [ "$status" -eq 1 ]
   [[ "$output" == *"exactly ONE line"* ]]
-  run record --apply <<<"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA== host-bioskop-nixos"
+  run record --apply <<<"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA== bioskop-nixos"
   [ "$status" -eq 1 ]
   [[ "$output" == *"ssh-keygen -l refused it"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
@@ -299,25 +299,25 @@ record() {
 
 @test "--public refuses a machine outside the inventory" {
   host_public >"$BATS_TEST_TMPDIR/line"
-  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create host-elsewhere --public - --usage ssh-host --apply <"$3"' _ \
+  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create elsewhere --public - --usage ssh-host --apply <"$3"' _ \
     "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/line"
   [ "$status" -eq 64 ]
-  [[ "$output" == *"host-MACHINE, MACHINE one of: bioskop nikopol bioskop-nixos nikopol-nixos"* ]]
+  [[ "$output" == *"the name is MACHINE, MACHINE one of: bioskop nikopol bioskop-nixos nikopol-nixos"* ]]
 }
 
 @test "--public needs --create, takes only -, and only usage ssh-host" {
   run renew --key existing --public -
   [ "$status" -eq 64 ]
   [[ "$output" == *"they need --create"* ]]
-  run renew --create host-bioskop --public "$BATS_TEST_TMPDIR/line" --usage ssh-host
+  run renew --create bioskop --public "$BATS_TEST_TMPDIR/line" --usage ssh-host
   [ "$status" -eq 64 ]
   [[ "$output" == *"--public takes -"* ]]
-  run renew --create host-bioskop --public - --usage ssh-user </dev/null
+  run renew --create bioskop --public - --usage ssh-user </dev/null
   [ "$status" -eq 64 ]
   [[ "$output" == *"its one --usage is ssh-host"* ]]
-  run renew --create host-bioskop --public - --usage ssh-host --usage ssh-user </dev/null
+  run renew --create bioskop --public - --usage ssh-host --usage ssh-user </dev/null
   [ "$status" -eq 64 ]
-  run renew --create host-bioskop --public - --usage ssh-host --profile system </dev/null
+  run renew --create bioskop --public - --usage ssh-host --profile system </dev/null
   [ "$status" -eq 64 ]
   [[ "$output" == *"no --profile and no --type"* ]]
 }
@@ -329,8 +329,8 @@ record() {
   cp "$keys" "$BATS_TEST_TMPDIR/before"
   run record --apply < <(host_public)
   [ "$status" -eq 1 ]
-  [[ "$output" == *"keys.host-bioskop-nixos: already exists"* ]]
-  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create host-nikopol --public - --usage ssh-host --apply <"$3"' _ \
+  [[ "$output" == *"keys.bioskop-nixos: already exists"* ]]
+  run bash -c 'cd "$1" && bash -euo pipefail "$2" --create nikopol --public - --usage ssh-host --apply <"$3"' _ \
     "$repo" "$BATS_TEST_TMPDIR/ssh-keys-renew" "$BATS_TEST_TMPDIR/shared.pub"
   [ "$status" -eq 1 ]
   [[ "$output" == *"already in keys.yaml"* ]]
@@ -412,7 +412,7 @@ vz_recover_record() {
   run renew --create sshfs-bioskop-nixos --public - --usage ssh-host </dev/null
   [ "$status" -eq 64 ]
   [[ "$output" == *"an sshfs key: its one --usage is ssh-user"* ]]
-  run renew --create host-bioskop-nixos --public - --usage ssh-user </dev/null
+  run renew --create bioskop-nixos --public - --usage ssh-user </dev/null
   [ "$status" -eq 64 ]
   [[ "$output" == *"a host key: its one --usage is ssh-host"* ]]
   run renew --create sshfs-bioskop-nixos --public - --usage ssh-user --profile system </dev/null
@@ -566,22 +566,22 @@ rest() { yq eval -o json 'del(.sops) | del(.revoked_certificates)' "$keys"; }
 # A machine's host key recorded public-only, as `--create host-<m> --public -` leaves it, then the nix signing
 # public of its derived key: 32 bytes, unrelated to the host key, since nothing here can check a derivation.
 hostRecorded() {
-  ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/host-bioskop" -C host-bioskop
+  ssh-keygen -q -t ed25519 -N "" -f "$BATS_TEST_TMPDIR/bioskop" -C bioskop
   local entry
-  entry="$(B="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/host-bioskop.pub")" yq eval -n -o json --indent=0 \
+  entry="$(B="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/bioskop.pub")" yq eval -n -o json --indent=0 \
     '{"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"26-01-01": {"public": strenv(B)}}}')"
-  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["host-bioskop"]' "$entry")
+  (cd "$repo" && sops set modules/home-manager/ssh.d/keys.yaml '["keys"]["bioskop"]' "$entry")
   nixPublic="seedmatic-bioskop-1:$(head -c 32 /dev/urandom | base64)"
 }
-nixRecord() { renew --record-nix-signing host-bioskop --public - "$@"; }
-nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-01".nixSigning)' "$keys"; }
+nixRecord() { renew --record-nix-signing bioskop --public - "$@"; }
+nixRest() { yq eval -o json 'del(.sops) | del(.keys."bioskop".slots."26-01-01".nixSigning)' "$keys"; }
 
 @test "--record-nix-signing dry run shows the slot and the public, and changes nothing" {
   hostRecorded
   cp "$keys" "$BATS_TEST_TMPDIR/before"
   run nixRecord <<<"$nixPublic"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"keys.host-bioskop.slots.26-01-01.nixSigning"* ]]
+  [[ "$output" == *"keys.bioskop.slots.26-01-01.nixSigning"* ]]
   [[ "$output" == *"dry run"* ]]
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }
@@ -595,7 +595,7 @@ nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-
   chmod +x "$BATS_TEST_TMPDIR/bin/sops"
   PATH="$BATS_TEST_TMPDIR/bin:$PATH" run nixRecord --apply <<<"$nixPublic"
   [ "$status" -eq 0 ]
-  [ "$(yq eval -r '.keys."host-bioskop".slots."26-01-01".nixSigning' "$keys")" = "$nixPublic" ]
+  [ "$(yq eval -r '.keys."bioskop".slots."26-01-01".nixSigning' "$keys")" = "$nixPublic" ]
   nixRest | cmp - "$BATS_TEST_TMPDIR/rest-before"
   [ "$(cut -d' ' -f1 "$BATS_TEST_TMPDIR/sops.log" | sort -u)" = set ]
 }
@@ -604,7 +604,7 @@ nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-
   hostRecorded
   cp "$keys" "$BATS_TEST_TMPDIR/before"
   secret="seedmatic-bioskop-1:$(head -c 64 /dev/urandom | base64 | tr -d '\n')"
-  for input in "$secret" "$(<"$BATS_TEST_TMPDIR/host-bioskop")" "$nixPublic"$'\n'"$nixPublic" ""; do
+  for input in "$secret" "$(<"$BATS_TEST_TMPDIR/bioskop")" "$nixPublic"$'\n'"$nixPublic" ""; do
     run nixRecord --apply <<<"$input"
     [ "$status" -eq 1 ]
     [[ "$output" == *"refused, and not printed"* ]]
@@ -618,7 +618,7 @@ nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-
   run nixRecord --apply <<<"seedmatic-nikopol-1:${nixPublic#*:}"
   [ "$status" -eq 1 ]
   [[ "$output" == *"not seedmatic-bioskop-N"* ]]
-  hostRaw="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/host-bioskop.pub" | base64 -d | tail -c 32 | base64)"
+  hostRaw="$(cut -d' ' -f2 <"$BATS_TEST_TMPDIR/bioskop.pub" | base64 -d | tail -c 32 | base64)"
   run nixRecord --apply <<<"seedmatic-bioskop-1:${hostRaw}"
   [ "$status" -eq 1 ]
   [[ "$output" == *"equals it"* ]]
@@ -631,17 +631,17 @@ nixRest() { yq eval -o json 'del(.sops) | del(.keys."host-bioskop".slots."26-01-
   cmp "$keys" "$BATS_TEST_TMPDIR/before"
 }
 
-@test "--record-nix-signing is for host-MACHINE only, with --public - and nothing else" {
+@test "--record-nix-signing is for a MACHINE only, with --public - and nothing else" {
   hostRecorded
   run renew --record-nix-signing shared --public - <<<"$nixPublic"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"host-MACHINE, MACHINE one of"* ]]
-  run renew --record-nix-signing host-corp-mac --public - <<<"$nixPublic"
+  [[ "$output" == *"a MACHINE, one of"* ]]
+  run renew --record-nix-signing corp-mac --public - <<<"$nixPublic"
   [ "$status" -eq 1 ]
-  run renew --record-nix-signing host-bioskop <<<"$nixPublic"
+  run renew --record-nix-signing bioskop <<<"$nixPublic"
   [ "$status" -eq 64 ]
   [[ "$output" == *"goes with --public - and --apply only"* ]]
-  run renew --record-nix-signing host-bioskop --public - --key existing <<<"$nixPublic"
+  run renew --record-nix-signing bioskop --public - --key existing <<<"$nixPublic"
   [ "$status" -eq 64 ]
 }
 

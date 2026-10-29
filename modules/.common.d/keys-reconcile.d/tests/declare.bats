@@ -34,9 +34,9 @@ EOF
       .authorities.fabric.slots."20-01-01".public = strenv(CAPUB) |
       .authorities.fabric.slots."20-01-01".private = strenv(CAPRIV) |
       (.authorities.fabric.slots."20-01-01".private | key) headComment = "sops:encrypted" |
-      .keys."host-own" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-17": {"public": strenv(OWN), "state": "serving", "origin": "keyring"}}} |
-      .keys."host-shared" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-18": {"public": strenv(SHARED), "state": "recorded", "origin": "keyring"}}} |
-      .keys."host-busy" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-17": {"public": strenv(OWN), "state": "serving", "origin": "keyring"}, "20-11-01": {"public": strenv(BUSY), "state": "recorded", "origin": "host"}}}
+      .keys."own" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-17": {"public": strenv(OWN), "state": "serving", "origin": "keyring"}}} |
+      .keys."shared" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-18": {"public": strenv(SHARED), "state": "recorded", "origin": "keyring"}}} |
+      .keys."busy" = {"type": "ssh-ed25519", "usage": ["ssh-host"], "profiles": [], "slots": {"20-10-17": {"public": strenv(OWN), "state": "serving", "origin": "keyring"}, "20-11-01": {"public": strenv(BUSY), "state": "recorded", "origin": "host"}}}
     ' >"$src/modules/home-manager/ssh.d/keys.yaml"
   printf 'caches:\n  k: v1\n  # sops:encrypted\n  s: secret\n' >"$src/catalog/cache-trust.yaml"
   printf 'a: one\nb: two\n' >"$src/.secrets"
@@ -95,29 +95,29 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 @test "a machine serving its own key: the slot is declared pending, born on it, with no bootstrap" {
   run --separate-stderr declare_ yes own
   [ "$status" -eq 0 ]
-  [[ $output == *"host-own.slots.\"$today\".state = pending"* ]]
-  [[ $output == *"host-own.slots.\"$today\".origin = host"* ]]
+  [[ $output == *"own.slots.\"$today\".state = pending"* ]]
+  [[ $output == *"own.slots.\"$today\".origin = host"* ]]
   [[ $output != *"bootstrap"* ]]
-  [ "$(yq -r ".keys.\"host-own\".slots.\"$today\".state" "$(keys)")" = pending ]
-  [ "$(yq -r ".keys.\"host-own\".slots.\"$today\".origin" "$(keys)")" = host ]
-  [ "$(yq -r ".keys.\"host-own\".slots.\"$today\" | has(\"bootstrap\")" "$(keys)")" = false ]
-  [ "$(git -C "$(tree)" log -1 --format=%s)" = "keys-reconcile declare: host-own@$today, pending, born on own, at ${rev:0:12}" ]
-  git -C "$(tree)" log -1 --format=%B | grep -qxF "host-own.slots.\"$today\".origin = host"
+  [ "$(yq -r ".keys.\"own\".slots.\"$today\".state" "$(keys)")" = pending ]
+  [ "$(yq -r ".keys.\"own\".slots.\"$today\".origin" "$(keys)")" = host ]
+  [ "$(yq -r ".keys.\"own\".slots.\"$today\" | has(\"bootstrap\")" "$(keys)")" = false ]
+  [ "$(git -C "$(tree)" log -1 --format=%s)" = "keys-reconcile declare: own@$today, pending, born on own, at ${rev:0:12}" ]
+  git -C "$(tree)" log -1 --format=%B | grep -qxF "own.slots.\"$today\".origin = host"
   [ "$(git -C "$t/remote.git" rev-parse refs/heads/develop)" = "$rev" ]
 }
 
 @test "a machine on the shared key: the console bootstrap is derived, and its recorded keyring slot does not block" {
   run --separate-stderr declare_ yes shared
   [ "$status" -eq 0 ]
-  [[ $output == *"host-shared.slots.\"$today\".bootstrap = console"* ]]
+  [[ $output == *"shared.slots.\"$today\".bootstrap = console"* ]]
   [[ $output == *"bound by your witness, its console or your tailnet's node list"* ]]
-  [ "$(yq -r ".keys.\"host-shared\".slots.\"$today\".bootstrap" "$(keys)")" = console ]
+  [ "$(yq -r ".keys.\"shared\".slots.\"$today\".bootstrap" "$(keys)")" = console ]
 }
 
 @test "the fields are shown before the « yes », and nothing is written without it" {
   run --separate-stderr declare_ no own
   [ "$status" -eq 5 ]
-  [[ $output == *"host-own.slots.\"$today\".state = pending"* ]]
+  [[ $output == *"own.slots.\"$today\".state = pending"* ]]
   [[ $output == *"nothing written"* ]]
   [ ! -e "$(tree)" ]
 }
@@ -132,7 +132,7 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 @test "refused: a machine that already has a pending slot" {
   declare_ yes own
   rm -rf "$t/state"
-  yq -i ".keys.\"host-own\".slots.\"$today\" = {\"state\": \"pending\", \"origin\": \"host\"}" "$t/keys.json"
+  yq -i ".keys.\"own\".slots.\"$today\" = {\"state\": \"pending\", \"origin\": \"host\"}" "$t/keys.json"
   run --separate-stderr declare_ yes own
   [ "$status" -eq 3 ]
   [[ $stderr == *"has a rotation in flight"* ]]
@@ -164,7 +164,7 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 }
 
 @test "refused: a slot that would not sort after the newest one" {
-  yq -i ".keys.\"host-own\".slots.\"99-01-01\" = {\"state\": \"serving\", \"origin\": \"keyring\"}" "$t/keys.json"
+  yq -i ".keys.\"own\".slots.\"99-01-01\" = {\"state\": \"serving\", \"origin\": \"keyring\"}" "$t/keys.json"
   run --separate-stderr declare_ yes own
   [ "$status" -eq 3 ]
   [[ $stderr == *"would not sort after its newest slot 99-01-01"* ]]
@@ -180,7 +180,7 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
   printf -- '- {name: ghost, kind: nixos, ssh: x, ssh_opts: []}\n' >>"$t/machines.yaml"
   run --separate-stderr declare_ yes ghost
   [ "$status" -eq 3 ]
-  [[ $stderr == *"has no host-ghost entry"* ]]
+  [[ $stderr == *"has no ghost entry"* ]]
 }
 
 @test "refused: unarmed, or a second argument" {
@@ -207,8 +207,8 @@ keys() { echo "$(tree)/modules/home-manager/ssh.d/keys.yaml"; }
 
 @test "mutant: a declaration that writes another field is refused, nothing committed" {
   cp "$BATS_TEST_DIRNAME/../declare.sh" "$t/declare.sh"
-  sed -i 's|^  : "postconditions: exactly these fields added|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"host-own\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/declare.sh"
-  grep -q 'host-own\\"\]\[\\"comment' "$t/declare.sh"
+  sed -i 's|^  : "postconditions: exactly these fields added|  reconcile::sopsSet "$keysYaml" "[\\"keys\\"][\\"own\\"][\\"comment\\"]" "\\"x\\""\n&|' "$t/declare.sh"
+  grep -q 'own\\"\]\[\\"comment' "$t/declare.sh"
   sed -i "s|^source .*/declare.sh\$|source $t/declare.sh|" "$t/keys-reconcile"
   run --separate-stderr declare_ yes own
   [ "$status" -ne 0 ]
