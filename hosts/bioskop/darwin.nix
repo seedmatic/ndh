@@ -92,5 +92,8 @@
     ndh.claudeWake.enable = true;
     # bioskop holds the keyring (ndh-keyring).
     ndh.keyring.enable = true;
+    # keyhole's bare lives here: the git sops filters derive its age identity from keyring@keyhole's ssh key.
+    home-manager.users.${config.profile.user.name}.ndh.gitSops.ageSshKeyFile =
+      "/Volumes/git-bare-store/nxmatic/keyhole.git/.ssh/id_ed25519";
   };
 }

@@ -1276,7 +1276,7 @@
               lib = nixpkgs.lib;
               schema = builtins.readFile ./modules/home-manager/ssh.d/keys.schema.yaml;
               machines = lib.sort lib.lessThan (map (m: m.name) (import ./catalog/machines.nix));
-              pattern = "\"^((${lib.concatStringsSep "|" machines})|sshfs-[a-z0-9-]+)$\":";
+              pattern = "\"^(${lib.concatStringsSep "|" machines})$\":";
             in
             assert lib.assertMsg (lib.hasInfix pattern schema)
               "keys-schema-machines: keys.schema.yaml's machine-key pattern is not the catalog's machines (${lib.concatStringsSep " " machines})";

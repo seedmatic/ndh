@@ -18,6 +18,12 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 
 set -euo pipefail
 
+# keyhole's online identity is keyring@keyhole's own ssh key: its recipient is the key's ssh-to-age (an X25519 one,
+# which sops' SOPS_AGE_SSH_PRIVATE_KEY_FILE does not open, measured), so the identity is derived from the key at each
+# run, for this filter process alone, and no age key file carries a copy. Empty, or not readable here: unchanged.
+ageSshKeyFile="@ageSshKeyFile@"
+[[ -z $ageSshKeyFile || ! -r $ageSshKeyFile ]] || export SOPS_AGE_KEY_CMD="@sshToAge@ -private-key -i $ageSshKeyFile"
+
 git::sops::show() {
   printf "%s\n" "${@}"
 }

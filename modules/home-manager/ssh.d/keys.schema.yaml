@@ -34,10 +34,15 @@ properties:
       Per-identity entries keyed by bare key name (e.g. `nix-store`,
       `linux-builder`). Each entry references a top-level authority by name
       instead of inlining the authority block.
+    # Retired on 2026-10-29 with every slot revoked (keys-reconcile retire-key): the shared rdp-host and the guests'
+    # sshfs keys, whose roles each machine's own host key holds now. Never again a name here.
+    propertyNames:
+      not:
+        pattern: "^(rdp-host|sshfs-.*)$"
     patternProperties:
       # A machine's own key: its host key, named after the machine (catalog/machines.nix; held to it by
-      # checks.<system>.keys-schema-machines), or a guest's sshfs key.
-      "^((bioskop|bioskop-nixos|nikopol|nikopol-nixos)|sshfs-[a-z0-9-]+)$":
+      # checks.<system>.keys-schema-machines).
+      "^(bioskop|bioskop-nixos|nikopol|nikopol-nixos)$":
         allOf:
           - $ref: "#/$defs/key"
           - properties:
@@ -302,7 +307,7 @@ $defs:
     type: string
     pattern: "^age1[02-9ac-hj-np-z]{58}$"
 
-  # A machine's own key — its host key, or a guest's sshfs key — carries the frame's fields on every slot.
+  # A machine's own key, its host key, carries the frame's fields on every slot.
   machineSlots:
     additionalProperties:
       required: [state, origin]
