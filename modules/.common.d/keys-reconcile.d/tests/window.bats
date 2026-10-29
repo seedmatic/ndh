@@ -752,7 +752,7 @@ open_window() {
   : "the fixture declares no bootstrap on the slot (the batch carries it): put it as declare writes it, then validate"
   yq 'del(.sops) | .keys."seat".slots."26-11-01".bootstrap = "console"' "$k" >"$t/plain.yaml"
   : "the schema names the fleet's machines; this fixture's machine is seat"
-  yq '.properties.keys.patternProperties |= with_entries(.key |= sub("^\\^\\(\\(", "^((seat|"))' "$KEYS_SCHEMA" >"$t/schema.yaml"
+  yq '.properties.keys.patternProperties |= with_entries(.key |= sub("^\\^\\(bioskop", "^(seat|bioskop"))' "$KEYS_SCHEMA" >"$t/schema.yaml"
   check-jsonschema --schemafile "$t/schema.yaml" "$t/plain.yaml"
   : "the control: the schema as it was, a bootstrap only while pending, refuses the same output"
   yq '.["$defs"].machineSlots.additionalProperties.then.properties.state = {"const": "pending"}' "$t/schema.yaml" >"$t/old.yaml"
