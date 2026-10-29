@@ -1587,8 +1587,9 @@
                     # user nginx drops to.
                     sed -e "s|/var/lib/attic-tls/cert.pem|$PWD/cert.pem|g" -e "s|/var/lib/attic-tls/key.pem|$PWD/key.pem|g" \
                       -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
-                      -e '/^\s*user /d' "$conf" >"$name.conf"
-                    if ! nginx -t -q -p "$PWD" -c "$PWD/$name.conf"; then
+                      -e '/^\s*user /d' -e "s|^http {|http { access_log $PWD/access.log;|" "$conf" >"$name.conf"
+                    # -e and access_log: nginx opens its compiled-in logs (under /var/log/nginx) when no path is set.
+                    if ! nginx -t -q -p "$PWD" -e "$PWD/error.log" -c "$PWD/$name.conf"; then
                       echo "$name: the cache container's nginx.conf does not parse" >&2
                       rc=1
                     fi
