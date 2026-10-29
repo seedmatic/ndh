@@ -1587,8 +1587,10 @@
                     # user nginx drops to.
                     sed -e "s|/var/lib/attic-tls/cert.pem|$PWD/cert.pem|g" -e "s|/var/lib/attic-tls/key.pem|$PWD/key.pem|g" \
                       -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
-                      -e '/^\s*user /d' -e "s|^http {|http { access_log $PWD/access.log;|" "$conf" >"$name.conf"
-                    # -e and access_log: nginx opens its compiled-in logs (under /var/log/nginx) when no path is set.
+                      -e '/^\s*user /d' -e "s|^http {|http { access_log $PWD/access.log;|" \
+                      -e 's/^\(\s*listen \)[0-9.]*:[0-9]*/\1127.0.0.1:18443/' "$conf" >"$name.conf"
+                    # -e and access_log: nginx opens its compiled-in logs (under /var/log/nginx) when no path is set. The
+                    # listen moves to loopback: `nginx -t` binds, and the fabric address is not the sandbox's.
                     if ! nginx -t -q -p "$PWD" -e "$PWD/error.log" -c "$PWD/$name.conf"; then
                       echo "$name: the cache container's nginx.conf does not parse" >&2
                       rc=1
