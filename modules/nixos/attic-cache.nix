@@ -167,7 +167,8 @@ let
         };
         # Each machine pulls its own tokens: ciphertext only, sealed to its access point, in a directory named by a
         # hash; no listing, no cache on the way, nothing but .age files.
-        locations."~ ^/tokens/[0-9a-f]{64}/[a-z0-9.-]+\\.age$" = {
+        # Quoted: in nginx an unquoted `{` in a location regex opens the block.
+        locations."~ \"^/tokens/[0-9a-f]{64}/[a-z0-9.-]+\\.age$\"" = {
           root = "/var/lib";
           extraConfig = ''
             rewrite ^/tokens/(.*)$ /attic-tokens/$1 break;
