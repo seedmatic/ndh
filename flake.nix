@@ -1472,11 +1472,11 @@
               stopped mutant != [ ]
             ) "incus-container-store-survives-removal: the mutant stopped on removal was not caught";
             pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
-          # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
-          # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
-          # No token pull where no cache can answer: without a recorded TLS leaf a cache's nginx waits, so the machines
-          # install no pull for it and say so at activation, the leaf being the operator's next gesture. The control, a
-          # fixture leaf for bioskop: that cache alone is pulled, and only nikopol's is said to wait.
+          # No token pull where no cache can answer: a cache's nginx waits for its recorded TLS leaf, so the machines pull
+          # from the caches whose leaf catalog/attic-leaves/ holds, install no pull while there is none, and say at
+          # activation which caches still wait, the leaf being the operator's next gesture. Derived from that directory,
+          # so the window that records a leaf needs no edit here. The control, a fixture leaf for bioskop: that cache
+          # alone is served, and only nikopol's is said to wait.
           attic-tokens-wait-for-leaf =
             let
               lib = nixpkgs.lib;
@@ -1489,6 +1489,8 @@
               today = tokensFor ./catalog/attic-leaves;
               fixture = tokensFor ./modules/.common.d/attic-tokens.d/tests/leaves-fixture;
               names = lib.attrNames catalogData.netplan.baremetal;
+              recorded = lib.filter (n: builtins.pathExists (./catalog/attic-leaves + "/${n}.crt")) names;
+              waiting = lib.subtractLists recorded names;
               guests = map (n: self.nixosConfigurations."${n}-nixos".config) names;
               seats = map (n: self.darwinConfigurations.${n}.config) names;
               waitsFor =
@@ -1497,21 +1499,22 @@
                   n: lib.hasInfix "no TLS leaf recorded for ${catalogData.netplan.baremetal.${n}.atticFqdn}:" text
                 ) names;
             in
-            assert lib.assertMsg (
-              today.served == { }
-            ) "attic-tokens-wait-for-leaf: a leaf is recorded now; update this check";
-            assert lib.assertMsg (lib.all (
-              c: !(c.systemd.services ? ndh-attic-tokens)
-            ) guests) "attic-tokens-wait-for-leaf: a guest installs a token pull with no cache to answer";
-            assert lib.assertMsg (lib.all (
-              c: !(c.launchd.daemons ? ndh-attic-tokens)
-            ) seats) "attic-tokens-wait-for-leaf: a darwin host installs a token pull with no cache to answer";
-            assert lib.assertMsg (lib.all (
-              c: waitsFor c.system.activationScripts.ndhAtticTokensWaiting.text == names
-            ) guests) "attic-tokens-wait-for-leaf: a guest does not say which caches wait for their leaf";
-            assert lib.assertMsg (lib.all (
-              c: waitsFor c.system.activationScripts.postActivation.text == names
-            ) seats) "attic-tokens-wait-for-leaf: a darwin host does not say which caches wait for their leaf";
+            assert lib.assertMsg (lib.attrNames today.served == recorded)
+              "attic-tokens-wait-for-leaf: served ${toString (lib.attrNames today.served)}, recorded leaves ${toString recorded}";
+            assert lib.assertMsg
+              (lib.all (c: (c.systemd.services ? ndh-attic-tokens) == (recorded != [ ])) guests)
+              "attic-tokens-wait-for-leaf: a guest's token pull does not follow the recorded leaves (${toString recorded})";
+            assert lib.assertMsg
+              (lib.all (c: (c.launchd.daemons ? ndh-attic-tokens) == (recorded != [ ])) seats)
+              "attic-tokens-wait-for-leaf: a darwin host's token pull does not follow the recorded leaves (${toString recorded})";
+            assert lib.assertMsg
+              (lib.all (
+                c: waitsFor (c.system.activationScripts.ndhAtticTokensWaiting or { text = ""; }).text == waiting
+              ) guests)
+              "attic-tokens-wait-for-leaf: a guest does not say exactly which caches wait (${toString waiting})";
+            assert lib.assertMsg
+              (lib.all (c: waitsFor c.system.activationScripts.postActivation.text == waiting) seats)
+              "attic-tokens-wait-for-leaf: a darwin host does not say exactly which caches wait (${toString waiting})";
             assert lib.assertMsg (
               lib.attrNames fixture.served == [ "bioskop" ]
             ) "attic-tokens-wait-for-leaf: the fixture leaf does not serve bioskop alone";
@@ -1519,6 +1522,8 @@
               waitsFor fixture.waitingNotice == [ "nikopol" ]
             ) "attic-tokens-wait-for-leaf: with bioskop's leaf, only nikopol must wait";
             pkgs.runCommand "attic-tokens-wait-for-leaf" { } "touch $out";
+          # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
+          # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
           attic-leaves-recorded =
             let
               lib = nixpkgs.lib;
