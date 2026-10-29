@@ -1,1 +1,36 @@
-{}
+{
+  "bioskop": {
+    "publicKey": "seedmatic-bioskop-attic-1:J3LTXxVP7FK5mDO/thgIuOI8flWGJSt3Z95gRyHkEus=",
+    "consumers": [
+      "attic.bioskop"
+    ],
+    "acceptedBy": [
+      "darwin",
+      "nixos"
+    ],
+    "accepted": {
+      "date": "2026-10-29"
+    },
+    "origin": {
+      "revision": "9c44b4aed3bd0bfd9931f6e19b32cc06d3878d2b"
+    },
+    "lifecycle": "permanent"
+  },
+  "nikopol": {
+    "publicKey": "seedmatic-nikopol-attic-1:28MPTkIghubk90eY8UIHaigiuUTEeIwkIFG0HfiuM3Y=",
+    "consumers": [
+      "attic.nikopol"
+    ],
+    "acceptedBy": [
+      "darwin",
+      "nixos"
+    ],
+    "accepted": {
+      "date": "2026-10-29"
+    },
+    "origin": {
+      "revision": "9c44b4aed3bd0bfd9931f6e19b32cc06d3878d2b"
+    },
+    "lifecycle": "permanent"
+  }
+}
