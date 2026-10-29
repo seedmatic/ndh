@@ -97,34 +97,6 @@ keys:
         certificates:
           mammoth-skate:
             ssh-user: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIPTM2V2fJeGxxNDVsGGVItyD9o6T/1d75lTWbZj7hMnKAAAAINNnAxhE8mLTH4qXz3IgJsSs0nbrSXoj8V9W9vA6I2pmAAAAAAAAAAIAAAABAAAA2nsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6ImxpbnV4LWJ1aWxkZXIiLCJ1c2FnZSI6WyJzc2gtdXNlciJdLCJuYW1lcyI6ImQzODllODRlNDRkMDZiMzY5YTk3NDcwM2IzNTg4ZWFlYWZhODk2N2FlYzBkNWNkZjQ4NWJjMmQ1MDk3YjE4YjQiLCJpc3N1ZWQiOiIyMDI2LTEwLTE3VDA1OjQ5OjQ3WiJ9AAAAHQAAAA1saW51eC1idWlsZGVyAAAACHJkcC1ob3N0AAAAAAAAAAD//////////wAAAAAAAACCAAAAFXBlcm1pdC1YMTEtZm9yd2FyZGluZwAAAAAAAAAXcGVybWl0LWFnZW50LWZvcndhcmRpbmcAAAAAAAAAFnBlcm1pdC1wb3J0LWZvcndhcmRpbmcAAAAAAAAACnBlcm1pdC1wdHkAAAAAAAAADnBlcm1pdC11c2VyLXJjAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDW7QKfmsTOlJ7zFUncSyCAc4wdFRoxpVPwXQDguqsdrEXoHYBWkytIfgac2erNFt4pnsYDlSMhHRbw0fYmDHcH linux-builder@mammoth-skate
-  rdp-host:
-    type: ssh-ed25519
-    authority: mammoth-skate
-    # v1: authorities.mammoth-skate.usage = [ssh-host, ssh-user]
-    cert_usage:
-      - ssh-host
-      - ssh-user
-    comment: nxmatic@mammoth-skate
-    usage:
-      - user-signing
-    profiles:
-      - system
-      - user
-    principals:
-      rdp-host: rdp-host
-    authorized_keys_options:
-      - forwarding
-    annotations:
-      public_scope: user
-    slots:
-      26-10-10:
-        public: AAAAC3NzaC1lZDI1NTE5AAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9y
-        # sops:encrypted
-        private: ENC[AES256_GCM,data:e5TlXfuENN6b28Zh9g4WWilLHjJ7zjGtRuxZKGuGtlNdX/j5QkMOYeQug2OetwIqK7Y4MDvxLbB5E84/II/QZ26kkOB2NhizLD8r/j/ytDVHF5VDpcqPJY2V8lpGvGRRSSChNfv9CNzN7xiGs3ngOZ3TtZtD9mSBSd7jDLyor10tqkRbKXaqQk70sMqXQNs0zxg8nRDRKHiC4xh0w1jWIxP13UiysjW0ZQ2p7IPaQw2qniD2GfkPw58Ax4+ALgkDB4kVuzOB1p1iv9eP2Sp7rf0D0AIUksQvHkAkqlWcGafIDSC/6sD+T6SuUkAqmdbEu9WSt8b746ZbkKKQO6+MWtAws0lICjX0WgPFejemJ0i59XGtSn1FZxJwTNx0ouxJfstAMbfvtCSSUWMWqde7bLDVOLRwkmtb4+Y5u9KpPS0ssLdaQ+1cKKQV0eNtvNYJ8A0rXLVzQigbVJNLHxFQEze8dhMNA+iLQzkozD+UJAuyOqTZgVrSxn+HZuSEdcASpXPng4OPYpD13EnsXapRPtytWHtRxg9h9mU=,iv:+c6klefNsbs1Rr76pJN9kvqgE1VvL1PBLqBVAeEof/s=,tag:0MzJtCCbBp951CCvmiN4Zw==,type:str]
-        certificates:
-          mammoth-skate:
-            ssh-host: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILdsuYQrZWwimHt6FHemPKhsNlLf9CphYgUV5fH30w6KAAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9yAAAAAAAAAAcAAAACAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6InJkcC1ob3N0IiwidXNhZ2UiOlsic3NoLWhvc3QiXSwibmFtZXMiOiJiZTVmYmM5ZTA3MzYwMTc0MTJmZjM0NjMzNDAzOTI0YjMwMWY3NmUwMTcyNjhmOWUxMzkzOWVmMDQ4NjYyYzBjIiwiaXNzdWVkIjoiMjAyNi0xMC0xN1QxNzoyNjoxMFoifQAAAL8AAAAHbmlrb3BvbAAAAA1uaWtvcG9sLW5peG9zAAAAEW5pa29wb2wtbml4b3MubGFuAAAAE25pa29wb2wtbml4b3MubG9jYWwAAAAibmlrb3BvbC1uaXhvcy5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAAtuaWtvcG9sLmxhbgAAAA1uaWtvcG9sLmxvY2FsAAAAHG5pa29wb2wubWFtbW90aC1za2F0ZS50cy5uZXQAAAANbml4b3Mubmlrb3BvbAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDTXjxaOCymMFWEfp7HBGFc21raPdd225Pmkvq6nXg07++4UxrdKxlrDW2Sx/ZwETCi1FnC/cujS8X0+6k9U6oO nxmatic@mammoth-skate
-            ssh-user: ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIKUtTe3Oz/Re7p/F1DRl7qapQyxAkxinG31ruuQRgG4GAAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9yAAAAAAAAAAMAAAABAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6InJkcC1ob3N0IiwidXNhZ2UiOlsic3NoLXVzZXIiXSwibmFtZXMiOiI2YjRmM2IzYzRjZWNhNWJjZDU3NjNiY2ZjMTZlNGY1OWFkNjUwNDFmZGFlNmQwMTdlODBhMjg1MzJmYWQzN2Q0IiwiaXNzdWVkIjoiMjAyNi0xMC0xN1QwNTo0OTo0N1oifQAAAAwAAAAIcmRwLWhvc3QAAAAAAAAAAP//////////AAAAAAAAAIIAAAAVcGVybWl0LVgxMS1mb3J3YXJkaW5nAAAAAAAAABdwZXJtaXQtYWdlbnQtZm9yd2FyZGluZwAAAAAAAAAWcGVybWl0LXBvcnQtZm9yd2FyZGluZwAAAAAAAAAKcGVybWl0LXB0eQAAAAAAAAAOcGVybWl0LXVzZXItcmMAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQE+co3QlNtyuOQavi1HqrEyc/zT/MOHAuWu6bri7oroL0Bjhq5n4YrFiSs5ChIkFNGdkglV7oGhHQrjcbLWmVAg= nxmatic@mammoth-skate
   rke2-cluster:
     type: ssh-ed25519
     # Bare key — no authority, used directly for GitHub auth.
@@ -483,6 +455,10 @@ revoked:
     public: AAAAC3NzaC1lZDI1NTE5AAAAIJqOSghhMGKjb/jTASwBH1agjL3xHmLW+Ht+0U4QkNMR
     reason: private tracked in the clear in the public ndh repository (hosts/bioskop/keys.d/builder_ed25519) since 2026-04-10
     compromised: true
+  rdp-host@26-10-10:
+    type: ssh-ed25519
+    public: AAAAC3NzaC1lZDI1NTE5AAAAICurkX4C8dRgkJ4zZJFgGgfh6HaLhIp5wmELEznU8c9y
+    reason: no configuration uses rdp-host any more (keys-reconcile retire-key)
 revoked_certificates:
   rdp-host@26-10-10/0:
     authority: mammoth-skate
@@ -566,6 +542,6 @@ sops:
         -----END AGE ENCRYPTED FILE-----
       recipient: age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c
   encrypted_comment_regex: sops:encrypted
-  lastmodified: "2026-10-29T08:06:21Z"
-  mac: ENC[AES256_GCM,data:b5tW6DGPva9cH6mKEmtrIM+2Kfppc+0JkkrteX50rucRJXGMNSQNMyWIR6sSgpOBHSjptxwpPA00ji49JLVDnZA2lXISAgZzeOwpkG5NLG1PLdIiu/oU+ZyOB6WLwAUacOEFJaFA0FepROgFgY1Ob14kdlvc7hArZocPj9yAT0c=,iv:cfMvOWaO0lkZUgv9yInx9jREIPlfO0JsxKR3Vj0cEVk=,tag:TU9IK2WVMyzB8oPxO6ibsw==,type:str]
+  lastmodified: "2026-10-29T13:33:40Z"
+  mac: ENC[AES256_GCM,data:Ga0ma1xA8wikfl35i97B4MzpDnzzAGvO5YWGRprAiNoHku1xIFU33hniFTp4TuXZdp9BvIkGpY5rhrJO6P/6noAszGEzOi9mz+NjUVRuGV0g/RUPPr/Kml7JETFnZsH11RHc1vRJh1CA2R0PKDSDHRKWOJRttIxhJmvvIiuKp0s=,iv:SJWgmgZczaqRJNbILVF9m/LrjikIGdMDoTKtfsVAD3A=,tag:yiJvYT0ba+omHodH5v6sOw==,type:str]
   version: 3.13.3
