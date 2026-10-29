@@ -256,9 +256,9 @@
         }
       }
     },
-    "host-bioskop": {
+    "bioskop": {
       "type": "ssh-ed25519",
-      "comment": "host-bioskop",
+      "comment": "bioskop",
       "usage": [
         "ssh-host"
       ],
@@ -272,7 +272,7 @@
           "public": "AAAAC3NzaC1lZDI1NTE5AAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAICD7uTcQvc1daHJepOyLUGVZK2fz0bB7pF+3N0wsfk3wAAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6AAAAAAAAAAUAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiNmE3NDQxNzg4MTEwZTViYWQ3ZDY4Mjc5NzU0MTIxYjExOGIzYTFhYjEyZjM5ZmMzNTIzNDc5NjNlZTYxZTM2YiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAABLAAAAB2Jpb3Nrb3AAAAALYmlvc2tvcC5sYW4AAAANYmlvc2tvcC5sb2NhbAAAABxiaW9za29wLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQOWJfj474WRW8Ur0u439VsjZlpiznfykullb5lguu60guDu27IEJ8oVnwpK/3HszvX2VUEG3clkpz3+o7MAaSgs= host-bioskop"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIH0pX8P0VU61REMp0jGQyoPHAneTCTHajeN0fuu5OQ8rAAAAIHILc//oKMPL8FG7hkmRDs6RUqo+uoZLKx9yln4vPRx6AAAAAAAAAA0AAAACAAAA1HsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6ImJpb3Nrb3AiLCJ1c2FnZSI6WyJzc2gtaG9zdCJdLCJuYW1lcyI6IjZhNzQ0MTc4ODExMGU1YmFkN2Q2ODI3OTc1NDEyMWIxMThiM2ExYWIxMmYzOWZjMzUyMzQ3OTYzZWU2MWUzNmIiLCJpc3N1ZWQiOiIyMDI2LTEwLTI5VDA3OjU4OjQ5WiJ9AAAASwAAAAdiaW9za29wAAAAC2Jpb3Nrb3AubGFuAAAADWJpb3Nrb3AubG9jYWwAAAAcYmlvc2tvcC5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAEAM3EHT0nrSNsrfcQUgkdTUYjtYt54RXXIHV06h3BjTr04HzEDdSq8+v5Eg23dfljr9sLyFgSNQEbh8IfRF0toC bioskop"
             }
           },
           "nixSigning": "seedmatic-bioskop-1:6NV2srMMItn0KLrr8gDH+5wr31/Sq6od5llCx2RRYW0=",
@@ -283,9 +283,9 @@
         }
       }
     },
-    "host-bioskop-nixos": {
+    "bioskop-nixos": {
       "type": "ssh-ed25519",
-      "comment": "host-bioskop-nixos",
+      "comment": "bioskop-nixos",
       "usage": [
         "ssh-host"
       ],
@@ -299,7 +299,7 @@
           "public": "AAAAC3NzaC1lZDI1NTE5AAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mz",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== host-bioskop-nixos"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO96zQACObUK9cQ7GKBO5J3bp1/5ICC0dJ8shWmYzG9hAAAAICxjKH6th3XhibVtGoqYAiFHWqZvmrACKLe30Yjxb3mzAAAAAAAAAAYAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMTdUMDU6NDk6NDdaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABArIMvlfKPHmgldN9T003xyVHc6c5pdI3RdZO9+hXf7hVtrjA719mIiRez82CEMzlmW3Sa/eHRsg5ApHWl8xfPCA== bioskop-nixos"
             }
           },
           "nixSigning": "seedmatic-bioskop-nixos-1:eqGOz2GK5CojkBzHWfVBTKrAjVfxGhvA9j0OXjAqV54=",
@@ -315,7 +315,7 @@
           "age": "age1zyz3e3dk0yj69hrutzrqyv4xx2zrjm6hgkvcmrxcehs92ftqx3xqlq0w4d",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIBygqyl6bPh6ladaFOk46nwIWeBSw6Cruo2/jOH1Cf5xAAAAINjGWDdzFtyl/P5faIDV/CUYtYkD1Vj8k+4u1HeGpnGNAAAAAAAAAAoAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3QtYmlvc2tvcC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiM2RlY2RjNzJkMTE0ODgzNTVjMDU1NDUyMTFjOGM0MWJiZTg1MmQ3MzM1NWIwZDhkOTA5NzM5NzA1ODYxMThhZiIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTBaIn0AAAB0AAAADWJpb3Nrb3Atbml4b3MAAAARYmlvc2tvcC1uaXhvcy5sYW4AAAATYmlvc2tvcC1uaXhvcy5sb2NhbAAAACJiaW9za29wLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLmJpb3Nrb3AAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABApGpkAJ3zhBRGyiGw1hBDYPHKASY8ep6jTTdgtjHUOjOOmlkoZ+nFCCqLzH14U9V/j9bkVDNgtJqJvuLuWPJJBA== host-bioskop-nixos"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIFIAU+uvyiC6IVMsZzoh2nYmAg0EokOA0C/cpanYioZbAAAAINjGWDdzFtyl/P5faIDV/CUYtYkD1Vj8k+4u1HeGpnGNAAAAAAAAAA4AAAACAAAA2nsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6ImJpb3Nrb3Atbml4b3MiLCJ1c2FnZSI6WyJzc2gtaG9zdCJdLCJuYW1lcyI6IjNkZWNkYzcyZDExNDg4MzU1YzA1NTQ1MjExYzhjNDFiYmU4NTJkNzMzNTViMGQ4ZDkwOTczOTcwNTg2MTE4YWYiLCJpc3N1ZWQiOiIyMDI2LTEwLTI5VDA3OjU4OjQ5WiJ9AAAAdAAAAA1iaW9za29wLW5peG9zAAAAEWJpb3Nrb3Atbml4b3MubGFuAAAAE2Jpb3Nrb3Atbml4b3MubG9jYWwAAAAiYmlvc2tvcC1uaXhvcy5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAA1uaXhvcy5iaW9za29wAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQD/DvnTUsPS9Fqbclz05X4oX2Lkk9f3FQDML6A8HP2oskG1ihEyQFuw+QJrkLJ3wf4fvz39OC3ql3qcTQGnclgA= bioskop-nixos"
             }
           },
           "recipient": true
@@ -335,9 +335,9 @@
         }
       }
     },
-    "host-nikopol-nixos": {
+    "nikopol-nixos": {
       "type": "ssh-ed25519",
-      "comment": "host-nikopol-nixos",
+      "comment": "nikopol-nixos",
       "usage": [
         "ssh-host"
       ],
@@ -351,7 +351,7 @@
           "public": "AAAAC3NzaC1lZDI1NTE5AAAAIHepa/fSAQbHiF3VvnFW0mdTzv2qD05cxtla+12d9Slf",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILx1y0F1PI2fR6n7VAR5T7xXeRGdiwwNLgurDv+/+kpfAAAAIHepa/fSAQbHiF3VvnFW0mdTzv2qD05cxtla+12d9SlfAAAAAAAAAAgAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABA2PMhrcI5Cu3ij3kAU5vYW+uRFAm45djCznEeTUyXispu4YWlwomev3spDFVqSGka/fwNXiMDe+UcefjTqEZ3Bg== host-nikopol-nixos"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAILx1y0F1PI2fR6n7VAR5T7xXeRGdiwwNLgurDv+/+kpfAAAAIHepa/fSAQbHiF3VvnFW0mdTzv2qD05cxtla+12d9SlfAAAAAAAAAAgAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABA2PMhrcI5Cu3ij3kAU5vYW+uRFAm45djCznEeTUyXispu4YWlwomev3spDFVqSGka/fwNXiMDe+UcefjTqEZ3Bg== nikopol-nixos"
             }
           },
           "state": "retired",
@@ -367,16 +367,16 @@
           "age": "age1952klh28ju3urhzpu3m7jye89zfcrcgzmznt069f7akpq56h8g9qq8l96e",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO4V6oJBw3NcmwjtkUg3fYD6H55FLD7iPapqdQXO5ba0AAAAIAcqYKxMTVzb7Wokby0qrMWpBdM/0AnAr10k0zWQyKZZAAAAAAAAAAsAAAACAAAA33sibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbC1uaXhvcyIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiMDQ2MTBkYmNkMDY5OWNmNTY3YjU5NWEwZDcyYWM2MmYzNmU1YjQwZjQ4ZGQyNzU2YzliMzQ5N2ZjYTE4NTMxYiIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTBaIn0AAAB0AAAADW5pa29wb2wtbml4b3MAAAARbmlrb3BvbC1uaXhvcy5sYW4AAAATbmlrb3BvbC1uaXhvcy5sb2NhbAAAACJuaWtvcG9sLW5peG9zLm1hbW1vdGgtc2thdGUudHMubmV0AAAADW5peG9zLm5pa29wb2wAAAAAAAAAAP//////////AAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACD0Pop9KqWGl3j1YnQKXt7KipRXybJjeLxSEZbLbQApOwAAAFMAAAALc3NoLWVkMjU1MTkAAABAnLSjiDShhnI62NiaiBSHrKgKDQhgeKNq+va8bne2VMHlJQILrBQbY0D4IpgoNcpzi8k4aBiq50NyYfjNfy4GAA== host-nikopol-nixos"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIB3UEW0q54dLAbJmTM4+W+2JhPPyF2vauPzW5myORPvPAAAAIAcqYKxMTVzb7Wokby0qrMWpBdM/0AnAr10k0zWQyKZZAAAAAAAAAA8AAAACAAAA2nsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Im5pa29wb2wtbml4b3MiLCJ1c2FnZSI6WyJzc2gtaG9zdCJdLCJuYW1lcyI6IjA0NjEwZGJjZDA2OTljZjU2N2I1OTVhMGQ3MmFjNjJmMzZlNWI0MGY0OGRkMjc1NmM5YjM0OTdmY2ExODUzMWIiLCJpc3N1ZWQiOiIyMDI2LTEwLTI5VDA3OjU4OjQ5WiJ9AAAAdAAAAA1uaWtvcG9sLW5peG9zAAAAEW5pa29wb2wtbml4b3MubGFuAAAAE25pa29wb2wtbml4b3MubG9jYWwAAAAibmlrb3BvbC1uaXhvcy5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAA1uaXhvcy5uaWtvcG9sAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQLK9jvg/nJ6Z2nDkUC7Up622kAXoRobYQCyT2Ap66fAtj8iXQyi/+MUFQsD+hY1ZCs5a1W5U/GgKziaV+r991gM= nikopol-nixos"
             }
           },
           "recipient": true
         }
       }
     },
-    "host-nikopol": {
+    "nikopol": {
       "type": "ssh-ed25519",
-      "comment": "host-nikopol",
+      "comment": "nikopol",
       "usage": [
         "ssh-host"
       ],
@@ -390,7 +390,7 @@
           "public": "AAAAC3NzaC1lZDI1NTE5AAAAIKAEDgiY1JSMavOuGtyFc5b/1bjZrJnSGNrs7ayi6jdr",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIOSwv9Qugddzh0VmSvQBYvLmwA+1fzT8nQdB1Roq4jiTAAAAIKAEDgiY1JSMavOuGtyFc5b/1bjZrJnSGNrs7ayi6jdrAAAAAAAAAAkAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQPnt2iYjx5R8aQxoshwpowb55cXCsK/MvmEfCt3X0evb85ZoKs1ygt/XxRJAPeFOtQiR3DyoQg5gIWHWzU7jPQI= host-nikopol"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIOSwv9Qugddzh0VmSvQBYvLmwA+1fzT8nQdB1Roq4jiTAAAAIKAEDgiY1JSMavOuGtyFc5b/1bjZrJnSGNrs7ayi6jdrAAAAAAAAAAkAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMThUMjE6MDA6MDlaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQPnt2iYjx5R8aQxoshwpowb55cXCsK/MvmEfCt3X0evb85ZoKs1ygt/XxRJAPeFOtQiR3DyoQg5gIWHWzU7jPQI= nikopol"
             }
           },
           "state": "retired",
@@ -406,7 +406,7 @@
           "age": "age1zwskc70cwx02t7detwzd2lnvfdtmgtfremteexny3p8mmcaansmq0nmg3c",
           "certificates": {
             "mammoth-skate": {
-              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIIR1K+u5VTrCkNB7swLykk07jPLsksiBo/hkZ7VBd/UVAAAAIDfvn66YNMMKMSP/MaIiysnOKYy6ROsP5OlrjIueS6zAAAAAAAAAAAwAAAACAAAA2XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Imhvc3Qtbmlrb3BvbCIsInVzYWdlIjpbInNzaC1ob3N0Il0sIm5hbWVzIjoiODAzY2VlOGM0ZTAyZDQ2ZGJhMGYwMDBmNzllNjJkN2M1NDEyNTQxMDJlYjQ5OWNlYzdkOWIyNWRlZGRmOGMzYyIsImlzc3VlZCI6IjIwMjYtMTAtMjZUMDk6MTM6NTFaIn0AAABLAAAAB25pa29wb2wAAAALbmlrb3BvbC5sYW4AAAANbmlrb3BvbC5sb2NhbAAAABxuaWtvcG9sLm1hbW1vdGgtc2thdGUudHMubmV0AAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQBIuHnOvfNgml6F55NKp+NpUp1BVEyuXn1nH/93bL3sDnhROSauIVHUcBAEiRuH+Aa68/IfkiEGbmNX4NCkpuw0= host-nikopol"
+              "ssh-host": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAINz0+0mk2V9+kIxaSYYF6/JFQ2SzBs1SCFpdwNICVV8MAAAAIDfvn66YNMMKMSP/MaIiysnOKYy6ROsP5OlrjIueS6zAAAAAAAAAABAAAAACAAAA1HsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Im5pa29wb2wiLCJ1c2FnZSI6WyJzc2gtaG9zdCJdLCJuYW1lcyI6IjgwM2NlZThjNGUwMmQ0NmRiYTBmMDAwZjc5ZTYyZDdjNTQxMjU0MTAyZWI0OTljZWM3ZDliMjVkZWRkZjhjM2MiLCJpc3N1ZWQiOiIyMDI2LTEwLTI5VDA3OjU4OjUwWiJ9AAAASwAAAAduaWtvcG9sAAAAC25pa29wb2wubGFuAAAADW5pa29wb2wubG9jYWwAAAAcbmlrb3BvbC5tYW1tb3RoLXNrYXRlLnRzLm5ldAAAAAAAAAAA//////////8AAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIPQ+in0qpYaXePVidApe3sqKlFfJsmN4vFIRlsttACk7AAAAUwAAAAtzc2gtZWQyNTUxOQAAAECOOMwu8NhHGn7A4j6N+isnqTHDtLyLJA/g7CXyFfdEoCb4GkdQrk8TF+YcItvch8OlvPeBbm8LFunA1jV6ew4G nikopol"
             }
           },
           "recipient": true
@@ -427,6 +427,40 @@
           "origin": "keyring",
           "age": "age1wepqpfd8ww04f87tm44lz8pzn8nq2v5nrqc2kgkdggh7a2p4tg5qpdd6qj",
           "recipient": false
+        }
+      }
+    },
+    "operator": {
+      "type": "ssh-ed25519",
+      "authority": "mammoth-skate",
+      "cert_usage": [
+        "ssh-user"
+      ],
+      "comment": "nxmatic@operator",
+      "usage": [
+        "user-signing"
+      ],
+      "profiles": [
+        "system",
+        "user"
+      ],
+      "principals": {
+        "operator": "operator"
+      },
+      "annotations": {
+        "public_scope": "user"
+      },
+      "authorized_keys_options": [
+        "forwarding"
+      ],
+      "slots": {
+        "26-10-29": {
+          "public": "AAAAC3NzaC1lZDI1NTE5AAAAIHxW179T5WREXm2egAfX42LsqBZ2WClItOhdZ/HQfJJ3",
+          "certificates": {
+            "mammoth-skate": {
+              "ssh-user": "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIKKM2uJwFbiNXyZD3WGL9GnxL5fIFMq2vJ29jp36khWRAAAAIHxW179T5WREXm2egAfX42LsqBZ2WClItOhdZ/HQfJJ3AAAAAAAAABEAAAABAAAA1XsibWFya2VyIjoibmRoLXNzaC1rZXktbWV0YS12MSIsIm93bmVyIjoiaG9tZS1tYW5hZ2VyLnNzaC1hZGQta2V5cyIsImtleSI6Im9wZXJhdG9yIiwidXNhZ2UiOlsic3NoLXVzZXIiXSwibmFtZXMiOiIwNmU1NWI2MzM0ODFmN2JiMDcyOTU3ZWFiY2YxMTBjOTcyZTg2NjkxYzNjZmVkYWJlMDg4MDI0YmZmZTQyZjIzIiwiaXNzdWVkIjoiMjAyNi0xMC0yOVQwODowNjoyMVoifQAAAAwAAAAIb3BlcmF0b3IAAAAAAAAAAP//////////AAAAAAAAAIIAAAAVcGVybWl0LVgxMS1mb3J3YXJkaW5nAAAAAAAAABdwZXJtaXQtYWdlbnQtZm9yd2FyZGluZwAAAAAAAAAWcGVybWl0LXBvcnQtZm9yd2FyZGluZwAAAAAAAAAKcGVybWl0LXB0eQAAAAAAAAAOcGVybWl0LXVzZXItcmMAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg9D6KfSqlhpd49WJ0Cl7eyoqUV8myY3i8UhGWy20AKTsAAABTAAAAC3NzaC1lZDI1NTE5AAAAQOgGmNzjOdXHD4MQmcEbaowDGH0MamJYy4SkIgudqCMJPJUwKiJ1DxQ/qtel/IH1sziA6+mt1ydTB2yzCJ376wE= nxmatic@operator"
+            }
+          }
         }
       }
     }
