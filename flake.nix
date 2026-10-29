@@ -2274,6 +2274,7 @@
                 SOPS_AGE_KEY_FILE=$PWD/id.txt SOPS_AGE_KEY_CMD=false sops decrypt f.yaml >/dev/null
                 touch $out
               '';
+          sops-rekey-bats = import ./modules/.common.d/sops.d/rekey.d/tests/package.nix { inherit pkgs; };
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -3626,8 +3627,6 @@
               name = "bioskop-nixos";
               files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
               seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
-              # The identity both NixOS guests hold today (.sops.yaml), until each decrypts with its own.
-              current = "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j";
             };
           # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
           # own metadata is read. The files are the ones .sops.yaml's rules match, so a new sealed file cannot escape.
@@ -3668,6 +3667,9 @@
                 "age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv"
                 "age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak"
                 "age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82"
+                # the interims of step ⑥, removed on 2026-10-29: darwin.nikopol's, then the NixOS guests' shared one
+                "age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4"
+                "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j"
               ];
             in
             pkgs.runCommand "sops-retired-recipients" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
@@ -3703,7 +3705,6 @@
               name = "bioskop";
               files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
               seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
-              current = "";
             };
         }
         # The operator's own client config carries the same list, on every operator seat and NixOS guest.
@@ -4735,6 +4736,13 @@
             type = "app";
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
             meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
+          };
+          sops-rekey = {
+            type = "app";
+            program = "${
+              import ./modules/.common.d/sops.d/rekey.d/package.nix { pkgs = pkgsForSystem; }
+            }/bin/sops-rekey";
+            meta.description = "Re-seal every sops file to its .sops.yaml rule after a recipient change, then stage them — the operator's gesture (it opens each data key), run from repo root — src: modules/.common.d/sops.d/rekey.d/";
           };
           keys-json = {
             type = "app";

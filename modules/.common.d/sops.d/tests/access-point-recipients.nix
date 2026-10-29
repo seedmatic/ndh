@@ -1,13 +1,10 @@
 # Every sops file a machine decrypts is encrypted to its access point's recipient (ssh-to-age of its operator
-# seat's recorded host-key public, the seat's own for an operator seat), and, for a NixOS guest, to the identity
-# it holds today, read from each file's own metadata: a push of the new identity then lands on files it already
-# opens (S4). `current` is "" for a seat, whose sops identity is its own host key.
+# seat's recorded host-key public, the seat's own for an operator seat), read from each file's own metadata (S4).
 {
   pkgs,
   name,
   files,
   seatPublic,
-  current,
 }:
 let
   # A sops file path read from a configuration as a source path has lost its store context, so the build
@@ -38,14 +35,10 @@ pkgs.runCommand "sops-access-point-recipients-${name}"
     fail=0
     for f in ${pkgs.lib.escapeShellArgs (map withContext files)}; do
       recipients="$(yq -r '.sops.age[].recipient' "$f")"
-      for r in "$expected" ${
-        pkgs.lib.optionalString (current != "") (pkgs.lib.escapeShellArg current)
-      }; do
-        if ! grep -qxF "$r" <<<"$recipients"; then
-          echo "$f is not encrypted to $r" >&2
-          fail=1
-        fi
-      done
+      if ! grep -qxF "$expected" <<<"$recipients"; then
+        echo "$f is not encrypted to $expected" >&2
+        fail=1
+      fi
     done
     [ "$fail" = 0 ]
     touch $out
