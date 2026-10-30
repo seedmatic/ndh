@@ -46,13 +46,27 @@ in
       systemd.services.ndh-attic-tokens = {
         description = "Pull and unseal this machine's attic tokens into ${cfg.paths.dir}";
         wantedBy = [ "multi-user.target" ];
+        # The attic names are this guest's own dnsmasq's: at boot the pull ran before it and could not resolve them. A
+        # cache that does not answer yet (its container still starting) fails the pull, which retries every 30 s for an
+        # hour; past that, the daily timer takes over.
         after = [
           "sops-install-secrets.service"
           "network-online.target"
+          "nss-lookup.target"
+          "dnsmasq.service"
         ];
-        wants = [ "network-online.target" ];
+        wants = [
+          "network-online.target"
+          "nss-lookup.target"
+        ];
+        unitConfig = {
+          StartLimitIntervalSec = 3600;
+          StartLimitBurst = 120;
+        };
         serviceConfig = {
           Type = "oneshot";
+          Restart = "on-failure";
+          RestartSec = 30;
           ExecStart = lib.getExe (
             tokens.fetch {
               machine = config.networking.hostName;
