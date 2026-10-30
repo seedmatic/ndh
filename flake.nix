@@ -1542,6 +1542,49 @@
                   [ "$rc" = 0 ] && touch $out
                   exit "$rc"
                 '';
+          # The mint reads one target per line, and the unit it really runs hands it exactly one line per target.
+          # 2026-10-30: TARGETS was joined with a literal `\n` in Environment=, which systemd keeps as two characters,
+          # so the mint got one line, read the next machine's name as a key, and refused every target.
+          attic-token-targets-one-per-line =
+            let
+              lib = nixpkgs.lib;
+              guests = lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations;
+              mint =
+                c:
+                (import (c.pkgs.path + "/nixos/lib/eval-config.nix") {
+                  system = null;
+                  modules = [
+                    {
+                      nixpkgs.pkgs = c.pkgs;
+                      boot.isContainer = true;
+                      system.stateVersion = c.config.system.stateVersion;
+                    }
+                  ]
+                  ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
+                }).config.systemd.services.attic-token-mint.serviceConfig;
+              # The lines the mint reads: its targets file's, else what TARGETS in Environment= holds verbatim.
+              lines =
+                c:
+                let
+                  sc = mint c;
+                  env = lib.findFirst (e: lib.hasPrefix "TARGETS=" e) null (sc.Environment or [ ]);
+                  text =
+                    if sc ? LoadCredential then
+                      builtins.readFile (lib.last (lib.splitString ":" (lib.head (lib.toList sc.LoadCredential))))
+                    else
+                      lib.removePrefix "TARGETS=" env;
+                in
+                lib.filter (l: l != "") (lib.splitString "\n" text);
+              wrong = lib.filterAttrs (
+                _: c: builtins.length (lines c) != builtins.length c.config.ndh.atticCache.tokenTargets
+              ) guests;
+            in
+            assert lib.assertMsg (
+              guests != { }
+            ) "attic-token-targets-one-per-line: no guest runs the attic container";
+            assert lib.assertMsg (wrong == { })
+              "attic-token-targets-one-per-line: the mint does not get one line per target on: ${toString (lib.attrNames wrong)}";
+            pkgs.runCommand "attic-token-targets-one-per-line" { } "touch $out";
           # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
           # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
           attic-cache-key-name =
