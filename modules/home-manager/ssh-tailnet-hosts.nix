@@ -32,6 +32,7 @@ let
     hostAliases
     ;
   sshUserForHost = _host: catalogUserName;
+  guestOf = host: catalog.netplan.baremetal.${host}.nixosHostname or null;
   # Canonical operator alias layout: `{service}.{host}` with consistent auth.
   # Service names match the headscale `dns.extra_records` namespace
   # (catalog.netplan.tailnet.hosts.<host>.serviceNames), so muscle
@@ -277,6 +278,14 @@ in
 
         Host ${host} ${host}${lanDomain}
           HostName ${host}
+
+      ''
+      # Its NixOS guest's own names, on every seat and not only the guest's own: without the operator identity the
+      # default identities are offered, rejected, and OpenSSH's PerSourcePenalties then resets this seat's connections.
+      + lib.optionalString (guestOf host != null) ''
+        Host ${lib.concatStringsSep " " (hostAliases (guestOf host))}
+          User ${sshUserForHost host}
+          ${operatorIdentityLines}
 
       ''
       + lib.concatMapStrings (alias: ''
