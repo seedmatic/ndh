@@ -111,7 +111,7 @@ declared_devices() {
 
 # with_declared {config yaml} {info}: the config with its devices set to the 4 store devices, Incus's own root disk and
 # exactly the declared ones: a declared device missing is added, one that differs replaced, one no longer declared
-# removed (2026-10-30: attic-tls → attic-shared never reached the running attic-bioskop).
+# removed (2026-10-30: a disk device renamed in the module never reached bioskop's running cache container).
 with_declared() {
   DECLARED="$(declared_devices "$2")" yq '.devices |= (with_entries(select(.key == "nix" or .key == "nix-lower-store"
     or .key == "nix-lower-db" or .key == "nix-upper" or .key == "root")) * (strenv(DECLARED) | fromjson)) | .devices style=""' <<<"$1"
