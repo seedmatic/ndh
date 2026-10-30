@@ -253,9 +253,10 @@ negative
 the tunnel's underlay — never a place to serve from: anything addressed to it, or to a `.local`
 name, crosses the LAN outside the tunnel
 
-| attic serves **plain HTTP**, on port 80 (decided by the operator on 2026-10-30, replacing the TLS leaf of 2026-10-15)
-| the only hop that leaves a metalspace is the WireGuard tunnel, and the lab is private: what attic serves is signed
-by its cache key, and the tokens travel as age ciphertext. An in-cluster attic is planned to take over
+| attic serves **plain HTTP**, on port 80
+| the lab's rule for an endpoint it alone consumes (link:security-handling-c4.adoc[Security Handling], _Operational
+guidance_): the only hop that leaves a metalspace is the WireGuard tunnel; what attic serves is signed by its cache
+key, and the tokens travel as age ciphertext. An in-cluster attic is planned to take over
 
 | the cache container's dataset `tank/nerd/attic` has a quota of **8G**, and a retention of **6
 hours** (both decided by the operator on 2026-10-15)
