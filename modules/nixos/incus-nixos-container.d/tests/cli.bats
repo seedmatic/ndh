@@ -85,7 +85,8 @@ case "\$1 \$2" in
     yq -o json -I0 '(.devices // {}) | with_entries(select(.key != "nix" and .key != "nix-lower-store" and .key != "nix-lower-db" and .key != "nix-upper" and .key != "root"))' <<<"\$y" >"\$i/\$n.other.json" ;;
   "config show")
     n=\$(name "\${@:3}"); f=\$i/\$n.dev; touch "\$f"
-    printf 'config:\n  raw.lxc: |-\n'; sed 's/^/    /' "\$i/\$n.rawlxc" 2>/dev/null
+    # raw.lxc as a quoted scalar: an empty block scalar (no .rawlxc yet) would swallow the devices that follow.
+    printf 'config:\n  raw.lxc: %s\n' "\$(RAW="\$(cat "\$i/\$n.rawlxc" 2>/dev/null)" yq -n -o json 'strenv(RAW)')"
     printf 'devices:\n'
     while read -r d src rec; do
       printf '  %s:\n    source: %s\n    type: disk\n' "\$d" "\$src"
