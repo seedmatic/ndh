@@ -79,8 +79,10 @@ case "\$1 \$2" in
     done <"\$f"
     write "\$n" "\$f.new"
     yq -r '.config."raw.lxc" // ""' <<<"\$y" >"\$i/\$n.rawlxc"
-    # Every device the edit leaves, store and declared alike: what a test reads the reconciliation from.
-    yq -o json -I0 '.devices // {}' <<<"\$y" >"\$i/\$n.devices.json" ;;
+    # Every device the edit leaves, store and declared alike: what a test reads the reconciliation from; the
+    # non-store ones are what the instance then holds.
+    yq -o json -I0 '.devices // {}' <<<"\$y" >"\$i/\$n.devices.json"
+    yq -o json -I0 '(.devices // {}) | with_entries(select(.key != "nix" and .key != "nix-lower-store" and .key != "nix-lower-db" and .key != "nix-upper" and .key != "root"))' <<<"\$y" >"\$i/\$n.other.json" ;;
   "config show")
     n=\$(name "\${@:3}"); f=\$i/\$n.dev; touch "\$f"
     printf 'config:\n  raw.lxc: |-\n'; sed 's/^/    /' "\$i/\$n.rawlxc" 2>/dev/null
@@ -464,7 +466,13 @@ delivered_before() {
 # The declared devices, reconciled at every delivery in point_store's one write (2026-10-30: a device renamed in the
 # module, attic-tls → attic-shared, never reached the running attic-bioskop, and its cache-ensure looped until rollback).
 declared_devices() { # <json of the declared devices>: the instance as the module now declares it
-  sed -i "s|\"devices\":{[^}]*}|\"devices\":$1|" "$cli"
+  # The CLI holds INSTANCES as replaceVars renders it, shell-quoted: the declaration is swapped in that form.
+  local from to text
+  from=$(printf '%q' '"devices":{}')
+  to=$(printf '%q' "\"devices\":$1")
+  text=$(cat "$cli")
+  [[ $text == *"$from"* ]] || return 1
+  printf '%s\n' "${text/"$from"/"$to"}" >"$cli"
 }
 
 @test "converge reconciles the declared devices: created with A, delivered declaring B, it ends with B and not A" {
