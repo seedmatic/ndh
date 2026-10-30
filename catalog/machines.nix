@@ -6,7 +6,8 @@
 #               (modules/.common.d/operator-aliases.nix), so a switch dials what the operator types
 #   seat:       true for the operator seat, which is switched locally and LAST by fleet-switch
 #   attic:      what this machine does with the private caches, both off by default: `read` (substitute from them),
-#               `push` (its watch-store into its own metalspace's); turned on one machine at a time
+#               `push` (its watch-store into its own metalspace's). A darwin host pushes too: it builds its own
+#               aarch64-darwin derivations, and only it can push those (its Linux ones are its guest's)
 # The build, bringup and Tart variants of these configurations are not machines: they are absent on purpose.
 [
   {
@@ -21,15 +22,21 @@
     kind = "darwin";
     metalspace = "bioskop";
     seat = true;
+    attic.read = true;
+    attic.push = true;
   }
   {
     name = "nikopol-nixos";
     kind = "nixos";
     metalspace = "nikopol";
+    attic.read = true;
+    attic.push = true;
   }
   {
     name = "nikopol";
     kind = "darwin";
     metalspace = "nikopol";
+    attic.read = true;
+    attic.push = true;
   }
 ]
