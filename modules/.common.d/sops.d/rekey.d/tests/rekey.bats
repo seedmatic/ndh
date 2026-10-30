@@ -18,15 +18,18 @@ setup() {
   printf 'a: secret-one\n' >one.yaml
   printf 'b: secret-two\n' >two.yaml
   printf 'not sealed\n' >plain.txt
+  : "a YAML file with no extension, as .secrets: sops would take it for binary"
+  printf 'c: secret-three\n' >.secrets
   sops encrypt -i one.yaml && sops encrypt -i two.yaml
-  git add .sops.yaml one.yaml two.yaml plain.txt && git commit -q -m fixture
+  sops encrypt -i --input-type yaml --output-type yaml .secrets
+  git add .sops.yaml one.yaml two.yaml .secrets plain.txt && git commit -q -m fixture
   rules "$op" "$host"
   git commit -q -am "retire the interim"
 }
 
-rules() { # <recipient>…: one rule for the yaml files
+rules() { # <recipient>…: one rule for the yaml files, one for .secrets
   local IFS=,
-  printf 'creation_rules:\n  - path_regex: "\\\\.yaml$"\n    age: "%s"\n' "$*" >.sops.yaml
+  printf 'creation_rules:\n  - path_regex: "\\\\.yaml$"\n    age: "%s"\n  - path_regex: "(^|/)\\\\.secrets$"\n    age: "%s"\n' "$*" "$*" >.sops.yaml
 }
 recipients() { yq -r '.sops.age[].recipient' "$1" | sort -u | tr '\n' ' '; }
 rekey() { run --separate-stderr bash "$BATS_TEST_DIRNAME/../rekey.sh" "$@"; }
@@ -34,12 +37,12 @@ rekey() { run --separate-stderr bash "$BATS_TEST_DIRNAME/../rekey.sh" "$@"; }
 @test "re-seals every file to its rule, stages them by name, prints no value" {
   rekey
   [ "$status" -eq 0 ]
-  [[ $output == *"re-sealed one.yaml"* && $output == *"re-sealed two.yaml"* ]]
+  [[ $output == *"re-sealed one.yaml"* && $output == *"re-sealed two.yaml"* && $output == *"re-sealed .secrets"* ]]
   [[ "$output$stderr" != *secret-* ]]
-  for f in one.yaml two.yaml; do
+  for f in one.yaml two.yaml .secrets; do
     [ "$(recipients "$f")" = "$(printf '%s\n' "$op" "$host" | sort -u | tr '\n' ' ')" ]
   done
-  [ "$(git diff --cached --name-only | sort | tr '\n' ' ')" = "one.yaml two.yaml " ]
+  [ "$(git diff --cached --name-only | sort | tr '\n' ' ')" = ".secrets one.yaml two.yaml " ]
   : "the retired identity opens neither any more, the remaining ones both"
   ! SOPS_AGE_KEY_FILE="$t/interim.txt" sops decrypt one.yaml >/dev/null 2>&1
   SOPS_AGE_KEY_FILE="$t/host.txt" sops decrypt two.yaml >/dev/null 2>&1
@@ -67,10 +70,18 @@ rekey() { run --separate-stderr bash "$BATS_TEST_DIRNAME/../rekey.sh" "$@"; }
 
 @test "mutant: a rekey that skips its postcondition stages a file still sealed to the retired recipient" {
   : "the mutant re-seals nothing and still reports success"
-  sed -e 's/^  sops updatekeys -y "\$f".*$/  :/' -e '/is not sealed to its rule.s recipients after updatekeys/d' \
+  sed -e 's/^  sops updatekeys -y --input-type "\$(typeOf "\$f")" "\$f".*$/  :/' -e '/is not sealed to its rule.s recipients after updatekeys/d' \
     "$BATS_TEST_DIRNAME/../rekey.sh" >"$t/rekey.sh"
   ! cmp -s "$BATS_TEST_DIRNAME/../rekey.sh" "$t/rekey.sh"
   run --separate-stderr bash "$t/rekey.sh"
   [ "$status" -eq 0 ]
   [[ "$(recipients one.yaml)" == *"$interim"* ]]
+}
+
+@test "mutant: a rekey that guesses the type from the extension alone skips .secrets, still sealed to the retired recipient" {
+  sed 's/^    \*) set -- "\$1" yaml json ;;$/    *) set -- "$1" binary ;;/' "$BATS_TEST_DIRNAME/../rekey.sh" >"$t/rekey.sh"
+  ! cmp -s "$BATS_TEST_DIRNAME/../rekey.sh" "$t/rekey.sh"
+  run --separate-stderr bash "$t/rekey.sh"
+  [[ $output != *"re-sealed .secrets"* ]]
+  [[ "$(recipients .secrets)" == *"$interim"* ]]
 }
