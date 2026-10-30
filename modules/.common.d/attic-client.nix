@@ -108,6 +108,9 @@ in
       extra-trusted-public-keys = publicKeys;
       # Absent until the delivery: nix then simply holds no credential for the caches.
       netrc-file = cfg.paths.netrc;
+      # A cache that does not answer (the other metalspace's, through the tunnel) must not hold a build: nix gives up
+      # on it after this and goes on with the next substituter.
+      connect-timeout = lib.mkDefault 5;
     };
   };
 }
