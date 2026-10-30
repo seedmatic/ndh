@@ -32,9 +32,8 @@ EOF
   script="${BATS_TEST_DIRNAME}/../token-mint.sh"
   d1=$(printf 'a%.0s' {1..64}) d2=$(printf 'b%.0s' {1..64}) d3=$(printf 'c%.0s' {1..64})
   export CACHE_FQDN=attic.m1 METALSPACE=m1 CACHE_NAME=seedmatic VALIDITY='14 days'
-  export TARGETS="m1 m1 $d1 ssh-ed25519 AAAA1
-m1-nixos m1 $d2 ssh-ed25519 AAAA2
-m2 m2 $d3 ssh-ed25519 AAAA3"
+  export TARGETS_FILE="$t/targets"
+  printf '%s\n' "m1 m1 $d1 ssh-ed25519 AAAA1" "m1-nixos m1 $d2 ssh-ed25519 AAAA2" "m2 m2 $d3 ssh-ed25519 AAAA3" >"$TARGETS_FILE"
 }
 
 mint() { PATH="$t/bin:$PATH" run --separate-stderr bash -euo pipefail "$script" "$t/out"; }
@@ -69,7 +68,7 @@ mint() { PATH="$t/bin:$PATH" run --separate-stderr bash -euo pipefail "$script" 
 }
 
 @test "a served directory that is not a sha256 is refused, nothing minted" {
-  export TARGETS="m1 m1 ../etc ssh-ed25519 AAAA1"
+  printf '%s\n' "m1 m1 ../etc ssh-ed25519 AAAA1" >"$TARGETS_FILE"
   mint
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not a sha256"* ]]
@@ -88,7 +87,7 @@ mint() { PATH="$t/bin:$PATH" run --separate-stderr bash -euo pipefail "$script" 
 }
 
 @test "no machine to mint for is refused" {
-  export TARGETS=""
+  : >"$TARGETS_FILE"
   mint
   [ "$status" -ne 0 ]
   [[ $stderr == *"no machine to mint for"* ]]

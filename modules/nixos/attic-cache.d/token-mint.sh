@@ -17,7 +17,7 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 # A token exists in clear only inside one pipe: atticadm into age. It is never held in a variable, never an argument,
 # never a file in clear. Each target's files are written beside, then renamed into place together.
 #
-# Env, fixed at eval: CACHE_FQDN, METALSPACE, CACHE_NAME, VALIDITY, TARGETS (one line per machine:
+# Env, fixed at eval: CACHE_FQDN, METALSPACE, CACHE_NAME, VALIDITY, TARGETS_FILE (one line per machine:
 # `<machine> <metalspace> <dir> <ssh public key, type and base64>`).
 # Usage: attic-token-mint <out dir>
 out="${1:?usage: attic-token-mint <out dir>}"
@@ -33,7 +33,7 @@ mint() { # <sub> <scope flags>... — the token on stdout, straight into the nex
   atticd-atticadm make-token --sub "$sub" --validity "$VALIDITY" "$@" </dev/null
 }
 
-[ -n "$TARGETS" ] || die "no machine to mint for (no <seat> key recorded with a current slot)"
+[ -s "$TARGETS_FILE" ] || die "no machine to mint for (no <seat> key recorded with a current slot)"
 umask 022
 mkdir -p "$out"
 # A failed mint leaves no partial ciphertext behind; the previous generation stays served.
@@ -64,6 +64,6 @@ while read -r machine machineMetalspace dir keyType keyBase64; do
     minted=$((minted + 1))
   done
   log "${machine}: minted for ${recipient}"
-done <<<"$TARGETS"
+done <"$TARGETS_FILE"
 
 log "done: ${minted} ciphertext file(s) under ${out}, valid ${VALIDITY}, nothing in clear"

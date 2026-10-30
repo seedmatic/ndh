@@ -176,10 +176,11 @@ let
           "METALSPACE=${metalspace}"
           "CACHE_NAME=${cfg.cacheName}"
           "VALIDITY=${cfg.tokens.validity}"
-          "TARGETS=${
-            lib.concatMapStringsSep "\\n" (
-              t: "${t.machine} ${t.metalspace} ${t.dir} ${t.publicKey}"
-            ) cfg.tokenTargets
+          # A file, one target per line: Environment= keeps a `\\n` as two characters, never a line break.
+          "TARGETS_FILE=${
+            pkgs.writeText "attic-token-targets" (
+              lib.concatMapStrings (t: "${t.machine} ${t.metalspace} ${t.dir} ${t.publicKey}\n") cfg.tokenTargets
+            )
           }"
         ];
         ExecStart = "${

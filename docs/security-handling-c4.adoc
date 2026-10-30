@@ -118,6 +118,9 @@ end note
 * Commit only public age recipients (`age1...`) in `.sops.yaml`.
 * Never commit private keys (`AGE-SECRET-KEY-...`).
 * Rotate/rekey encrypted files after recipient changes.
+* An endpoint consumed by the lab only, never exposed to the internet, serves plain HTTP: no TLS inside the lab.
+  The only traffic between metalspaces crosses the tailnet's WireGuard tunnel; what such an endpoint serves is
+  protected by its own means where it needs to be (a nix cache's signatures, age-sealed tokens), not by the transport.
 * An accepted lab risk reaches this host's secrets from a cluster: CAPN's Incus identity is root-equivalent on the
   NixOS guest that is the Incus member, hence on its sops identity and attic push token (operator, 2026-10-18:
   pre-existing, documented, to be treated later; measured on `incus-probe`). Its conditions, one of which is that no
