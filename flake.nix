@@ -4252,6 +4252,7 @@
                   builtins.attrNames backend.env
                 );
               kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
+              owned = [ "env" ] ++ builtins.attrNames backend.settings;
               report = pkgs.lib.concatMapStrings (
                 h:
                 pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
@@ -4266,9 +4267,9 @@
                 inherit report;
                 agents = map agent hosts;
                 activations = map activation hosts;
-                expected = builtins.toJSON {
-                  inherit (backend) env fallbackModel;
-                };
+                expected = builtins.toJSON ({ inherit (backend) env; } // backend.settings);
+                pick = "pick([${pkgs.lib.concatMapStringsSep ", " (k: ''"${k}"'') owned}])";
+                drop = "del(${pkgs.lib.concatMapStringsSep ", " (k: ".${k}") owned})";
                 # A settings.json as a seat has it: keys the activation must keep, and an old backend it must replace whole.
                 fixture = builtins.toJSON {
                   model = "opus";
@@ -4280,6 +4281,7 @@
                     AWS_PROFILE = "old";
                   };
                   fallbackModel = [ "old-model" ];
+                  promptCacheTtl = "5m";
                 };
                 sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
                 unsets = pkgs.lib.concatStringsSep " " backend.retired;
@@ -4290,7 +4292,7 @@
                 yq=${pkgs.yq-go}/bin/yq
                 canon() { $yq -p=json -o=json -I0 'sort_keys(..)'; }
                 want_backend="$(printf '%s' "$expected" | canon)"
-                want_rest="$(printf '%s' "$fixture" | $yq -p=json -o=json -I0 'del(.env, .fallbackModel) | sort_keys(..)')"
+                want_rest="$(printf '%s' "$fixture" | $yq -p=json -o=json -I0 "$drop | sort_keys(..)")"
                 for a in $activations; do
                   home="$(mktemp -d)"
                   mkdir -p "$home/.claude"
@@ -4298,9 +4300,9 @@
                   HOME="$home" DRY_RUN_CMD= ${pkgs.bash}/bin/bash -e "$a" ||
                     { echo "$a: the activation failed on the fixture" >&2; fail=1; continue; }
                   got="$home/.claude/settings.json"
-                  [ "$($yq -p=json -o=json -I0 '{"env": .env, "fallbackModel": .fallbackModel}' "$got" | canon)" = "$want_backend" ] ||
-                    { echo "$a: settings.json's env or fallbackModel differs from the backend after the activation" >&2; fail=1; }
-                  [ "$($yq -p=json -o=json -I0 'del(.env, .fallbackModel) | sort_keys(..)' "$got")" = "$want_rest" ] ||
+                  [ "$($yq -p=json -o=json -I0 "$pick" "$got" | canon)" = "$want_backend" ] ||
+                    { echo "$a: settings.json's backend keys differ from the backend after the activation" >&2; fail=1; }
+                  [ "$($yq -p=json -o=json -I0 "$drop | sort_keys(..)" "$got")" = "$want_rest" ] ||
                     { echo "$a: the activation changed settings.json keys it does not own" >&2; fail=1; }
                 done
                 for a in $agents; do

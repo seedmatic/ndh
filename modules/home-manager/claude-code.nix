@@ -29,8 +29,10 @@ let
   #
   # Intentionally carries only the model ALIAS, and no plugin: the operator
   # enables those one at a time, knowing what each changes. The alias picks the tier
-  # and the context window; the `[1m]` suffix exists nowhere else, so
-  # without it a fresh machine falls back to 200k. The model id behind the
+  # and the context window: plain `opus` is 200k, by choice (the operator,
+  # 2026-10-30): sessions ridden to ~1M re-read the whole context on every
+  # response and dominated the bill; `[1m]` stays a per-session /model
+  # choice. The model id behind the
   # tier lives in the backend env (modules/claude-code-backend-env.nix) —
   # NOT here — so the two concerns don't fight.
   #
@@ -50,14 +52,11 @@ let
   # The same ownership for the `autoMode` key: replaced whole, so a rule removed here is gone.
   autoModeFile = import ./claude-code.d/auto-mode/package.nix { inherit pkgs; };
 
-  # And for the `env` and `fallbackModel` keys: the backend, replaced whole, so a key the former backend set there
+  # And for the `env` key and the backend's other settings keys: replaced whole, so a key the former backend set there
   # (CLAUDE_CODE_USE_BEDROCK, AWS_PROFILE…) is gone at the next activation.
   backend = import ../claude-code-backend-env.nix;
   backendFile = pkgs.writeText "claude-code-backend.json" (
-    builtins.toJSON {
-      env = cfg.env;
-      inherit (backend) fallbackModel;
-    }
+    builtins.toJSON ({ env = cfg.env; } // backend.settings)
   );
 in
 {
@@ -96,12 +95,12 @@ in
 
       autoMode.enable = mkEnableOption "the auto-mode classifier rules (the `autoMode` key) in ~/.claude/settings.json";
 
-      backendSettings.enable = mkEnableOption "the backend (the `env` and `fallbackModel` keys) in ~/.claude/settings.json";
+      backendSettings.enable = mkEnableOption "the backend (the `env` key and the backend's settings keys) in ~/.claude/settings.json";
 
       seed = mkOption {
         type = types.attrs;
         default = {
-          model = "opus[1m]";
+          model = "opus";
         };
         description = ''
           Bootstrap seed copied to ~/.claude/settings.json only when that
@@ -146,7 +145,7 @@ in
         claudeSettings="$HOME/.claude/settings.json"
         if [ -f "$claudeSettings" ]; then
           claudeSettingsNew="$(mktemp)"
-          B=${backendFile} ${pkgs.yq-go}/bin/yq -p=json -o=json '.env = load(strenv(B)).env | .fallbackModel = load(strenv(B)).fallbackModel' "$claudeSettings" >"$claudeSettingsNew"
+          B=${backendFile} ${pkgs.yq-go}/bin/yq -p=json -o=json '. + load(strenv(B))' "$claudeSettings" >"$claudeSettingsNew"
           $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
           rm -f "$claudeSettingsNew"
         fi
