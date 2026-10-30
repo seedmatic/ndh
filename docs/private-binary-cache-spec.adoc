@@ -3,8 +3,8 @@
 :toclevels: 3
 :icons: font
 
-**Status:** 🟢 in service on both NixOS guests (ndh `e676ca8b`, 2026-10-30): the two caches serve and mint their
-tokens, and every machine holds its own; no machine substitutes from them or pushes to them yet (<<f7>>) +
+**Status:** 🟢 in service on the four machines (ndh `469e96eb`, 2026-10-30): the two caches serve and mint their
+tokens, and every machine reads both and pushes into its own (<<f7>>) +
 **Scope:** how the seedmatic hosts stop rebuilding the same paths, and where those paths are kept
 
 [mermaid]
@@ -20,11 +20,9 @@ flowchart LR
     nN["nikopol-nixos — NixOS guest"]:::client
     aN["📦 attic-nikopol<br/><i>attic.nikopol :80 · seedmatic-nikopol-attic-1</i>"]:::live
   end
-  aB -->|"tokens, sealed to each machine's own key"| dB & nB & dN & nN
-  aN -->|"tokens, sealed to each machine's own key"| dB & nB & dN & nN
-  dB & nB -.->|"push · F7, off"| aB
-  dN & nN -.->|"push · F7, off"| aN
-  dB & nB & dN & nN -.->|"substitute · F7, off"| aB & aN
+  dB & nB -->|"push its builds"| aB
+  dN & nN -->|"push its builds"| aN
+  aB & aN -.->|"substitute, after cache.nixos.org"| dB & nB & dN & nN
 
   classDef live fill:#dcfce7,stroke:#15803d,stroke-width:2px;
   classDef client fill:#dbeafe,stroke:#1d4ed8;
@@ -33,7 +31,7 @@ flowchart LR
 [cols="1,1,1,1",options="header"]
 |===
 | 🟩 | 🟦 | plain arrow | dotted arrow
-| in service | a machine of the fleet | in service | declared, not enabled (<<f7>>)
+| a cache, in service | a machine of the fleet | push (watch-store, own metalspace's cache) | substitution (both caches)
 |===
 
 [cols="1,3",options="header"]
@@ -49,11 +47,12 @@ healthy; nginx answers on `:80` of their fabric address
 statements
 
 | the tokens
-| minted inside each container for the four machines, sealed to each machine's own host key; every machine has pulled
-and unsealed its netrc (the read tokens of both caches) and its write token
+| minted inside each container for the four machines, sealed to each machine's own host key; every machine pulls and
+unseals its netrc (the read tokens of both caches) and its write token
 
 | reading and pushing
-| off on all four machines (`ndh.atticClient.read.enable`, `watchStore.enable`): see <<f7>>
+| on all four machines: each pushes into its own metalspace's cache and reads both; a build pushed in one metalspace is
+fetched back in the other, signed by its cache's key; an anonymous read is refused (401). See <<f7>>
 |===
 
 Every size figure marked *measured* was read on 2026-10-10 from store paths that already existed, or on 2026-10-11 in
@@ -2237,12 +2236,68 @@ signature covers the NAR hash, and sops draws a fresh IV at each encryption. A r
 be a different path, and every closure that references it would have to be rebuilt.
 
 [[f7]]
-== Reading and pushing — declared, off
+== Reading and pushing
 
-Each machine's client is declared (`modules/.common.d/attic-client.nix`), and off: `ndh.atticClient.read.enable` adds
-both caches as substituters (its own metalspace's first, priority 50, then the other's, 51; after cache.nixos.org at
-40) with the unsealed netrc, and trusts their keys; `ndh.atticClient.watchStore.enable` runs the watch-store towards
-its own metalspace's cache with its write token. Turning them on is a decision of its own, one machine first.
+[mermaid]
+....
+flowchart LR
+  M["a machine of metalspace m"]:::client
+  UP["cache.nixos.org · flox<br/><i>priority 40</i>"]:::up
+  OWN["📦 attic-m<br/><i>priority 50</i>"]:::live
+  OTH["📦 the other metalspace's attic<br/><i>priority 51, through the tunnel</i>"]:::live
+  M -->|"watch-store: every new path and its closure,<br/>minus .drv, -source and what upstream signs"| OWN
+  UP -.->|"1 · substitute"| M
+  OWN -.->|"2 · substitute, read token"| M
+  OTH -.->|"3 · substitute, read token"| M
+
+  classDef live fill:#dcfce7,stroke:#15803d,stroke-width:2px;
+  classDef client fill:#dbeafe,stroke:#1d4ed8;
+  classDef up fill:#e7ebf0,stroke:#15803d;
+....
+
+[cols="1,1,1,1",options="header"]
+|===
+| 🟩 | 🟦 | plain arrow | dotted arrow
+| our caches | a machine | push | substitution, in order
+|===
+
+What each machine does with the caches is declared beside it in `catalog/machines.nix` (`attic.read`, `attic.push`),
+both on for the four machines:
+
+[cols="1,3",options="header"]
+|===
+| Switch | What it does
+
+| `attic.read` (`ndh.atticClient.read.enable`)
+| both caches as substituters, after cache.nixos.org (40): its own metalspace's at 50, the other's at 51; their keys
+trusted; the netrc the pull unseals (`/run/ndh-attic/netrc` on NixOS, `/var/run/ndh-attic/netrc` on darwin); a cache
+that does not answer is given up after `connect-timeout` (5 s on the guests, 10 s on the darwin hosts)
+
+| `attic.push` (`ndh.atticClient.watchStore.enable`)
+| `ndh-attic-watch-store` towards its own metalspace's cache with its write token (a systemd service under
+`DynamicUser` on NixOS, a launchd daemon under `_ndh-attic` on darwin); a darwin host pushes its own `aarch64-darwin`
+builds, its guest the Linux ones
+|===
+
+Measured on 2026-10-30, the four machines on `469e96eb`:
+
+[cols="2,3",options="header"]
+|===
+| Case | Result
+
+| a build on bioskop-nixos, then on nikopol-nixos and on darwin.nikopol
+| in its own metalspace's cache within 6 to 15 s (narinfo 200 with the netrc, 401 without)
+
+| that path removed locally, then realised
+| fetched from the cache, the log naming it (« copying path … from 'http://attic.<m>/seedmatic' »), signed by its
+cache's key; from the other metalspace too, Linux and darwin
+
+| a path upstream serves, with attic.bioskop down
+| no slower (upstream comes first)
+
+| a path no cache holds, with attic.bioskop down
+| about 5.6 s more, then « will be built »
+|===
 
 [[open-questions]]
 == Open questions
