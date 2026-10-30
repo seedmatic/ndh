@@ -1347,9 +1347,9 @@
               };
               statements = ./catalog/private-caches.d/statements;
             };
-          # An attic token is sealed only to an access point's SERVING public (slots.nix `current`), never to a pending
-          # slot's, which keys-reconcile has not verified yet (🛡️, 2026-10-25). A mutant taking the newest slot must be
-          # caught.
+          # An attic token is sealed only to its machine's OWN SERVING public (slots.nix `current`), never to a pending
+          # slot's, which keys-reconcile has not verified yet (🛡️, 2026-10-25), nor to its seat's (2026-10-30: a guest
+          # sealed to its seat's key could never open its tokens). A mutant taking the newest slot must be caught.
           attic-token-targets-serving-slot =
             let
               lib = nixpkgs.lib;
@@ -1357,12 +1357,12 @@
                 atticFqdn = "attic.m1";
                 nixosHostname = "m1-nixos";
               };
-              keys.m1 = {
+              slotsOf = serving: {
                 type = "ssh-ed25519";
                 slots = {
                   "26-10-17" = {
                     state = "serving";
-                    public = "AAAASERVING";
+                    public = serving;
                   };
                   "99-01-01" = {
                     state = "pending";
@@ -1370,10 +1370,18 @@
                   };
                 };
               };
+              keys = {
+                m1 = slotsOf "AAAASEAT";
+                m1-nixos = slotsOf "AAAAGUEST";
+              };
               targets = import ./modules/.common.d/attic-tokens.d/targets.nix { inherit lib keys netplan; };
               # The mutant: the newest slot, as tokenTargets once took it.
               newest = map (t: t // { publicKey = "ssh-ed25519 AAAAPENDING"; }) targets;
-              servedOnly = ts: lib.all (t: t.publicKey == "ssh-ed25519 AAAASERVING") ts;
+              own = {
+                m1 = "ssh-ed25519 AAAASEAT";
+                m1-nixos = "ssh-ed25519 AAAAGUEST";
+              };
+              servedOnly = ts: lib.all (t: t.publicKey == own.${t.machine}) ts;
             in
             assert lib.assertMsg (
               map (t: t.machine) targets == [
@@ -1382,7 +1390,7 @@
               ]
             ) "attic-token-targets-serving-slot: not the seat's two machines";
             assert lib.assertMsg (servedOnly targets)
-              "attic-token-targets-serving-slot: a token sealed to a pending slot's public";
+              "attic-token-targets-serving-slot: a token sealed to another key than its machine's own serving one";
             assert lib.assertMsg (
               !(servedOnly newest)
             ) "attic-token-targets-serving-slot: the newest-slot mutant was not caught";

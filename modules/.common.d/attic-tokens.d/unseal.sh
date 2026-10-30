@@ -16,9 +16,9 @@ unset BASH_ENV # a caller's BASH_ENV holding `set -x` would trace every child ba
 # delivery keeps), loudly; with neither, the run fails and the tokens in place stay as they are. Nothing it
 # decrypts is ever printed.
 #
-# Header, fixed at evaluation: store, dir, netrc, writeToken, identityMode (keyfile: an age identity file;
-# hostkey: an ssh host key, converted in memory), identity, writeTokenOwner, cacheFqdn (metalspace → its cache's
-# fabric name).
+# Header, fixed at evaluation: store, dir, netrc, writeToken, identity (this machine's ssh host key, converted in
+# memory: every machine's tokens are sealed to its own), writeTokenOwner, cacheFqdn (metalspace → its cache's fabric
+# name).
 
 umask 077
 shopt -s nullglob
@@ -35,10 +35,7 @@ if ((${#fragments[@]} == 0)) && [[ ! -e "$store/write.token.age" ]]; then
 fi
 
 decrypt() { # <ciphertext> → its clear text on stdout
-  case $identityMode in
-    keyfile) age -d -i "$identity" "$1" ;;
-    hostkey) age -d -i <(ssh-to-age -private-key -i "$identity") "$1" ;;
-  esac
+  age -d -i <(ssh-to-age -private-key -i "$identity") "$1"
 }
 jwt='^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
 valid() { # <clear file> <kind: read <fqdn> | write> — with or without a final newline

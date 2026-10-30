@@ -13,11 +13,11 @@ let
     inherit pkgs lib;
     inherit (ndh.context.catalog) netplan;
   };
-  # Its identity is the sops keyFile: its access point's age identity, the one the tokens are sealed to.
+  # Its identity is its own host key, the one its tokens are sealed to, converted in memory: a guest decrypts with its
+  # served key and holds no age file.
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
-    identityMode = "keyfile";
-    identity = config.sops.age.keyFile;
+    identity = config.ndh.hostKey.file;
   };
 in
 {

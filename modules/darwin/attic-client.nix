@@ -23,7 +23,6 @@ let
   # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
-    identityMode = "hostkey";
     identity = config.ndh.hostKey.file;
   };
   fetch = tokens.fetch {
