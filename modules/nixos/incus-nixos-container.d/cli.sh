@@ -125,14 +125,16 @@ devices_ok() {
   [ "$(with_declared "$config" "$info" | yq -o json -I0 'sort_keys(..) | .devices')" = "$(yq -o json -I0 'sort_keys(..) | .devices' <<<"$config")" ]
 }
 
-# point_store {name} {dir}: the 4 store devices' sources and raw.lxc's pre-start hook point into {dir}, in ONE write of
+# point_store {name} {dir} [{declared as}]: the 4 store devices' sources and raw.lxc's pre-start hook point into {dir},
+# and its devices are its declaration's (that of {declared as}, by default {name}: an undo writes to the old name the
+# new one's declaration), in ONE write of
 # the whole config, which Incus validates as its final state. Never key by key: Incus re-validates every device on each
 # config write, and refuses a recursive one whose source is missing, so while one device still named a dir a rename
 # had moved away, every per-key write was refused, the undo's too (bioskop-nixos, 2026-10-25). The declared devices are
 # set in the same write (with_declared). A no-op when it is all so.
 point_store() {
   local config device src info
-  info=$(instance "$1")
+  info=$(instance "${3:-$1}")
   config=$(incus config show --project "$PROJECT" "$1")
   # Pointed only when ALL FOUR sources are store_devices' and the hook names the dir: a half-pointed container (one
   # device right, another still on the old dir) is the very state a cut leaves, and must be rewritten (🛡️).
@@ -562,7 +564,7 @@ unrename_steps() {
     zfs set mountpoint="$old_dir" "$old_dataset"
   fi
   # Its devices back on the old dir, now that the dataset is mounted there again: one write, as in rename.
-  point_store "$2" "$old_dir"
+  point_store "$2" "$old_dir" "$1"
   # The old name's store, brought back by the store script itself: that name's unit is gone with the switch.
   store_mount "$old_dir" "$2" "$(field "$info" privileged)"
   incus start --project "$PROJECT" "$2"
