@@ -9,16 +9,15 @@ setup() {
   t=$BATS_TEST_TMPDIR
   store=$t/store dir=$t/run/ndh-attic
   mkdir -p "$store"
-  age-keygen -o "$t/identity" 2>/dev/null
-  recipient="$(age-keygen -y "$t/identity")"
   ssh-keygen -q -t ed25519 -N '' -C host -f "$t/host"
-  header keyfile "$t/identity" >"$t/unseal"
+  recipient="$(ssh-to-age -i "$t/host.pub")"
+  header "$t/host" >"$t/unseal"
 }
 
-header() { # <identityMode> <identity> [writeTokenOwner]
+header() { # <identity> [writeTokenOwner]
   printf 'set -euo pipefail\n'
-  printf 'store=%q dir=%q netrc=%q writeToken=%q identityMode=%q identity=%q writeTokenOwner=%q\n' \
-    "$store" "$dir" "$dir/netrc" "$dir/write.token" "$1" "$2" "${3:-root}"
+  printf 'store=%q dir=%q netrc=%q writeToken=%q identity=%q writeTokenOwner=%q\n' \
+    "$store" "$dir" "$dir/netrc" "$dir/write.token" "$1" "${2:-root}"
   printf 'declare -A cacheFqdn=([m1]=attic.m1 [m2]=attic.m2)\n'
   cat "$BATS_TEST_DIRNAME/../unseal.sh"
 }
@@ -31,7 +30,7 @@ mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 unseal() { run --separate-stderr bash "$t/unseal"; }
 no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* ]]; }
 
-@test "every cache's fragment and the write token are unsealed into the tmpfs dir, 0400, by this machine's age identity" {
+@test "every cache's fragment and the write token are unsealed into the tmpfs dir, 0400, by this machine's host key" {
   seal "$store/netrc.m1.age" "$(read_fragment m1)"
   seal "$store/netrc.m2.age" "$(read_fragment m2)"
   seal "$store/write.token.age" "whead.wbody.wsig"
@@ -49,7 +48,7 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
 
 @test "a write token owner other than root gets write.token, the dir lets it through but not list, netrc stays put" {
   # The sandbox is not root: the build user stands for the watch-store's account.
-  header keyfile "$t/identity" "$(id -un)" >"$t/unseal"
+  header "$t/host" "$(id -un)" >"$t/unseal"
   seal "$store/netrc.m1.age" "$(read_fragment m1)"
   seal "$store/write.token.age" "whead.wbody.wsig"
   unseal
@@ -61,12 +60,12 @@ no_token_in_output() { [[ $output$stderr != *body* && $output$stderr != *wbody* 
   no_token_in_output
 }
 
-@test "a darwin host's identity is its host key, converted in memory" {
-  header hostkey "$t/host" >"$t/unseal"
-  seal "$store/netrc.m1.age" "$(read_fragment m1)" "$(ssh-to-age -i "$t/host.pub")"
+@test "mutant: a token sealed to another machine's key (its seat's) does not unseal" {
+  ssh-keygen -q -t ed25519 -N '' -C seat -f "$t/seat"
+  seal "$store/netrc.m1.age" "$(read_fragment m1)" "$(ssh-to-age -i "$t/seat.pub")"
   unseal
-  [ "$status" -eq 0 ]
-  [ "$(<"$dir/netrc")" = "$(read_fragment m1)" ]
+  [ "$status" -ne 0 ]
+  [ ! -e "$dir/netrc" ]
 }
 
 @test "nothing delivered: nothing to do, nothing created" {
