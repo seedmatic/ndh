@@ -2333,6 +2333,91 @@
                 SOPS_AGE_KEY_FILE=$PWD/id.txt SOPS_AGE_KEY_CMD=false sops decrypt f.yaml >/dev/null
                 touch $out
               '';
+          # Every fleet name and every alias to one, on both seats, presents the operator key alone: a name that falls to
+          # the default identities fails auth, and OpenSSH's PerSourcePenalties then resets the seat's connections.
+          ssh-fleet-aliases-operator-identity =
+            let
+              lib = nixpkgs.lib;
+              seats = [
+                "bioskop"
+                "nikopol"
+              ];
+              configOf =
+                seat:
+                let
+                  c = self.darwinConfigurations.${seat}.config;
+                in
+                {
+                  text = c.home-manager.users.${c.profile.user.name}.home.file.".ssh/config".text;
+                  key = c.sshPaths.privKeyFile;
+                };
+              # The Host blocks of an ssh config: each one's patterns and lines.
+              blocks =
+                text:
+                lib.foldl' (
+                  acc: line:
+                  let
+                    m = builtins.match "[[:space:]]*Host[[:space:]]+(.*)" line;
+                  in
+                  if m != null then
+                    acc
+                    ++ [
+                      {
+                        patterns = lib.filter (p: p != "") (lib.splitString " " (lib.head m));
+                        lines = [ ];
+                      }
+                    ]
+                  else if acc == [ ] then
+                    acc
+                  else
+                    lib.init acc ++ [ ((lib.last acc) // { lines = (lib.last acc).lines ++ [ (lib.trim line) ]; }) ]
+                ) [ ] (lib.splitString "\n" text);
+              lacking =
+                seat:
+                let
+                  c = configOf seat;
+                  bs = blocks c.text;
+                  presents =
+                    name:
+                    lib.any (
+                      b:
+                      lib.elem name b.patterns
+                      && lib.elem "IdentitiesOnly yes" b.lines
+                      && lib.elem "IdentityFile ${c.key}" b.lines
+                    ) bs;
+                  aliases = lib.concatMap (h: [
+                    "nixos.${h}"
+                    "darwin.${h}"
+                  ]) seats;
+                in
+                lib.filter (n: !(presents n)) (self.fleetHostNames ++ aliases);
+              found = lib.filter (s: lacking s != [ ]) seats;
+              # The mutant: bioskop's config with IdentitiesOnly taken out of every block naming nikopol-nixos.
+              mutantLacks =
+                let
+                  c = configOf "bioskop";
+                  bs = map (
+                    b:
+                    if lib.elem "nikopol-nixos" b.patterns then
+                      b // { lines = lib.remove "IdentitiesOnly yes" b.lines; }
+                    else
+                      b
+                  ) (blocks c.text);
+                in
+                !(lib.any (
+                  b:
+                  lib.elem "nikopol-nixos" b.patterns
+                  && lib.elem "IdentitiesOnly yes" b.lines
+                  && lib.elem "IdentityFile ${c.key}" b.lines
+                ) bs);
+            in
+            assert lib.assertMsg (found == [ ])
+              "ssh-fleet-aliases-operator-identity: ${
+                lib.concatMapStringsSep "; " (s: "${s} lacks it for ${toString (lacking s)}") found
+              }";
+            assert lib.assertMsg mutantLacks
+              "ssh-fleet-aliases-operator-identity: the mutant without IdentitiesOnly for nikopol-nixos was not caught";
+            pkgs.runCommand "ssh-fleet-aliases-operator-identity" { } "touch $out";
           sops-rekey-bats = import ./modules/.common.d/sops.d/rekey.d/tests/package.nix { inherit pkgs; };
           keys-reconcile-bats = import ./modules/.common.d/keys-reconcile.d/tests/package.nix {
             inherit pkgs;
