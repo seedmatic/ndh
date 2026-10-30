@@ -9,7 +9,22 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "sops-rekey: not i
 [[ "$(pwd -P)" == "$(cd "$root" && pwd -P)" ]] || { echo "sops-rekey: run it from the repository's root, ${root}" >&2; exit 1; }
 [[ -f .sops.yaml ]] || { echo "sops-rekey: no .sops.yaml here" >&2; exit 1; }
 
-encrypted() { [[ "$(sops filestatus "$1" 2>/dev/null)" == *'"encrypted":true'* ]]; }
+# A sealed file's input type: from its extension, else the first that sops reads as sealed. sops would take a file
+# with no extension (.secrets) as binary, and find no envelope in it.
+typeOf() { # <file>: yaml or json on stdout, or nothing for a file that is not sealed
+  local t name="${1##*/}"
+  : "a leading dot names a file, it is no extension: .secrets has none"
+  case "${name#.}" in
+    *.yaml | *.yml) set -- "$1" yaml ;;
+    *.json) set -- "$1" json ;;
+    *.*) return 1 ;;
+    *) set -- "$1" yaml json ;;
+  esac
+  for t in "${@:2}"; do
+    [[ "$(sops filestatus --input-type "$t" "$1" 2>/dev/null)" == *'"encrypted":true'* ]] && { echo "$t"; return 0; }
+  done
+  return 1
+}
 ruleOf() { # <file>: the age recipients of the first creation rule whose path_regex matches it, sorted
   local n i regex
   n=$(yq -r '.creation_rules | length' .sops.yaml)
@@ -30,7 +45,7 @@ while IFS= read -r f; do
   ruleOf "$f" >/dev/null || continue
   [[ -z "$(git status --porcelain -- "$f")" ]] || { echo "sops-rekey: ${f} has uncommitted changes: commit or restore it first" >&2; exit 1; }
 done < <(git ls-files)
-mapfile -t files < <(git ls-files | while IFS= read -r f; do [[ -f $f ]] && encrypted "$f" && printf '%s\n' "$f"; done)
+mapfile -t files < <(git ls-files | while IFS= read -r f; do [[ -f $f ]] && typeOf "$f" >/dev/null && printf '%s\n' "$f"; done)
 ((${#files[@]} > 0)) || { echo "sops-rekey: no sealed file in this repository" >&2; exit 1; }
 for f in "${files[@]}"; do
   ruleOf "$f" >/dev/null || { echo "sops-rekey: ${f} matches no creation rule" >&2; exit 1; }
@@ -42,7 +57,7 @@ for f in "${files[@]}"; do
     echo "current  ${f}"
     continue
   fi
-  sops updatekeys -y "$f" >/dev/null 2>&1 || { echo "sops-rekey: sops updatekeys failed on ${f} (its identity, or its rule)" >&2; exit 1; }
+  sops updatekeys -y --input-type "$(typeOf "$f")" "$f" >/dev/null 2>&1 || { echo "sops-rekey: sops updatekeys failed on ${f} (its identity, or its rule)" >&2; exit 1; }
   [[ "$(recipientsOf "$f")" == "$(ruleOf "$f")" ]] || { echo "sops-rekey: ${f} is not sealed to its rule's recipients after updatekeys" >&2; exit 1; }
   echo "re-sealed ${f}"
   changed+=("$f")
