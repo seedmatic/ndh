@@ -56,12 +56,13 @@ case "\$1 \$2" in
   "config device")
     n=\$(name "\${@:4}") ; f=\$i/\$n.dev; touch "\$f"
     case "\$3" in
+      # config device add --project P <name> <device> <type> <key=value>...
       add)
-        d=\$6 src= rec=0
-        for a in "\${@:7}"; do case "\$a" in source=*) src=\${a#source=} ;; recursive=true) rec=1 ;; esac; done
+        d=\$7 src= rec=0
+        for a in "\${@:9}"; do case "\$a" in source=*) src=\${a#source=} ;; recursive=true) rec=1 ;; esac; done
         { cat "\$f"; echo "\$d \${src:--} \$rec"; } >"\$f.new"; write "\$n" "\$f.new" ;;
       set)
-        d=\$6 src=\${7#source=}
+        d=\$7 src=\${8#source=}
         awk -v d="\$d" -v s="\$src" '\$1 == d {\$2 = s} {print}' "\$f" >"\$f.new"; write "\$n" "\$f.new" ;;
     esac ;;
   "config set")
