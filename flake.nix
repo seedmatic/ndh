@@ -1562,17 +1562,18 @@
                   ]
                   ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
                 }).config.systemd.services.attic-token-mint.serviceConfig;
-              # The lines the mint reads: its targets file's, else what TARGETS in Environment= holds verbatim.
+              # The lines the mint reads: its targets file's when it has one, else TARGETS as Environment= keeps it.
               lines =
                 c:
                 let
-                  sc = mint c;
-                  env = lib.findFirst (e: lib.hasPrefix "TARGETS=" e) null (sc.Environment or [ ]);
+                  env = (mint c).Environment or [ ];
+                  file = lib.findFirst (lib.hasPrefix "TARGETS_FILE=") null env;
+                  inline = lib.findFirst (lib.hasPrefix "TARGETS=") "" env;
                   text =
-                    if sc ? LoadCredential then
-                      builtins.readFile (lib.last (lib.splitString ":" (lib.head (lib.toList sc.LoadCredential))))
+                    if file != null then
+                      builtins.readFile (lib.removePrefix "TARGETS_FILE=" file)
                     else
-                      lib.removePrefix "TARGETS=" env;
+                      lib.removePrefix "TARGETS=" inline;
                 in
                 lib.filter (l: l != "") (lib.splitString "\n" text);
               wrong = lib.filterAttrs (
