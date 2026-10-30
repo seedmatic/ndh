@@ -120,7 +120,8 @@ end note
 * Rotate/rekey encrypted files after recipient changes.
 * Every endpoint the catalog declares states its `exposure` (`internal` or `public`), and `checks.endpoint-exposure`
   holds its scheme to it: an `internal` endpoint is plain unless TLS is its protocol (`inherentTls`), a `public` one is
-  encrypted (https, ssh). The only traffic between metalspaces crosses the tailnet's WireGuard tunnel; what an internal
+  encrypted (https, ssh). The public Funnels are rke2lab's, held by its `FunnelExposureRenderTest`: each is served by
+  Tailscale with TLS for its own name. The only traffic between metalspaces crosses the tailnet's WireGuard tunnel; what an internal
   endpoint serves is protected by its own means where it needs to be (a nix cache's signatures, age-sealed tokens).
 * An accepted lab risk reaches this host's secrets from a cluster: CAPN's Incus identity is root-equivalent on the
   NixOS guest that is the Incus member, hence on its sops identity and attic push token (operator, 2026-10-18:
