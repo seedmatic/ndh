@@ -100,12 +100,41 @@ store_mount() {
   CONTAINER_DIR=$1 CONTAINER_NAME=$2 CONTAINER_PRIVILEGED=$3 LAYER_CONTRACT=$LAYER_CONTRACT "$BASH" "$STORE_SCRIPT"
 }
 
-# point_store {name} {dir}: the 4 store devices' sources and raw.lxc's pre-start hook point into {dir}, in ONE write of
+# declared_devices {info}: the devices the module declares for the instance, as Incus holds them: every value a string
+# and, unprivileged, every disk shifted, as create adds them. JSON, one object.
+declared_devices() {
+  local shift=false
+  [ "$(field "$1" privileged)" = true ] || shift=true
+  SHIFT=$shift yq -p json -o json -I0 '(.devices // {}) | with_entries(.value |= (with_entries(.value |= tostring)
+    | (select(.type == "disk" and strenv(SHIFT) == "true") | .shift = "true") // .))' <<<"$1"
+}
+
+# with_declared {config yaml} {info}: the config with its devices set to the 4 store devices, Incus's own root disk and
+# exactly the declared ones: a declared device missing is added, one that differs replaced, one no longer declared
+# removed (2026-10-30: a disk device renamed in the module never reached bioskop's running cache container).
+with_declared() {
+  DECLARED="$(declared_devices "$2")" yq '.devices |= (with_entries(select(.key == "nix" or .key == "nix-lower-store"
+    or .key == "nix-lower-db" or .key == "nix-upper" or .key == "root")) * (strenv(DECLARED) | fromjson)) | .devices style=""' <<<"$1"
+}
+
+# devices_ok {name}: whether the instance's non-store devices are exactly the declared ones.
+devices_ok() {
+  local info config
+  info=$(instance "$1") || return 1
+  config=$(incus config show --project "$PROJECT" "$1") || return 1
+  [ "$(with_declared "$config" "$info" | yq -o json -I0 'sort_keys(..) | .devices')" = "$(yq -o json -I0 'sort_keys(..) | .devices' <<<"$config")" ]
+}
+
+# point_store {name} {dir} [{declared as}]: the 4 store devices' sources and raw.lxc's pre-start hook point into {dir},
+# and its devices are its declaration's (that of {declared as}, by default {name}: an undo writes to the old name the
+# new one's declaration), in ONE write of
 # the whole config, which Incus validates as its final state. Never key by key: Incus re-validates every device on each
 # config write, and refuses a recursive one whose source is missing, so while one device still named a dir a rename
-# had moved away, every per-key write was refused, the undo's too (bioskop-nixos, 2026-10-25). A no-op when it is so.
+# had moved away, every per-key write was refused, the undo's too (bioskop-nixos, 2026-10-25). The declared devices are
+# set in the same write (with_declared). A no-op when it is all so.
 point_store() {
-  local config device src
+  local config device src info
+  info=$(instance "${3:-$1}")
   config=$(incus config show --project "$PROJECT" "$1")
   # Pointed only when ALL FOUR sources are store_devices' and the hook names the dir: a half-pointed container (one
   # device right, another still on the old dir) is the very state a cut leaves, and must be rewritten (🛡️).
@@ -114,7 +143,10 @@ point_store() {
     [ "$(DEV="$device" yq -r '.devices[strenv(DEV)].source // ""' <<<"$config")" = "$src" ] || pointed=0
   done < <(store_devices "$2")
   [[ $(yq -r '.config."raw.lxc" // ""' <<<"$config") == *" $2" ]] || pointed=0
+  [ "$(with_declared "$config" "$info" | yq -o json -I0 'sort_keys(..) | .devices')" = "$(yq -o json -I0 'sort_keys(..) | .devices' <<<"$config")" ] ||
+    pointed=0
   [ "$pointed" = 0 ] || return 0
+  config=$(with_declared "$config" "$info")
   while read -r device src; do
     config=$(DEV="$device" SRC="$src" yq '.devices[strenv(DEV)].source = strenv(SRC)' <<<"$config")
   done < <(store_devices "$2")
@@ -268,6 +300,11 @@ declared_ok() {
       ok=1
     fi
   done <<<"$profiles"
+  # Its devices too: a module that only renames a device must still reach the container, by a delivery.
+  if [ "$(where_is "$1")" != absent ] && ! devices_ok "$1"; then
+    echo "its devices are not the declared ones"
+    ok=1
+  fi
   return "$ok"
 }
 
@@ -527,7 +564,7 @@ unrename_steps() {
     zfs set mountpoint="$old_dir" "$old_dataset"
   fi
   # Its devices back on the old dir, now that the dataset is mounted there again: one write, as in rename.
-  point_store "$2" "$old_dir"
+  point_store "$2" "$old_dir" "$1"
   # The old name's store, brought back by the store script itself: that name's unit is gone with the switch.
   store_mount "$old_dir" "$2" "$(field "$info" privileged)"
   incus start --project "$PROJECT" "$2"
