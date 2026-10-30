@@ -62,7 +62,7 @@ case "\$1 \$2" in
         for a in "\${@:9}"; do case "\$a" in source=*) src=\${a#source=} ;; recursive=true) rec=1 ;; esac; done
         { cat "\$f"; echo "\$d \${src:--} \$rec"; } >"\$f.new"; write "\$n" "\$f.new" ;;
       set)
-        d=\$7 src=\${8#source=}
+        d=\$6 src=\${7#source=}
         awk -v d="\$d" -v s="\$src" '\$1 == d {\$2 = s} {print}' "\$f" >"\$f.new"; write "\$n" "\$f.new" ;;
     esac ;;
   "config set")
