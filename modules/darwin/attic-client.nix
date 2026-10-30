@@ -21,22 +21,6 @@ let
     inherit (ndh.context.catalog) netplan;
   };
   # Its identity is its own host key, the access point the tokens are sealed to, converted in memory.
-  # The fleet TLS authority's trusted roots (every slot not marked compromised): the only ones the pull accepts.
-  tlsRoots =
-    let
-      authorities = config.ndh.keysYaml.authorities or { };
-      trusted = config.ndh.keysYaml.trustedAuthoritySlots;
-    in
-    lib.concatMap
-      (
-        name:
-        lib.concatMap (m: lib.optional (m ? ca_crt) m.ca_crt) (lib.attrValues (trusted.${name} or { }))
-      )
-      (
-        lib.filter (name: lib.elem "tls-authority" (authorities.${name}.usage or [ ])) (
-          lib.attrNames authorities
-        )
-      );
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
     identityMode = "hostkey";
@@ -46,7 +30,6 @@ let
     machine = config.networking.hostName;
     inherit (cfg) metalspace;
     inherit (config.ndh.keysYaml) keys;
-    inherit tlsRoots;
     unsealer = unseal;
   };
 in
@@ -84,17 +67,13 @@ in
         };
       };
 
-      system.activationScripts.postActivation.text = lib.mkAfter (
-        ''
-          install -d -o ${account} -g ${account} -m 0700 ${home}
-        ''
-        + lib.optionalString (cfg.metalspace != null) tokens.waitingNotice
-      );
+      system.activationScripts.postActivation.text = lib.mkAfter ''
+        install -d -o ${account} -g ${account} -m 0700 ${home}
+      '';
 
       # Each machine pulls its own tokens from every cache (F6): at load and daily; the unseal runs at the end of
-      # each pull. A machine outside the fleet's inventory has none to pull, nor any while no cache has a recorded
-      # leaf (no TLS listener yet).
-      launchd.daemons.ndh-attic-tokens = lib.mkIf (cfg.metalspace != null && tokens.served != { }) {
+      # each pull. A machine outside the fleet's inventory has none to pull.
+      launchd.daemons.ndh-attic-tokens = lib.mkIf (cfg.metalspace != null) {
         command = lib.getExe fetch;
         serviceConfig = {
           Label = ndh.store.mkLaunchdLabel "attic-tokens";
@@ -124,7 +103,7 @@ in
           default-server = "own"
 
           [servers.own]
-          endpoint = "https://${cfg.ownCache}/"
+          endpoint = "http://${cfg.ownCache}/"
           token-file = "${cfg.paths.writeToken}"
           EOF
           exec ${lib.getExe' config.ndh.atticPkgs.client "attic"} watch-store ${lib.escapeShellArg "own:${cfg.cacheName}"}

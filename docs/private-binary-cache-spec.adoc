@@ -223,17 +223,16 @@ flowchart LR
   nb["bioskop-nixos — fabric gateway<br/><i>exports its /21</i>"]:::router
   a["📦 attic.bioskop<br/><i>on bioskop's fabric-br, 172.16.x</i>"]:::cache
 
-  c -->|"① outside the tunnel, under TLS — virtual interfaces, inside the corporate bare-metal"| nn
+  c -->|"① outside the tunnel, plain HTTP — virtual interfaces, inside the corporate bare-metal"| nn
   nn ==>|"② WireGuard tunnel (tailnet), direct over the LAN"| nb
-  nb -->|"③ outside the tunnel, under TLS — fabric-br, inside bioskop-nixos"| a
+  nb -->|"③ outside the tunnel, plain HTTP — fabric-br, inside bioskop-nixos"| a
 
   classDef clear fill:#fee2e2,stroke:#b91c1c;
   classDef router fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px;
   classDef cache fill:#ddd9f2,stroke:#5b52b8,stroke-width:2px;
 ....
 
-Legend: red — a hop outside the tunnel (in clear at the network layer, its payload under attic's TLS
-leaf), on virtual interfaces inside one bare-metal; blue — the two fabric gateways (each NixOS guest
+Legend: red — a hop outside the tunnel, in plain HTTP on virtual interfaces inside one bare-metal; blue — the two fabric gateways (each NixOS guest
 exports its metalspace's fabric /21 and accepts its peer's, see `modules/nixos/baremetal-segment.nix`);
 violet — the cache container. Thick = encrypted by the tailnet: the **only** traffic that crosses the
 LAN the two NixOS guests share. Names resolve by split DNS: the zones `.bioskop` and `.nikopol`
@@ -254,9 +253,9 @@ negative
 the tunnel's underlay — never a place to serve from: anything addressed to it, or to a `.local`
 name, crosses the LAN outside the tunnel
 
-| attic serves TLS with a **leaf from mammoth-skate tls** (decided by the operator on 2026-10-15)
-| hop ③ is shared with every Incus container on fabric-br, cluster nodes included; the leaf keeps the
-read and push tokens end to end
+| attic serves **plain HTTP**, on port 80 (decided by the operator on 2026-10-30, replacing the TLS leaf of 2026-10-15)
+| the only hop that leaves a metalspace is the WireGuard tunnel, and the lab is private: what attic serves is signed
+by its cache key, and the tokens travel as age ciphertext. An in-cluster attic is planned to take over
 
 | the cache container's dataset `tank/nerd/attic` has a quota of **8G**, and a retention of **6
 hours** (both decided by the operator on 2026-10-15)
@@ -2049,15 +2048,6 @@ an eval check refuses it in `trusted-public-keys` before `acceptedBy`
 | attic itself, which makes a cache's keypair natively. Losing the disk is a rotation: a new key, and
 its public half accepted again
 
-| attic's **TLS key**, for its leaf from mammoth-skate tls
-| generated **inside the container**, on its persistent disk (an Incus disk device), never in the
-store and never in `keys.yaml`
-| the S6 model (`incus-cluster-cert-renew`): the operator seat fetches a CSR, checks that its SANs equal the
-names fixed at eval from the catalog (the attic fabric FQDN) and that its key is the served one,
-signs it through an fd under a pinned template (CN, SANs, digitalSignature, serverAuth, CA:false,
-`--not-after`), keeps a ledger of what it signed, installs it; renewal by the same tool. The leaf's
-key is **ECDSA P-256** (the darwin and nix curl stacks); keyEncipherment only if RSA were chosen
-
 | atticd's **server secret** (`ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64`, the JWT signing secret)
 | generated **by the container at its first start**, on its persistent disk, mode 0400; it never
 leaves the container, with no sops and no store
@@ -2077,9 +2067,9 @@ option B), replacing the sshfs drop-box of 2026-10-16, which was never built: wi
 nothing needs the periodic refresh it was for
 | atticadm, inside each metalspace's cache container (`attic-token-mint`), piped straight into age to each target
 machine's access point (its CURRENT slot, never a pending one), into `/var/lib/attic-tokens/<sha256 of the machine
-and its public>/`, which nginx serves at `/tokens/` (static, no listing, `no-store`, `.age` only, same 443 and fabric
+and its public>/`, which nginx serves at `/tokens/` (static, no listing, `no-store`, `.age` only, same port 80 and fabric
 allow-list). Each machine's `ndh-attic-tokens-fetch` (NixOS: daily timer and boot; darwin: launchd at load and
-daily) pulls its own directory from every cache over the fleet's TLS, bounded, required to be age, keeps the previous
+daily) pulls its own directory from every cache in plain HTTP, bounded, required to be age, keeps the previous
 generation and runs the unseal. No push channel, no operator gesture. Identities never take this path: they stay on
 S2
 |===
@@ -2245,9 +2235,9 @@ sequenceDiagram
 [source,bash]
 ----
 # a path known to be in the cache: {hash} of the fill's last system closure
-curl -s -o /dev/null -w '%{http_code}\n' "https://{attic}/{cache}/{hash}.narinfo"
+curl -s -o /dev/null -w '%{http_code}\n' "http://{attic}/{cache}/{hash}.narinfo"
 # → 401  (anonymous: refused)
-curl -s -o /dev/null -w '%{http_code}\n' --netrc-file {netrc} "https://{attic}/{cache}/{hash}.narinfo"
+curl -s -o /dev/null -w '%{http_code}\n' --netrc-file {netrc} "http://{attic}/{cache}/{hash}.narinfo"
 # → 200  (read token)
 ----
 
@@ -2466,7 +2456,6 @@ be a different path, and every closure that references it would have to be rebui
   unverified. If it does not: a privileged container or a `raw.idmap`.
 * **Dataset creation**: does disko create `tank/nerd/attic` on a pool that is already formatted, or
   does an activation step have to?
-* **The TLS leaf behind attic's fabric URL**: from `mammoth-skate-tls`, like the control URL?
 * **`nix store copy-sigs` from a local store**: whether it accepts `local?root=…` as its source, for
   the layer key.
 

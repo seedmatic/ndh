@@ -2,14 +2,13 @@
 # Incus container module (docs/private-binary-cache-spec.adoc, _One private cache per metalspace_).
 #
 # Every secret is generated inside the container, on its persistent disk, and never leaves it: the
-# server secret at first start, the cache's signing key by attic when the cache is created, the TLS
-# key with a CSR the operator seat signs under mammoth-skate tls (spec, _Secrets_). The NixOS guest
-# only provides the disk: `tank/nerd/attic`, under its quota, split into three directories that
-# reach the container as three disk devices.
+# server secret at first start, the cache's signing key by attic when the cache is created (spec,
+# _Secrets_). The NixOS guest only provides the disk: `tank/nerd/attic`, under its quota, split into
+# three directories that reach the container as three disk devices.
 #
-# attic listens on loopback; nginx serves it in TLS on the container's fabric address only, and the
-# container admits only the fabrics and the tailnet: the NixOS guest forwards a LAN packet routed at
-# the fabric, so listening on the fabric alone does not keep the LAN out.
+# attic listens on loopback; nginx serves it in plain HTTP on the container's fabric address only (no TLS in the lab,
+# the operator, 2026-10-30), and the container admits only the fabrics and the tailnet: the NixOS guest forwards a LAN
+# packet routed at the fabric, so listening on the fabric alone does not keep the LAN out.
 {
   config,
   lib,
@@ -30,25 +29,22 @@ let
   # Container-side paths of the three directories of the dataset.
   stateDir = "/var/lib/private/atticd";
   secretsDir = "/var/lib/attic-secrets";
-  tlsDir = "/var/lib/attic-tls";
+  # Shared with the guest: where attic-cache-ensure writes the cache's public for the guest to publish.
+  sharedDir = "/var/lib/attic-shared";
   envFile = "${secretsDir}/server.env";
   # The served tokens: ciphertext only, rewritten at each mint, so no persistent device; a delivery starts it empty and
   # the timer's first tick (Persistent) fills it.
   tokensDir = "/var/lib/attic-tokens";
   loopback = "127.0.0.1:8080";
   metalspace = if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn;
-  # The TLS leaf keys-reconcile signed for this cache, if the catalog records one.
-  recordedLeaf = ../../catalog/attic-leaves + "/${metalspace}.crt";
   # The guest's half of keys-reconcile's attic-cache-key class: on the ndh trampoline and logger, as host-key-generate.
   publish = ndh.store.installBinScript "attic-publish" (
     pkgs.replaceVars ./attic-cache.d/publish.sh (
       lib.mapAttrs (_: lib.escapeShellArg) {
         machine = config.networking.hostName;
         cache = metalspace;
-        inherit (cfg) fqdn;
         keyNameRegex = ndh.context.catalog.privateCaches.keyNamePattern metalspace;
-        sharedPublic = "${paths.hostTls}/cache-key.public";
-        sharedCsr = "${paths.hostTls}/request.csr";
+        sharedPublic = "${paths.hostShared}/cache-key.public";
         base = "/var/lib/ndh";
         owner = "0";
         inherit (paths) publishDir;
@@ -56,7 +52,6 @@ let
       }
       // {
         inherit (ndh.context) nixBashTrampoline;
-        openssl = "${pkgs.openssl}/bin/openssl";
       }
     )
   );
@@ -86,7 +81,7 @@ let
     # The NixOS guest forwards a LAN packet routed at the fabric with its source kept (measured on
     # the probe, 2026-10-16), so the container itself admits only the fabrics and the tailnet.
     networking.firewall.extraInputRules = ''
-      ip saddr { ${lib.concatStringsSep ", " cfg.allowedSources} } tcp dport 443 accept
+      ip saddr { ${lib.concatStringsSep ", " cfg.allowedSources} } tcp dport 80 accept
     '';
 
     services.atticd = {
@@ -95,7 +90,7 @@ let
       environmentFile = envFile;
       settings = {
         listen = loopback;
-        api-endpoint = "https://${cfg.fqdn}/";
+        api-endpoint = "http://${cfg.fqdn}/";
         garbage-collection = {
           interval = "15 minutes";
           default-retention-period = cfg.retention;
@@ -127,37 +122,16 @@ let
       };
     };
 
-    systemd.services.attic-tls-key = {
-      description = "The cache container's TLS key and its CSR";
-      requiredBy = [ "nginx.service" ];
-      before = [ "nginx.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${
-          script "attic-tls-key" [
-            pkgs.coreutils
-            pkgs.openssl
-          ] ./attic-cache.d/tls-key.sh
-        }/bin/attic-tls-key ${tlsDir} ${cfg.fqdn} nginx";
-      };
-    };
-
     services.nginx = {
       enable = true;
       recommendedProxySettings = true;
-      recommendedTlsSettings = true;
       virtualHosts.${cfg.fqdn} = {
-        onlySSL = true;
         listen = [
           {
             addr = fabricIp;
-            port = 443;
-            ssl = true;
+            port = 80;
           }
         ];
-        sslCertificate = "${tlsDir}/cert.pem";
-        sslCertificateKey = "${tlsDir}/key.pem";
         locations."/" = {
           proxyPass = "http://${loopback}";
           extraConfig = ''
@@ -181,21 +155,8 @@ let
       };
     };
     systemd.services.nginx = {
-      # Until the operator seat installs the signed leaf, nothing serves: attic stays on loopback.
-      unitConfig.ConditionPathExists = "${tlsDir}/cert.pem";
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
-    };
-    # The guest's switch writes the leaf keys-reconcile recorded (catalog/attic-leaves); the container takes it by
-    # itself: attic-tls-key checks it certifies the held key, then nginx serves it.
-    systemd.paths.attic-tls-leaf = {
-      wantedBy = [ "multi-user.target" ];
-      pathConfig.PathChanged = "${tlsDir}/cert.pem";
-    };
-    systemd.services.attic-tls-leaf = {
-      description = "Take a new TLS leaf: check it against the held key, then serve it";
-      serviceConfig.Type = "oneshot";
-      script = "systemctl restart attic-tls-key.service nginx.service";
     };
 
     # The tokens, minted here for every target and pulled by each machine (F6): weekly, valid twice that, so a missed
@@ -285,7 +246,7 @@ let
             cfg.keyName
             cfg.retention
             "http://${loopback}"
-            "${tlsDir}/cache-key.public"
+            "${sharedDir}/cache-key.public"
           ]
           ++ cfg.upstreamKeyNames
         );
@@ -318,7 +279,7 @@ in
       default = metalspaceEntry.atticFqdn;
       defaultText = lib.literalExpression "netplan.baremetal.\${metalspace}.atticFqdn";
       example = "attic.bioskop";
-      description = "The cache's fabric name: the TLS leaf's only SAN, and attic's API endpoint.";
+      description = "The cache's fabric name: nginx's server name, and attic's API endpoint.";
     };
 
     address = lib.mkOption {
@@ -339,7 +300,7 @@ in
     dataset = lib.mkOption {
       type = lib.types.str;
       default = "tank/nerd/attic";
-      description = "ZFS dataset holding the container's state, secrets and TLS key.";
+      description = "ZFS dataset holding the container's state and secrets, and the directory it shares with the guest.";
     };
 
     quota = lib.mkOption {
@@ -416,7 +377,7 @@ in
       ++ lib.optional (metalspaceEntry.vzHostKind == "nix-managed") "${metalspaceEntry.vzHostAddress}/32";
       defaultText = lib.literalExpression "the guest's netGateway, and the vz-host's /30 end when it is nix-managed";
       description = ''
-        Sources the cache container accepts on :443: the access point's machines as they arrive,
+        Sources the cache container accepts on :80: the access point's machines as they arrive,
         never the LAN, the cluster nodes or the other fabric instances. Through the tunnel the
         tailnet ACL is the only gate that tells machines apart.
       '';
@@ -494,20 +455,15 @@ in
       # missing. Set host side at each delivery, never from the container's activation: unprivileged, its root
       # cannot write in the host-owned /nix bind, and the link failed there silently (🎛️, 2026-10-22).
       profiles.${config.ndh.bringupRuntime.profileDir} = config.ndh.bringupRuntime.runtimePackage;
-      # The state, secrets and TLS key, all in one dataset: atticd migrates its DB forward on start, so a rollback
+      # The state, secrets and shared directory, all in one dataset: atticd migrates its DB forward on start, so a rollback
       # must bring the data back with the system (🛡️'s condition, the operator's ZFS-snapshot form, 2026-10-22).
       stateDatasets = [ cfg.dataset ];
-      # attic-cache-ensure is the one that proves the cache private and its key well named. nginx waits on its TLS
-      # leaf (ConditionPathExists), so before that leaf it is skipped, not failed.
+      # attic-cache-ensure is the one that proves the cache private and its key well named.
       health.units = [
         "atticd.service"
         "attic-server-secret.service"
-        "attic-tls-key.service"
         "attic-cache-ensure.service"
-        {
-          unit = "nginx.service";
-          kind = "conditional";
-        }
+        "nginx.service"
       ];
       devices = {
         fabric = {
@@ -526,15 +482,15 @@ in
           source = "${paths.hostRoot}/secrets";
           path = secretsDir;
         };
-        attic-tls = {
+        attic-shared = {
           type = "disk";
-          source = paths.hostTls;
-          path = tlsDir;
+          source = paths.hostShared;
+          path = sharedDir;
         };
       };
     };
 
-    # The cache's public, written by attic-cache-ensure on the tls device this guest shares, is signed here with the key
+    # The cache's public, written by attic-cache-ensure on the device this guest shares, is signed here with the key
     # this guest serves and published for the seat (keys-reconcile, class attic-cache-key). At every activation, and
     # whenever the container rewrites it: the path is a hint, the activation the gate, so a missed trigger waits one
     # switch at most. Never fatal: nothing reads the publication until keys-reconcile collects it.
@@ -543,30 +499,13 @@ in
       supportsDryActivation = false;
       text = ''
         if ! ${pkgs.bash}/bin/bash ${publish}/bin/attic-publish; then
-          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key or TLS CSR; the next activation retries" >&2
-        fi
-      '';
-    };
-    # The leaf keys-reconcile recorded for this cache, delivered by the switch: copied onto the tls device only when it
-    # differs, so an unchanged generation restarts nothing in the container. Without a recorded leaf, nothing is
-    # written and nginx stays off (its ConditionPathExists).
-    system.activationScripts.ndhAtticLeaf = lib.mkIf (builtins.pathExists recordedLeaf) {
-      deps = [ "specialfs" ];
-      supportsDryActivation = false;
-      text = ''
-        if ! cmp -s ${recordedLeaf} ${paths.hostTls}/cert.pem; then
-          install -m 0644 ${recordedLeaf} ${paths.hostTls}/cert.pem.new &&
-            mv -f ${paths.hostTls}/cert.pem.new ${paths.hostTls}/cert.pem ||
-            echo "[attic-leaf] FAILED to install ${cfg.fqdn}'s recorded leaf; the next activation retries" >&2
+          echo "[attic-publish] FAILED to publish ${cfg.cacheName}'s public key; the next activation retries" >&2
         fi
       '';
     };
     systemd.paths.ndh-attic-publish = {
       wantedBy = [ "multi-user.target" ];
-      pathConfig.PathChanged = [
-        "${paths.hostTls}/cache-key.public"
-        "${paths.hostTls}/request.csr"
-      ];
+      pathConfig.PathChanged = "${paths.hostShared}/cache-key.public";
     };
     systemd.services.ndh-attic-publish = {
       description = "Publish the cache container's public key, signed by this guest";
@@ -597,7 +536,7 @@ in
         # maps atticd's StateDirectory): closed here, nothing of this NixOS guest walks into them.
         chmod 0700 ${paths.hostRoot}
         install -d -m 0700 ${paths.hostRoot}/state ${paths.hostRoot}/secrets
-        install -d -m 0755 ${paths.hostTls}
+        install -d -m 0755 ${paths.hostShared}
       '';
     };
   };

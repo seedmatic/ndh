@@ -1,22 +1,22 @@
 #!/usr/bin/env -S bash -euo pipefail
 # @codebase
 # ndh-attic-publish: this NixOS guest publishes what its cache container produced, for the seat to collect
-# (keys-reconcile): the cache's public key (class attic-cache-key) and the CSR of its TLS key (class attic-tls-csr).
-# Rendered by pkgs.replaceVars, each value shell-quoted: machine, cache, fqdn (the cache's fabric name), keyNameRegex
-# (the catalog's keyNamePattern for this metalspace), sharedPublic and sharedCsr (the files the container writes on the
-# disk device it shares with this guest), base (the root of the directory walk), owner (0: root), publishDir, hostKey
-# (the key this guest's sshd serves, whose certificate keys.yaml records).
+# (keys-reconcile): the cache's public key (class attic-cache-key).
+# Rendered by pkgs.replaceVars, each value shell-quoted: machine, cache, keyNameRegex (the catalog's keyNamePattern for
+# this metalspace), sharedPublic (the file the container writes on the disk device it shares with this guest), base
+# (the root of the directory walk), owner (0: root), publishDir, hostKey (the key this guest's sshd serves, whose
+# certificate keys.yaml records).
 #
-# The shared files are HOSTILE input: the container's root writes them. Each is read only if it is a regular file, not
-# a link, and only its first bytes, into this run's own directory; that copy is the one checked, hashed and signed, so
-# the container cannot swap a file between the check and the signature. Each statement binds its artifact to THIS
-# guest (namespace seedmatic-attic), not to the container: root in the container can hand any well-formed artifact.
+# The shared file is HOSTILE input: the container's root writes it. It is read only if it is a regular file, not a
+# link, and only its first bytes, into this run's own directory; that copy is the one checked, hashed and signed, so
+# the container cannot swap the file between the check and the signature. The statement binds the public to THIS
+# guest (namespace seedmatic-attic), not to the container: root in the container can hand any well-formed public.
 #
-# Idempotent, at every activation and on every write of a shared file: the same content re-signs to the same files.
-# Prints names, the cache, the public and the CSR's name only.
+# Idempotent, at every activation and on every write of the shared file: the same content re-signs to the same files.
+# Prints names, the cache and the public only.
 source @nixBashTrampoline@
 
-readonly machine=@machine@ cache=@cache@ fqdn=@fqdn@ keyNameRegex=@keyNameRegex@ sharedPublic=@sharedPublic@ sharedCsr=@sharedCsr@
+readonly machine=@machine@ cache=@cache@ keyNameRegex=@keyNameRegex@ sharedPublic=@sharedPublic@
 readonly base=@base@ owner=@owner@ publishDir=@publishDir@ hostKey=@hostKey@
 
 die() {
@@ -84,18 +84,6 @@ main() {
     printf '[ndh-attic-publish] %s: the container has not written its public yet\n' "$cache" >&2
   fi
 
-  : "the TLS key's CSR: one PEM request, self-signed, naming exactly the cache's fabric name"
-  if take "$sharedCsr" 4096 "$work/csr.read"; then
-    @openssl@ req -in "$work/csr.read" -noout -verify >/dev/null 2>&1 ||
-      die "${sharedCsr} is not one CSR that verifies: nothing published"
-    @openssl@ req -in "$work/csr.read" -out "$work/csr" >/dev/null 2>&1 || die "re-encoding ${sharedCsr} failed"
-    [[ "$(@openssl@ req -in "$work/csr" -noout -subject -nameopt RFC2253 2>/dev/null)" == "subject=CN=${fqdn}" ]] ||
-      die "${sharedCsr}'s subject is not CN=${fqdn}: nothing published"
-    sign attic-tls-csr "$work/csr" "${publishDir}/attic-${cache}.tls-csr" csr
-    printf '[ndh-attic-publish] %s TLS CSR published by %s: CN=%s\n' "$cache" "$machine" "$fqdn" >&2
-  else
-    printf '[ndh-attic-publish] %s: the container has not written its CSR yet\n' "$cache" >&2
-  fi
   rm -rf "$work"
   trap - EXIT
 }

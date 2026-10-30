@@ -1,8 +1,7 @@
 #!/usr/bin/env bats
 # ndh-attic-publish on throwaway keys: the guest reads what its cache container wrote on their shared disk device — the
-# cache's public and its TLS key's CSR — as hostile input (a regular file, not a link, a bounded read into its own
-# copy), checks that copy (a public named as the catalog accepts it; a CSR that verifies and names exactly the cache),
-# and publishes it with a statement it signs with the key it serves (namespace seedmatic-attic), hashing the copy it
+# cache's public — as hostile input (a regular file, not a link, a bounded read into its own copy), checks that copy (a
+# public named as the catalog accepts it), and publishes it with a statement it signs with the key it serves (namespace seedmatic-attic), hashing the copy it
 # checked; idempotent; nothing published from anything else.
 
 bats_require_minimum_version 1.5.0
@@ -13,8 +12,6 @@ setup() {
   ssh-keygen -q -t ed25519 -N "" -C served -f "$t/served"
   good="seedmatic-m1-attic-1:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
   printf '%s\n' "$good" >"$t/shared/cache-key.public"
-  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$t/tls.key" 2>/dev/null
-  openssl req -new -key "$t/tls.key" -subj /CN=attic.m1 -addext subjectAltName=DNS:attic.m1 -out "$t/shared/request.csr"
   render
 }
 
@@ -23,14 +20,14 @@ render() {
   : "${NDH_TRAMPOLINE:?the ndh bash trampoline}"
   local -A vars=(
     [nixBashTrampoline]="$NDH_TRAMPOLINE"
-    [machine]=m1-nixos [cache]=m1 [fqdn]=attic.m1 [keyNameRegex]='seedmatic-m1-attic-[0-9]+'
-    [sharedPublic]="$t/shared/cache-key.public" [sharedCsr]="$t/shared/request.csr" [openssl]="$(command -v openssl)"
+    [machine]=m1-nixos [cache]=m1 [keyNameRegex]='seedmatic-m1-attic-[0-9]+'
+    [sharedPublic]="$t/shared/cache-key.public"
     [base]="$t/var" [owner]="$(id -u)" [publishDir]="$t/var/attic/published" [hostKey]="$t/served"
   )
   local text k
   text="$(cat "$BATS_TEST_DIRNAME/../publish.sh")"
   for k in "${!vars[@]}"; do
-    if [[ $k == nixBashTrampoline || $k == openssl ]]; then text="${text//@$k@/${vars[$k]}}"; else text="${text//@$k@/$(printf '%q' "${vars[$k]}")}"; fi
+    if [[ $k == nixBashTrampoline ]]; then text="${text//@$k@/${vars[$k]}}"; else text="${text//@$k@/$(printf '%q' "${vars[$k]}")}"; fi
   done
   printf '%s\n' "$text" >"$t/publish"
   ! grep -q '@[a-zA-Z]*@' "$t/publish"
@@ -76,48 +73,6 @@ nothing_published() { [ ! -e "$(pub public)" ] && [ ! -e "$(pub statement.sig)" 
   [ "$status" -eq 0 ]
   [[ $stderr == *"has not written its public yet"* ]]
   nothing_published
-}
-
-csr() { echo "$t/var/attic/published/attic-m1.tls-csr.$1"; }
-
-@test "the CSR is published with its statement, signed by the served key, class attic-tls-csr" {
-  run --separate-stderr bash "$t/publish"
-  [ "$status" -eq 0 ]
-  openssl req -in "$(csr csr)" -noout -verify 2>/dev/null
-  [ "$(openssl req -in "$(csr csr)" -noout -pubkey)" = "$(openssl pkey -in "$t/tls.key" -pubout)" ]
-  [ "$(cat "$(csr statement)")" = "$(printf 'seedmatic-attic v1\nclass attic-tls-csr\ncache m1\nmachine m1-nixos\nsha256 %s' "$(sha256sum "$(csr csr)" | cut -d' ' -f1)")" ]
-  printf 'm1-nixos %s\n' "$(cut -d' ' -f1,2 "$t/served.pub")" >"$t/allowed"
-  ssh-keygen -q -Y verify -f "$t/allowed" -I m1-nixos -n seedmatic-attic -s "$(csr statement.sig)" <"$(csr statement)"
-  [[ $stderr == *"m1 TLS CSR published by m1-nixos: CN=attic.m1"* ]]
-}
-
-@test "mutant: a CSR for another name, or that does not verify, is refused" {
-  openssl req -new -key "$t/tls.key" -subj /CN=attic.m2 -addext subjectAltName=DNS:attic.m2 -out "$t/shared/request.csr"
-  run --separate-stderr bash "$t/publish"
-  [ "$status" -ne 0 ]
-  [[ $stderr == *"subject is not CN=attic.m1"* ]]
-  [ ! -e "$(csr csr)" ]
-  printf 'not a csr\n' >"$t/shared/request.csr"
-  run --separate-stderr bash "$t/publish"
-  [ "$status" -ne 0 ]
-  [[ $stderr == *"is not one CSR that verifies"* ]]
-  [ ! -e "$(csr csr)" ]
-}
-
-@test "mutant: a CSR that is a symlink is refused" {
-  cp "$t/shared/request.csr" "$t/elsewhere.csr"
-  rm -f "$t/shared/request.csr"
-  ln -s "$t/elsewhere.csr" "$t/shared/request.csr"
-  run --separate-stderr bash "$t/publish"
-  [ "$status" -ne 0 ]
-  [[ $stderr == *"is not a regular file (a symlink?)"* ]]
-  [ ! -e "$(csr csr)" ]
-}
-
-@test "the CSR's private key is never published nor printed" {
-  run --separate-stderr bash "$t/publish"
-  ! grep -rq 'PRIVATE KEY' "$t/var/attic/published" || false
-  [[ $output$stderr != *"PRIVATE KEY"* ]]
 }
 
 @test "mutant: a shared file that is a symlink is refused, its target never read" {

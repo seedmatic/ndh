@@ -3,8 +3,8 @@
 # metalspace's. Both are OFF until the tokens can be delivered: they are read from FIXED paths that
 # the token delivery (modules/.common.d/attic-tokens.d) fills, and nothing here mints one.
 #
-# The caches are named by the catalog (`atticFqdn`), and served under the fleet's TLS root, which
-# security.pki already trusts. A cache's public key enters `trusted-public-keys` only once accepted for
+# The caches are named by the catalog (`atticFqdn`), and served in plain HTTP on the fabric (no TLS in the lab: what
+# a cache serves is signed by its key, and its tokens travel as age ciphertext). A cache's public key enters `trusted-public-keys` only once accepted for
 # this machine's kind (catalog/private-caches.nix): the keys are read from the catalog, never given here.
 #
 # Platform-agnostic: the paths and the watch-store's service live in modules/{darwin,nixos}/attic-client.nix.
@@ -18,7 +18,7 @@ let
   cfg = config.ndh.atticClient;
   netplan = ndh.context.catalog.netplan;
   publicKeys = ndh.context.catalog.privateCaches.readKeysFor cfg.kind;
-  url = fqdn: "https://${fqdn}/${cfg.cacheName}";
+  url = fqdn: "http://${fqdn}/${cfg.cacheName}";
   # Its own metalspace's cache first: the other one is reached through the tunnel. Both after the
   # upstream and public tiers (cache.nixos.org's priority is 40).
   priority = fqdn: if fqdn == cfg.ownCache then 50 else 51;

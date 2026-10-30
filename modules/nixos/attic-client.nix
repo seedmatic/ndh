@@ -14,22 +14,6 @@ let
     inherit (ndh.context.catalog) netplan;
   };
   # Its identity is the sops keyFile: its access point's age identity, the one the tokens are sealed to.
-  # The fleet TLS authority's trusted roots (every slot not marked compromised): the only ones the pull accepts.
-  tlsRoots =
-    let
-      authorities = config.ndh.keysYaml.authorities or { };
-      trusted = config.ndh.keysYaml.trustedAuthoritySlots;
-    in
-    lib.concatMap
-      (
-        name:
-        lib.concatMap (m: lib.optional (m ? ca_crt) m.ca_crt) (lib.attrValues (trusted.${name} or { }))
-      )
-      (
-        lib.filter (name: lib.elem "tls-authority" (authorities.${name}.usage or [ ])) (
-          lib.attrNames authorities
-        )
-      );
   unseal = tokens.unseal {
     inherit (cfg) paths writeTokenOwner;
     identityMode = "keyfile";
@@ -55,15 +39,6 @@ in
 
     # A machine outside the fleet's inventory (a generic bringup image) has no token to pull.
     (lib.mkIf (cfg.metalspace != null) {
-      system.activationScripts.ndhAtticTokensWaiting = lib.mkIf (tokens.waitingNotice != "") {
-        deps = [ ];
-        supportsDryActivation = false;
-        text = tokens.waitingNotice;
-      };
-    })
-
-    # Nor while no cache can answer: no recorded leaf, no TLS listener (attic-cache.nix), so nothing to pull yet.
-    (lib.mkIf (cfg.metalspace != null && tokens.served != { }) {
       # The tokens rest as ciphertext; their tmpfs paths are filled at boot and at every pull, once the identity is
       # placed. Each machine pulls its own from every cache (F6): daily, and at boot after the identity; the unseal
       # runs at the end of each pull.
@@ -83,7 +58,6 @@ in
               machine = config.networking.hostName;
               inherit (cfg) metalspace;
               inherit (config.ndh.keysYaml) keys;
-              inherit tlsRoots;
               unsealer = unseal;
             }
           );
@@ -129,7 +103,7 @@ in
           default-server = "own"
 
           [servers.own]
-          endpoint = "https://${cfg.ownCache}/"
+          endpoint = "http://${cfg.ownCache}/"
           token-file = "$CREDENTIALS_DIRECTORY/write.token"
           EOF
           exec ${lib.getExe' config.ndh.atticPkgs.client "attic"} watch-store ${lib.escapeShellArg "own:${cfg.cacheName}"}

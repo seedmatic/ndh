@@ -3,12 +3,9 @@
 # recorded old public F1 is verified against and the files that gain its recipient), the machine list ndh-switch
 # reaches them by, and keys.json. Nothing is read from a working tree or an argument. Then the attic cache keys
 # (class attic-cache-key): every declared cache (atticCaches, one per guest that enables ndh.atticCache) whose
-# metalspace the catalog records no key for, verified against the guest's RECORDED serving host key. Then the attic
-# TLS leaves (class attic-tls-csr): every declared cache, with its recorded leaf (catalog/attic-leaves/<ms>.crt) or
-# none; plan itself reads that leaf (no import-from-derivation) and measures only a cache whose leaf is missing, does
-# not chain to the authority, or expires within 30 days. Both attic classes wait for their guest's host key: a cache
-# enters only once its guest serves a host key and none is pending, so window 1 binds host keys and the next one, after
-# the switch, the attic material under the key now served.
+# metalspace the catalog records no key for, verified against the guest's RECORDED serving host key. A cache waits for
+# its guest's host key: it enters only once its guest serves a host key and none is pending, so window 1 binds host keys
+# and the next one, after the switch, the cache key under the key now served.
 {
   pkgs,
   ndh,
@@ -86,24 +83,6 @@ let
           else
             "";
       }
-    ) readyCaches
-    ++ map (
-      c:
-      let
-        host = roles (keys.${c.machine} or { });
-        leaf = ../../../catalog/attic-leaves + "/${c.metalspace}.crt";
-      in
-      {
-        class = "attic-tls-csr";
-        inherit (c) machine fqdn dir;
-        cache = c.metalspace;
-        servingPublic =
-          if (host.current.state or "") == "serving" then
-            "${(keys.${c.machine}).type or "ssh-ed25519"} ${host.current.public}"
-          else
-            "";
-        recordedLeaf = if builtins.pathExists leaf then "${leaf}" else "";
-      }
     ) readyCaches;
 in
 ndh.store.installBinScript "keys-reconcile" (
@@ -117,9 +96,7 @@ ndh.store.installBinScript "keys-reconcile" (
       pkgs.gnugrep
       pkgs.gnused
       pkgs.openssh
-      pkgs.openssl
       pkgs.ssh-to-age
-      pkgs.step-cli
       pkgs.yq-go
     ];
     revision = lib.escapeShellArg revision;
