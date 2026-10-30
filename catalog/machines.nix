@@ -14,6 +14,7 @@
     kind = "nixos";
     metalspace = "bioskop";
     attic.read = true;
+    attic.push = true;
   }
   {
     name = "bioskop";
