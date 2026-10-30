@@ -69,6 +69,8 @@ in
 
     ownCache = lib.mkOption {
       type = lib.types.str;
+      default = netplan.baremetal.${cfg.metalspace}.atticFqdn;
+      defaultText = lib.literalExpression "netplan.baremetal.\${metalspace}.atticFqdn";
       example = "attic.bioskop";
       description = "This machine's own metalspace's cache: read first, and the one its watch-store pushes to.";
     };
