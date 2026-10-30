@@ -41,7 +41,6 @@ source @declare@
 source @close@
 source @retire@
 source @classes@/attic-cache-key.sh
-source @classes@/attic-tls-csr.sh
 
 # A refusal goes to the operator's terminal as well: the logger sends stderr to the unified log, where nobody reads it.
 say_refused() { # <message>

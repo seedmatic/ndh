@@ -17,8 +17,6 @@ pkgs.runCommand "keys-reconcile-bats"
       hostname
       openssh
       sops
-      step-cli
-      openssl
       ssh-to-age
       yq-go
     ];

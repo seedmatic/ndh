@@ -1472,61 +1472,11 @@
               stopped mutant != [ ]
             ) "incus-container-store-survives-removal: the mutant stopped on removal was not caught";
             pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
-          # No token pull where no cache can answer: a cache's nginx waits for its recorded TLS leaf, so the machines pull
-          # from the caches whose leaf catalog/attic-leaves/ holds, install no pull while there is none, and say at
-          # activation which caches still wait, the leaf being the operator's next gesture. Derived from that directory,
-          # so the window that records a leaf needs no edit here. The control, a fixture leaf for bioskop: that cache
-          # alone is served, and only nikopol's is said to wait.
-          attic-tokens-wait-for-leaf =
-            let
-              lib = nixpkgs.lib;
-              tokensFor =
-                leaves:
-                import ./modules/.common.d/attic-tokens.d/package.nix {
-                  inherit pkgs lib leaves;
-                  inherit (catalogData) netplan;
-                };
-              today = tokensFor ./catalog/attic-leaves;
-              fixture = tokensFor ./modules/.common.d/attic-tokens.d/tests/leaves-fixture;
-              names = lib.attrNames catalogData.netplan.baremetal;
-              recorded = lib.filter (n: builtins.pathExists (./catalog/attic-leaves + "/${n}.crt")) names;
-              waiting = lib.subtractLists recorded names;
-              guests = map (n: self.nixosConfigurations."${n}-nixos".config) names;
-              seats = map (n: self.darwinConfigurations.${n}.config) names;
-              waitsFor =
-                text:
-                lib.filter (
-                  n: lib.hasInfix "no TLS leaf recorded for ${catalogData.netplan.baremetal.${n}.atticFqdn}:" text
-                ) names;
-            in
-            assert lib.assertMsg (lib.attrNames today.served == recorded)
-              "attic-tokens-wait-for-leaf: served ${toString (lib.attrNames today.served)}, recorded leaves ${toString recorded}";
-            assert lib.assertMsg
-              (lib.all (c: (c.systemd.services ? ndh-attic-tokens) == (recorded != [ ])) guests)
-              "attic-tokens-wait-for-leaf: a guest's token pull does not follow the recorded leaves (${toString recorded})";
-            assert lib.assertMsg
-              (lib.all (c: (c.launchd.daemons ? ndh-attic-tokens) == (recorded != [ ])) seats)
-              "attic-tokens-wait-for-leaf: a darwin host's token pull does not follow the recorded leaves (${toString recorded})";
-            assert lib.assertMsg
-              (lib.all (
-                c: waitsFor (c.system.activationScripts.ndhAtticTokensWaiting or { text = ""; }).text == waiting
-              ) guests)
-              "attic-tokens-wait-for-leaf: a guest does not say exactly which caches wait (${toString waiting})";
-            assert lib.assertMsg
-              (lib.all (c: waitsFor c.system.activationScripts.postActivation.text == waiting) seats)
-              "attic-tokens-wait-for-leaf: a darwin host does not say exactly which caches wait (${toString waiting})";
-            assert lib.assertMsg (
-              lib.attrNames fixture.served == [ "bioskop" ]
-            ) "attic-tokens-wait-for-leaf: the fixture leaf does not serve bioskop alone";
-            assert lib.assertMsg (
-              waitsFor fixture.waitingNotice == [ "nikopol" ]
-            ) "attic-tokens-wait-for-leaf: with bioskop's leaf, only nikopol must wait";
-            pkgs.runCommand "attic-tokens-wait-for-leaf" { } "touch $out";
           # The cache container's nginx.conf passes `nginx -t`. nixpkgs' build-time validation (gixy) does not parse it
           # as nginx does, and nginx never starts before a leaf is recorded, so an unquoted `{64}` in a location regex
           # stayed hidden until the first leaf (2026-10-29: `unknown directive "64}/…"`, :443 closed on both caches).
-          # On aarch64-linux the real nginx parses the real file, its leaf and key pointed at a throwaway pair; where the
-          # guests' files cannot be built, the declaration: a location regex holding `{` must be quoted.
+          # On aarch64-linux the real nginx parses the real file; where the guests' files cannot be built, the
+          # declaration: a location regex holding `{` must be quoted.
           attic-nginx-config-parses =
             let
               lib = nixpkgs.lib;
@@ -1571,24 +1521,17 @@
             else
               pkgs.runCommand "attic-nginx-config-parses"
                 {
-                  nativeBuildInputs = [
-                    pkgs.nginx
-                    pkgs.openssl
-                  ];
+                  nativeBuildInputs = [ pkgs.nginx ];
                   passAsFile = [ "confs" ];
                   confs = lib.concatLines (lib.mapAttrsToList line guests);
                 }
                 ''
-                  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=throwaway \
-                    -keyout key.pem -out cert.pem -days 1 2>/dev/null
                   rc=0
                   while read -r name conf; do
-                    # Runtime paths the sandbox has not: the leaf and key, the pid, the logs and the temp dirs, and the
-                    # user nginx drops to.
-                    sed -e "s|/var/lib/attic-tls/cert.pem|$PWD/cert.pem|g" -e "s|/var/lib/attic-tls/key.pem|$PWD/key.pem|g" \
-                      -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
+                    # Runtime paths the sandbox has not: the pid, the logs and the temp dirs, and the user nginx drops to.
+                    sed -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
                       -e '/^\s*user /d' -e "s|^http {|http { access_log $PWD/access.log;|" \
-                      -e 's/^\(\s*listen \)[0-9.]*:[0-9]*/\1127.0.0.1:18443/' "$conf" >"$name.conf"
+                      -e 's/^\(\s*listen \)[0-9.]*:[0-9]*/\1127.0.0.1:18080/' "$conf" >"$name.conf"
                     # -e and access_log: nginx opens its compiled-in logs (under /var/log/nginx) when no path is set. The
                     # listen moves to loopback: `nginx -t` binds, and the fabric address is not the sandbox's.
                     if ! nginx -t -q -p "$PWD" -e "$PWD/error.log" -c "$PWD/$name.conf"; then
@@ -1599,50 +1542,6 @@
                   [ "$rc" = 0 ] && touch $out
                   exit "$rc"
                 '';
-          # Each recorded attic TLS leaf is one keys-reconcile signed over its guest's CSR: a hand-placed leaf has no
-          # chain to the TLS authority's slot nor a CSR statement its guest signed. A forged leaf must be caught.
-          attic-leaves-recorded =
-            let
-              lib = nixpkgs.lib;
-              keys = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys;
-              authorities = self.darwinConfigurations.bioskop.config.ndh.keysYaml.authorities;
-              roles = import ./modules/.common.d/host-key.d/slots.nix { inherit lib; };
-              tls = lib.head (
-                lib.attrNames (lib.filterAttrs (_: a: lib.elem "tls-authority" (a.usage or [ ])) authorities)
-              );
-              slot = lib.head (
-                lib.sort lib.lessThan (
-                  lib.attrNames (lib.filterAttrs (_: s: !(s.compromised or false)) authorities.${tls}.slots)
-                )
-              );
-              signers = lib.listToAttrs (
-                lib.concatMap
-                  (
-                    c:
-                    let
-                      a = c.config.ndh.atticCache;
-                      machine = c.config.networking.hostName;
-                      key = keys.${machine} or { };
-                    in
-                    lib.optional a.enable {
-                      name = a.metalspace;
-                      value = {
-                        inherit machine;
-                        inherit (a) fqdn;
-                        public = "${key.type or "ssh-ed25519"} ${(roles key).current.public or ""}";
-                      };
-                    }
-                  )
-                  (
-                    map (m: self.nixosConfigurations.${m.name}) (lib.filter (m: m.kind == "nixos") catalogData.machines)
-                  )
-              );
-            in
-            import ./catalog/attic-leaves.d/recorded.nix {
-              inherit pkgs signers;
-              leaves = ./catalog/attic-leaves;
-              caCrt = authorities.${tls}.slots.${slot}.ca_crt;
-            };
           # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
           # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
           attic-cache-key-name =
@@ -2179,7 +2078,7 @@
             pkgs.runCommand "bootstrap-read-from-pending-only" { } "touch $out";
           # A class entry waits for its guest's host key (window 1 → switch → window 2, the operator's order, 2026-10-26):
           # attic material enters the batch only when its guest serves a host key and none is pending, predicted from
-          # keys.yaml. g1 serves with none pending: its cache key and leaf enter. g2 serves with a pending next key, g3
+          # keys.yaml. g1 serves with none pending: its cache key enters. g2 serves with a pending next key, g3
           # serves none: theirs wait, and their host keys are the batch.
           keys-reconcile-batch-waits-for-host-keys =
             let
@@ -2259,7 +2158,6 @@
             assert lib.assertMsg (
               lib.sort lib.lessThan seen == [
                 "attic-cache-key:g1"
-                "attic-tls-csr:g1"
                 "host-key:g2"
                 "host-key:g3"
               ]

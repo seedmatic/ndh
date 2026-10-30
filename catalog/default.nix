@@ -129,8 +129,8 @@ rec {
           fabricFqdn = networkBlueprint.hostFacts.${host}.fabricFqdn;
           # Likewise the `<host>-nixos` hostname, which the cert's SAN carries as its primary name.
           nixosHostname = networkBlueprint.hostFacts.${host}.hostname;
-          # The metalspace's cache container: the only SAN of its TLS leaf, signed by keys-reconcile
-          # (class attic-tls-csr), and its attic API endpoint (modules/nixos/attic-cache.nix).
+          # The metalspace's cache container: its fabric name, nginx's server name and its attic API endpoint
+          # (modules/nixos/attic-cache.nix).
           atticFqdn = "attic.${host}";
           # Its static fabric address: an instance pin of slot 0, top-down below nnh's collector /30
           # (.124/30 on nikopol); no DHCP, the container states it (modules/nixos/attic-cache.nix).
@@ -493,7 +493,7 @@ rec {
                       name = bm.fabricFqdn;
                       ip = bm.netGateway;
                     }
-                    # The metalspace's cache container, by the name its TLS leaf carries.
+                    # The metalspace's cache container, by its fabric name.
                     {
                       name = bm.atticFqdn;
                       ip = bm.atticAddress;
