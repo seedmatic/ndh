@@ -18,7 +18,9 @@ let
   cfg = config.ndh.atticClient;
   netplan = ndh.context.catalog.netplan;
   publicKeys = ndh.context.catalog.privateCaches.readKeysFor cfg.kind;
-  url = fqdn: "http://${fqdn}/${cfg.cacheName}";
+  # The scheme the catalog states for every metalspace's cache (one for all: they share one module).
+  scheme = (lib.head (lib.attrValues netplan.baremetal)).atticEndpoint.scheme;
+  url = fqdn: "${scheme}://${fqdn}/${cfg.cacheName}";
   # Its own metalspace's cache first: the other one is reached through the tunnel. Both after the
   # upstream and public tiers (cache.nixos.org's priority is 40).
   priority = fqdn: if fqdn == cfg.ownCache then 50 else 51;
