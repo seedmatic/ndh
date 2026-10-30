@@ -1542,6 +1542,33 @@
                   [ "$rc" = 0 ] && touch $out
                   exit "$rc"
                 '';
+          # A guest's token pull waits for the names it asks for: its own dnsmasq serves the attic zones, and the pull
+          # retries a cache not yet answering. 2026-10-30: at boot it ran before DNS (« Could not resolve host:
+          # attic.bioskop »), failed, and waited for the next day's timer.
+          attic-tokens-after-dns =
+            let
+              lib = nixpkgs.lib;
+              guests = lib.filterAttrs (_: c: c.config.ndh.atticClient.metalspace != null) (
+                lib.filterAttrs (_: c: c.config.ndh.atticCache.enable or false) self.nixosConfigurations
+              );
+              gaps =
+                c:
+                let
+                  u = c.config.systemd.services.ndh-attic-tokens;
+                in
+                lib.filter (x: x != null) [
+                  (if lib.elem "nss-lookup.target" u.after then null else "after nss-lookup.target")
+                  (if lib.elem "dnsmasq.service" u.after then null else "after dnsmasq.service")
+                  (if (u.serviceConfig.Restart or "no") == "on-failure" then null else "Restart=on-failure")
+                ];
+              bad = lib.filterAttrs (_: c: gaps c != [ ]) guests;
+            in
+            assert lib.assertMsg (guests != { }) "attic-tokens-after-dns: no guest pulls tokens";
+            assert lib.assertMsg (bad == { })
+              "attic-tokens-after-dns: ${
+                lib.concatStringsSep "; " (lib.mapAttrsToList (n: c: "${n} lacks ${toString (gaps c)}") bad)
+              }";
+            pkgs.runCommand "attic-tokens-after-dns" { } "touch $out";
           # The mint reads one target per line, and the unit it really runs hands it exactly one line per target.
           # 2026-10-30: TARGETS was joined with a literal `\n` in Environment=, which systemd keeps as two characters,
           # so the mint got one line, read the next machine's name as a key, and refused every target.
