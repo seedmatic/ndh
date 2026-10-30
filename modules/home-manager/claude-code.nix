@@ -115,6 +115,8 @@ in
   config = mkIf cfg.enable (mkMerge [
     {
       home.sessionVariables = cfg.env;
+      # What the sessions cost, from their transcripts: run by the operator or 🎛️, never in the background.
+      home.packages = [ (import ./claude-code.d/session-cost/package.nix { inherit pkgs; }).package ];
     }
 
     (mkIf cfg.sessionHooks.enable {

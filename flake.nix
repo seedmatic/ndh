@@ -1192,6 +1192,8 @@
           claude-code-managed-settings = managed.settings;
           claude-code-deny-hook = managed.tests;
           claude-code-session-hooks = sessionHooks.tests;
+          claude-code-session-cost =
+            (import ./modules/home-manager/claude-code.d/session-cost/package.nix { inherit pkgs; }).tests;
           claude-code-purge-backend-env =
             (import ./modules/home-manager/claude-code.d/purge-backend-env.nix {
               inherit pkgs;
