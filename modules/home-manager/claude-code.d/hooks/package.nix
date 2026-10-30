@@ -63,6 +63,13 @@ in
         ];
       }
     ];
+    # A message that wakes a session past its prompt cache is refused once, with its price.
+    PreToolUse = [
+      {
+        matcher = "SendMessage";
+        hooks = [ (entry "wake-cost-guard.sh" 5 "Pricing the wake of an idle session...") ];
+      }
+    ];
     # A step taken without touching the live page gets a reminder in the tool's result: never a block.
     PostToolUse = [
       {

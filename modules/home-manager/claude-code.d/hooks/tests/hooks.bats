@@ -735,3 +735,69 @@ wb() { # $1 = tool, $2 = command (Bash), $3 = session id
   run wb SendMessage
   [[ "$output" == *"has not changed in this turn"* ]]
 }
+
+# --- wake-cost-guard ---
+
+# A live session in Claude Code's registry, whose last response was $2 minutes ago with a $3-token context, its cache
+# written for $4 (1h or 5m).
+wake_target() { # $1 = name, $2 = minutes ago, $3 = context, $4 = ttl
+  mkdir -p "$HOME/.claude/sessions" "$HOME/.claude/projects/p"
+  N="$1" yq -n -o=json -I0 '{"name": strenv(N), "messagingSocketPath": "/tmp/cc-socks/" + strenv(N) + ".sock", "sessionId": "sid-" + strenv(N)}' \
+    >"$HOME/.claude/sessions/$1.json"
+  local w1h=0
+  [[ "$4" == 1h ]] && w1h=1000
+  TS="$(date -u -d "-$2 min" +%Y-%m-%dT%H:%M:%S.000Z)" C="$3" W="$w1h" yq -n -o=json -I0 '{"timestamp": strenv(TS), "message": {"usage": {
+    "input_tokens": 3, "cache_read_input_tokens": (strenv(C) | tonumber), "cache_creation_input_tokens": 1000,
+    "cache_creation": {"ephemeral_1h_input_tokens": (strenv(W) | tonumber)}}}}' >>"$HOME/.claude/projects/p/sid-$1.jsonl"
+}
+wake() { # $1 = to
+  TO="$1" yq -n -o=json -I0 '{"tool_name": "SendMessage", "tool_input": {"to": strenv(TO), "message": "hi"}}' | bash "$H/wake-cost-guard.sh"
+}
+
+@test "wake-cost-guard: an idle session past its 1h cache is refused once, with its price, then passes" {
+  wake_target ops 90 600000 1h
+  run wake ops
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision":"deny"'* && "$output" == *"601k-token"* && "$output" == *"idle 90 min, past its 60 min"* ]]
+  run wake ops
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "wake-cost-guard: the target is found by its socket too" {
+  wake_target ops 90 600000 1h
+  run wake "uds:/tmp/cc-socks/ops.sock"
+  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+}
+
+@test "wake-cost-guard: a 1h cache still warm passes" {
+  wake_target ops 30 600000 1h
+  run wake ops
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "wake-cost-guard: a 5m cache expired is refused, at the 5m write rate" {
+  wake_target ops 10 600000 5m
+  run wake ops
+  [[ "$output" == *"past its 5 min"* && "$output" == *'$2.48'* ]]
+}
+
+@test "wake-cost-guard: a small context passes" {
+  wake_target ops 90 50000 1h
+  run wake ops
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "wake-cost-guard: a target it cannot find passes" {
+  run wake nobody
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "wake-cost-guard: a new response of the target re-arms the refusal" {
+  wake_target ops 120 600000 1h
+  run wake ops
+  run wake ops
+  [ -z "$output" ]
+  wake_target ops 70 600000 1h
+  run wake ops
+  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+}
