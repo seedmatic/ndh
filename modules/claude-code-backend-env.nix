@@ -7,7 +7,7 @@
 #   - modules/darwin/claude-code-backend.nix -> a RunAtLoad agent that `launchctl setenv`s `env` in the user's GUI
 #     session (the VSCode extension host, Dock-launched claude inherit it);
 #   - modules/home-manager/claude-code.nix -> home.sessionVariables (login shells, terminals);
-#   - the same module -> the `env` and `fallbackModel` keys of ~/.claude/settings.json, replaced whole at every
+#   - the same module -> the `env` key of ~/.claude/settings.json, with the keys of `settings`, replaced whole at every
 #     activation. That block is applied ON TOP of the inherited environment, live (measured 2026-10-10), and it is
 #     the only layer that reaches the sessions the VSCode extension launches, so it must carry the same values.
 #
@@ -28,11 +28,18 @@
     DISABLE_TELEMETRY = "1";
   };
 
-  # The models tried, in order, when the chosen one is overloaded mid-session. No environment variable carries it.
-  fallbackModel = [
-    "claude-opus-5"
-    "claude-sonnet-5-5"
-  ];
+  # The other keys of ~/.claude/settings.json the backend owns, each replaced whole at every activation.
+  settings = {
+    # The models tried, in order, when the chosen one is overloaded mid-session. No environment variable carries it.
+    fallbackModel = [
+      "claude-opus-5"
+      "claude-sonnet-5-5"
+    ];
+    # The prompt cache lives 1 h instead of 5 min (the operator, 2026-10-30): an idle session woken after 5 min paid a
+    # full re-write of its context. Subagents stay at 5 min: they are short-lived, and a 1 h write costs more.
+    promptCacheTtl = "1h";
+    subagentPromptCacheTtl = "5m";
+  };
 
   # The keys the former Bedrock backend set. `launchctl setenv` persists until logout, so dropping them from `env`
   # does not remove them from a running GUI session: the agent unsets them.
