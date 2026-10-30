@@ -175,7 +175,8 @@ let
           "CACHE_FQDN=${cfg.fqdn}"
           "METALSPACE=${metalspace}"
           "CACHE_NAME=${cfg.cacheName}"
-          "VALIDITY=${cfg.tokens.validity}"
+          # Quoted: systemd cuts an unquoted value at its first space, and the mint got `--validity 14` (2026-10-30).
+          "\"VALIDITY=${cfg.tokens.validity}\""
           # A file, one target per line: Environment= keeps a `\\n` as two characters, never a line break.
           "TARGETS_FILE=${
             pkgs.writeText "attic-token-targets" (
