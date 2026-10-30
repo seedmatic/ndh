@@ -93,7 +93,9 @@ case "\$1 \$2" in
       [ "\$rec" = 0 ] || printf '    recursive: "true"\n'
     done <"\$f"
     # The non-store devices the instance holds (as create added them, or as a test placed them), and Incus's own root.
-    if [ -s "\$i/\$n.other.json" ]; then yq -p json -o yaml '.' "\$i/\$n.other.json" | sed 's/^/  /'; fi
+    if [ -s "\$i/\$n.other.json" ] && [ "\$(cat "\$i/\$n.other.json")" != "{}" ]; then
+      yq -p json -o yaml '.' "\$i/\$n.other.json" | sed 's/^/  /'
+    fi
     printf '  root:\n    path: /\n    pool: default\n    type: disk\n' ;;
   "query /1.0/cluster") if [ -e "$t/clustered" ]; then echo '{"enabled": true}'; else echo '{"enabled": false}'; fi ;;
   "query /1.0/instances/"*)
