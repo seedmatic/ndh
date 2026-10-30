@@ -1402,6 +1402,108 @@
           # declaring the same container name would make one guest's converge stop the other's (attic, 2026-10-24).
           # So no instance name is declared by two guests; the attic containers are named per metalspace. A mutant
           # naming both `attic` must be caught.
+          # Every declared endpoint states its exposure, and its scheme follows: an endpoint the lab alone consumes is
+          # plain unless TLS is its protocol (`inherentTls`); one the internet reaches is encrypted (docs/security-handling-c4.adoc,
+          # _Operational guidance_). The mutants: an internal endpoint on https, and a public forward in clear.
+          endpoint-exposure =
+            let
+              lib = nixpkgs.lib;
+              plain = [
+                "http"
+                "tcp"
+                "vnc"
+              ];
+              encrypted = [
+                "https"
+                "ssh"
+              ];
+              # name → { exposure, inherentTls, scheme }
+              endpoints =
+                np: tn:
+                lib.mapAttrs' (n: svc: {
+                  name = "tailnet.services.${n}";
+                  value = {
+                    exposure = svc.exposure or null;
+                    inherentTls = svc.inherentTls or false;
+                    scheme = if svc.inherentTls or false then "https" else "tcp";
+                  };
+                }) (np.tailnet.services or { })
+                // lib.mapAttrs' (port: f: {
+                  name = "wan.portForwards.${port}";
+                  value = {
+                    exposure = "public";
+                    inherentTls = false;
+                    scheme = f.scheme or null;
+                  };
+                }) (np.wan.portForwards or { })
+                // lib.mapAttrs' (ms: bm: {
+                  name = "baremetal.${ms}.atticEndpoint";
+                  value = bm.atticEndpoint // {
+                    inherentTls = false;
+                  };
+                }) np.baremetal
+                // {
+                  "tailnet.headscale" = {
+                    inherit (tn.headscale) exposure;
+                    inherentTls = tn.headscale.inherentTls or false;
+                    scheme = lib.head (lib.splitString ":" tn.headscale.aliasUrl);
+                  };
+                };
+              wrong =
+                eps:
+                lib.attrNames (
+                  lib.filterAttrs (
+                    _: e:
+                    !(lib.elem e.exposure [
+                      "internal"
+                      "public"
+                    ])
+                    || (e.exposure == "internal" && !e.inherentTls && !(lib.elem e.scheme plain))
+                    || (e.exposure == "public" && !(lib.elem e.scheme encrypted))
+                  ) eps
+                );
+              np = catalogData.netplan;
+              tn = import ./catalog/tailnet;
+              today = endpoints np tn;
+              internalOnTls = endpoints (
+                np
+                // {
+                  baremetal = lib.mapAttrs (
+                    _: bm:
+                    bm
+                    // {
+                      atticEndpoint = bm.atticEndpoint // {
+                        scheme = "https";
+                      };
+                    }
+                  ) np.baremetal;
+                }
+              ) tn;
+              publicInClear = endpoints (
+                np
+                // {
+                  wan = np.wan // {
+                    portForwards = np.wan.portForwards // {
+                      "8080" = {
+                        hostName = "bioskop";
+                        internalPort = 8080;
+                        protocol = "tcp";
+                        scheme = "http";
+                      };
+                    };
+                  };
+                }
+              ) tn;
+            in
+            assert lib.assertMsg (wrong today == [ ])
+              "endpoint-exposure: an endpoint whose scheme does not follow its exposure, or with none: ${toString (wrong today)}";
+            assert lib.assertMsg (
+              wrong internalOnTls != [ ]
+            ) "endpoint-exposure: the mutant serving an internal attic on https was not caught";
+            assert lib.assertMsg (
+              wrong publicInClear == [ "wan.portForwards.8080" ]
+            ) "endpoint-exposure: the mutant forwarding a public port in clear was not caught";
+            pkgs.runCommand "endpoint-exposure" { } "touch $out";
           incus-instance-names-cluster-unique =
             let
               lib = nixpkgs.lib;

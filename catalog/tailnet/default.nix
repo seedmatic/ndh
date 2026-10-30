@@ -117,5 +117,8 @@ in
     # roles, clients stay on the same URL and simply hit a different
     # host's IP.  Exactly one host should be `primary` at any time.
     aliasUrl = "https://${aliasName}:${toString listenPort}";
+    # headscale's own protocol is TLS: not ours to strip.
+    exposure = "internal";
+    inherentTls = true;
   };
 }

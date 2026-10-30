@@ -135,6 +135,11 @@ rec {
           # Its static fabric address: an instance pin of slot 0, top-down below nnh's collector /30
           # (.124/30 on nikopol); no DHCP, the container states it (modules/nixos/attic-cache.nix).
           atticAddress = "${octets bare}.120";
+          # Served on the fabric only, in plain HTTP (the lab's rule: an endpoint the lab alone consumes is plain).
+          atticEndpoint = {
+            scheme = "http";
+            exposure = "internal";
+          };
           advertiseCidr = "${octets bare}.0/20"; # ONE tailnet route per metalspace
           netCidr = "${octets bare}.0/21"; # managed Incus net (fabric-br dnsmasq) — slots 0-7
           netGateway = "${octets bare}.1"; # Incus bridge + dnsmasq + split-DNS target
@@ -657,6 +662,9 @@ rec {
               "tcp:443" = "tcp://${lanRouterAddress}:443";
             };
             ip = [ "tcp:443" ];
+            # The vendor's own TLS, passed through: not ours to strip.
+            exposure = "internal";
+            inherentTls = true;
           };
           # One screen per machine, so the operator reaches any of them by the same kind
           # of name from anywhere.  Today they are reached by two DIFFERENT mechanisms —
@@ -679,6 +687,7 @@ rec {
           #     for `reachedByOffTailnetVzHosts`);
           #   * fabric: only the corp box, only to these VIPs, through metalspace-guard's earned set.
           rdp-bioskop = {
+            exposure = "internal";
             advertisers = [ "bioskop" ];
             endpoints = {
               "tcp:5900" = "tcp://localhost:5900";
@@ -688,6 +697,7 @@ rec {
             reachedByOffTailnetVzHosts = true;
           };
           rdp-nikopol = {
+            exposure = "internal";
             advertisers = [ "nikopol" ];
             endpoints = {
               "tcp:5900" = "tcp://localhost:5900";
@@ -701,6 +711,7 @@ rec {
           # reach it.  Its FABRIC address, never its LAN one — nikopol is itinerant, and
           # off-site `192.168.1.x` would designate a stranger's machine in a hotel.
           rdp-vzhost-nikopol = {
+            exposure = "internal";
             advertisers = [ "nikopol-nixos" ];
             endpoints = {
               "tcp:5900" = "tcp://${baremetal.nikopol.vzHostAddress}:5900";
@@ -715,8 +726,6 @@ rec {
       # map specific ports onto bioskop inside the LAN:
       #
       #   WAN tcp/2222   →  bioskop  tcp/22     (SSH)
-      #   WAN tcp/41841  →  bioskop  tcp/41841  (Headscale control + DERP)
-      #   WAN udp/3478   →  bioskop  udp/3478   (Headscale STUN)
       #
       # Additional ports can be added here as they are configured on the
       # router.  Consumers that need a stable internet URL (e.g.
@@ -726,24 +735,21 @@ rec {
         ddnsHostname = "mammoth-skate.duckdns.org";
         router = "mammoth-skate";
         isp = "bouygues";
-        # Port-forward map: externalPort → { hostName, internalPort, protocol }.
+        # Port-forward map: externalPort → { hostName, internalPort, protocol, scheme }.
         # Only ports actually configured on the Bbox live here; adding
         # a new one requires both a router config change and an entry
-        # here.
+        # here.  Every forward is public by construction (the internet reaches it), so its
+        # scheme must be an encrypted one (checks.endpoint-exposure).
         portForwards = {
           "2222" = {
             hostName = "bioskop";
             internalPort = 22;
             protocol = "tcp";
+            scheme = "ssh";
             description = "SSH into bioskop from off-LAN";
           };
-          "41841" = {
-            hostName = "bioskop";
-            internalPort = 41841;
-            protocol = "tcp";
-            description = "Headscale control plane (registration, coordination)";
-          };
-          # Port 3478 (STUN) removed: headscale now uses Tailscale's public
+          # Port 41841 (headscale) removed while headscale hibernates: closed on the router by hand, it comes back
+          # with headscale. Port 3478 (STUN) removed: headscale now uses Tailscale's public
           # DERP map which includes public STUN servers (stun.l.google.com,
           # etc.) for NAT traversal. DERP relays also from Tailscale
           # infrastructure when direct WireGuard connections fail.
