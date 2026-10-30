@@ -5,12 +5,15 @@
 #   metalspace: the metalspace it belongs to; its ssh name is `<kind>.<metalspace>`, the operator's own alias
 #               (modules/.common.d/operator-aliases.nix), so a switch dials what the operator types
 #   seat:       true for the operator seat, which is switched locally and LAST by fleet-switch
+#   attic:      what this machine does with the private caches, both off by default: `read` (substitute from them),
+#               `push` (its watch-store into its own metalspace's); turned on one machine at a time
 # The build, bringup and Tart variants of these configurations are not machines: they are absent on purpose.
 [
   {
     name = "bioskop-nixos";
     kind = "nixos";
     metalspace = "bioskop";
+    attic.read = true;
   }
   {
     name = "bioskop";

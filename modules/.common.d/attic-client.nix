@@ -22,6 +22,7 @@ let
   # Its own metalspace's cache first: the other one is reached through the tunnel. Both after the
   # upstream and public tiers (cache.nixos.org's priority is 40).
   priority = fqdn: if fqdn == cfg.ownCache then 50 else 51;
+  machine = lib.findFirst (m: m.name == config.networking.hostName) { } ndh.context.catalog.machines;
 in
 {
   options.ndh.atticClient = {
@@ -68,6 +69,8 @@ in
 
     ownCache = lib.mkOption {
       type = lib.types.str;
+      default = netplan.baremetal.${cfg.metalspace}.atticFqdn;
+      defaultText = lib.literalExpression "netplan.baremetal.\${metalspace}.atticFqdn";
       example = "attic.bioskop";
       description = "This machine's own metalspace's cache: read first, and the one its watch-store pushes to.";
     };
@@ -78,9 +81,19 @@ in
       description = "The cache every attic serves (ndh.atticCache.cacheName).";
     };
 
-    read.enable = lib.mkEnableOption "substituting from the private caches, with the delivered read tokens";
+    read.enable =
+      lib.mkEnableOption "substituting from the private caches, with the delivered read tokens"
+      // {
+        default = machine.attic.read or false;
+        defaultText = lib.literalExpression "this machine's attic.read in catalog/machines.nix, or false";
+      };
 
-    watchStore.enable = lib.mkEnableOption "pushing what this machine builds into its own metalspace's cache";
+    watchStore.enable =
+      lib.mkEnableOption "pushing what this machine builds into its own metalspace's cache"
+      // {
+        default = machine.attic.push or false;
+        defaultText = lib.literalExpression "this machine's attic.push in catalog/machines.nix, or false";
+      };
   };
 
   config = lib.mkIf cfg.read.enable {
@@ -95,6 +108,9 @@ in
       extra-trusted-public-keys = publicKeys;
       # Absent until the delivery: nix then simply holds no credential for the caches.
       netrc-file = cfg.paths.netrc;
+      # A cache that does not answer (the other metalspace's, through the tunnel) must not hold a build: nix gives up
+      # on it after this and goes on with the next substituter.
+      connect-timeout = lib.mkDefault 5;
     };
   };
 }
