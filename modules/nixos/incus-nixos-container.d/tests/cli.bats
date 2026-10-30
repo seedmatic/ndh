@@ -78,7 +78,9 @@ case "\$1 \$2" in
       echo "\$d \$src \${rest#* }" >>"\$f.new"
     done <"\$f"
     write "\$n" "\$f.new"
-    yq -r '.config."raw.lxc" // ""' <<<"\$y" >"\$i/\$n.rawlxc" ;;
+    yq -r '.config."raw.lxc" // ""' <<<"\$y" >"\$i/\$n.rawlxc"
+    # Every device the edit leaves, store and declared alike: what a test reads the reconciliation from.
+    yq -o json -I0 '.devices // {}' <<<"\$y" >"\$i/\$n.devices.json" ;;
   "config show")
     n=\$(name "\${@:3}"); f=\$i/\$n.dev; touch "\$f"
     printf 'config:\n  raw.lxc: |-\n'; sed 's/^/    /' "\$i/\$n.rawlxc" 2>/dev/null
@@ -86,7 +88,10 @@ case "\$1 \$2" in
     while read -r d src rec; do
       printf '  %s:\n    source: %s\n    type: disk\n' "\$d" "\$src"
       [ "\$rec" = 0 ] || printf '    recursive: "true"\n'
-    done <"\$f" ;;
+    done <"\$f"
+    # The non-store devices the instance holds (as create added them, or as a test placed them), and Incus's own root.
+    if [ -s "\$i/\$n.other.json" ]; then yq -p json -o yaml '.' "\$i/\$n.other.json" | sed 's/^/  /'; fi
+    printf '  root:\n    path: /\n    pool: default\n    type: disk\n' ;;
   "query /1.0/cluster") if [ -e "$t/clustered" ]; then echo '{"enabled": true}'; else echo '{"enabled": false}'; fi ;;
   "query /1.0/instances/"*)
     n=\${2#/1.0/instances/}; n=\${n%%\?*}; n=\${n%/state}
@@ -454,6 +459,58 @@ delivered_before() {
   # Committed: nothing kept aside, the previous delivery snapshot destroyed.
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
   [ ! -e "$t/attic/converge.failed" ]
+}
+
+# The declared devices, reconciled at every delivery in point_store's one write (2026-10-30: a device renamed in the
+# module, attic-tls → attic-shared, never reached the running attic-bioskop, and its cache-ensure looped until rollback).
+declared_devices() { # <json of the declared devices>: the instance as the module now declares it
+  sed -i "s|\"devices\":{[^}]*}|\"devices\":$1|" "$cli"
+}
+
+@test "converge reconciles the declared devices: created with A, delivered declaring B, it ends with B and not A" {
+  delivered_before
+  echo '{"attic-tls":{"path":"/var/lib/attic-tls","shift":"true","source":"/var/lib/ndh-attic/tls","type":"disk"},"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}' >"$t/inst/attic.other.json"
+  declared_devices '{"attic-shared":{"path":"/var/lib/attic-shared","source":"/var/lib/ndh-attic/shared","type":"disk"},"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}'
+  echo "nginx.service inactive no" >"$t/units"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  d="$t/inst/attic.devices.json"
+  [ "$(yq -r '."attic-shared".source' "$d")" = /var/lib/ndh-attic/shared ]
+  [ "$(yq -r '."attic-shared".path' "$d")" = /var/lib/attic-shared ]
+  # Unprivileged: a declared disk device is shifted, as create adds it.
+  [ "$(yq -r '."attic-shared".shift' "$d")" = true ]
+  [ "$(yq -r 'has("attic-tls")' "$d")" = false ]
+  [ "$(yq -r '.fabric.parent' "$d")" = fabric-br ]
+}
+
+@test "the reconciliation leaves the 4 store devices and Incus's root disk as they are" {
+  delivered_before
+  echo '{"attic-tls":{"path":"/var/lib/attic-tls","source":"/var/lib/ndh-attic/tls","type":"disk"}}' >"$t/inst/attic.other.json"
+  declared_devices '{"attic-shared":{"path":"/var/lib/attic-shared","source":"/var/lib/ndh-attic/shared","type":"disk"}}'
+  echo "nginx.service inactive no" >"$t/units"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  d="$t/inst/attic.devices.json"
+  [ "$(yq -r '.nix.source' "$d")" = "$t/attic/root/nix" ]
+  [ "$(yq -r '."nix-lower-store".source' "$d")" = "$t/attic/view/nix/store" ]
+  [ "$(yq -r '."nix-lower-db".source' "$d")" = "$t/attic/view/nix/var/nix" ]
+  [ "$(yq -r '."nix-upper".source' "$d")" = "$t/attic/upper" ]
+  [ "$(yq -r '.root.pool' "$d")" = default ]
+}
+
+@test "a container whose devices already match is not rewritten: converge on its declared system edits nothing" {
+  delivered_before
+  declared_devices '{"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}'
+  echo '{"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}' >"$t/inst/attic.other.json"
+  printf '%s\n' "nix $t/attic/root/nix 1" "nix-lower-store $t/attic/view/nix/store 0" "nix-lower-db $t/attic/view/nix/var/nix 0" "nix-upper $t/attic/upper 0" >"$t/inst/attic.dev"
+  printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' "$t/attic" >"$t/inst/attic.rawlxc"
+  ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
+  mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
+  ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
+  run --separate-stderr "$t/run" "$cli" converge <"$t/stdin"
+  [ "$status" -eq 0 ]
+  run grep -E '^incus config edit' "$t/calls"
+  [ "$status" -eq 1 ]
 }
 
 @test "converge rolls back an unhealthy system exactly, fails loudly, and does not retry it" {
