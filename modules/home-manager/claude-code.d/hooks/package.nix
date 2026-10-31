@@ -60,6 +60,7 @@ in
           (entry "sops-git-env.sh" 5 "Neutralising the sops git drivers for this session...")
           (entry "flox-env.sh" 40 "Taking this repository's flox environment...")
           (entry "sops-filter-check.sh" 5 "Checking that no sops filter decrypts in this flake repository...")
+          (entry "model-guard.sh" 5 "Checking the model's context window...")
         ];
       }
     ];
@@ -68,6 +69,11 @@ in
       {
         matcher = "SendMessage";
         hooks = [ (entry "wake-cost-guard.sh" 5 "Pricing the wake of an idle session...") ];
+      }
+      # Past a context threshold, the next tool call is refused once per step: write the live page, then restart.
+      {
+        matcher = "*";
+        hooks = [ (entry "context-guard.sh" 5 "Measuring this session's context...") ];
       }
     ];
     # A step taken without touching the live page gets a reminder in the tool's result: never a block.
