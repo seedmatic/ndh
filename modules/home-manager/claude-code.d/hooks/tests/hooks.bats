@@ -801,3 +801,77 @@ wake() { # $1 = to
   run wake ops
   [[ "$output" == *'"permissionDecision":"deny"'* ]]
 }
+
+# --- model-guard ---
+
+@test "model-guard: a [1m] model in the settings warns the operator and the session" {
+  printf '{"model": "opus[1m]"}\n' >"$HOME/.claude/settings.json"
+  run bash -c 'printf "{}" | bash "$0/model-guard.sh"' "$H"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"systemMessage":"Model opus[1m] has a 1M window'* && "$output" == *'"additionalContext"'* ]]
+}
+
+@test "model-guard: the session's own model wins over the settings" {
+  printf '{"model": "opus"}\n' >"$HOME/.claude/settings.json"
+  run bash -c 'printf "{\"model\": \"claude-opus-5-5[1m]\"}" | bash "$0/model-guard.sh"' "$H"
+  [[ "$output" == *"claude-opus-5-5[1m]"* ]]
+}
+
+@test "model-guard: a 200k model passes silently" {
+  printf '{"model": "opus"}\n' >"$HOME/.claude/settings.json"
+  run bash -c 'printf "{}" | bash "$0/model-guard.sh"' "$H"
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+# --- context-guard ---
+
+ctx() { # $1 = context of the last response
+  C="$1" yq -n -o=json -I0 '{"message": {"usage": {"input_tokens": 3, "cache_read_input_tokens": (strenv(C) | tonumber), "cache_creation_input_tokens": 0}}}' >>"$TR"
+}
+guard() { # $1 = agent_id (optional)
+  S=sid TP="$TR" A="${1:-}" yq -n -o=json -I0 '{"session_id": strenv(S), "transcript_path": strenv(TP), "tool_name": "Bash"} +
+    (strenv(A) | select(. != "") | {"agent_id": .} // {})' | bash "$H/context-guard.sh"
+}
+
+@test "context-guard: under the threshold passes" {
+  ctx 120000
+  run guard
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}
+
+@test "context-guard: past the threshold is refused once, then passes" {
+  ctx 155000
+  run guard
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision":"deny"'* && "$output" == *"at 155k tokens, past 150k"* ]]
+  run guard
+  [ -z "$output" ]
+}
+
+@test "context-guard: the next step refuses again" {
+  ctx 155000
+  run guard
+  ctx 170000
+  run guard
+  [ -z "$output" ]
+  ctx 176000
+  run guard
+  [[ "$output" == *"at 176k tokens"* ]]
+}
+
+@test "context-guard: a compaction re-arms it" {
+  ctx 160000
+  run guard
+  ctx 40000
+  run guard
+  [ -z "$output" ]
+  ctx 152000
+  run guard
+  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+}
+
+@test "context-guard: a subagent is not judged" {
+  ctx 190000
+  run guard agent-1
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+}

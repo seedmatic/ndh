@@ -103,9 +103,9 @@ in
           model = "opus";
         };
         description = ''
-          Bootstrap seed copied to ~/.claude/settings.json only when that
-          file does not yet exist (fresh machine), so the model alias survives a
-          rebuild without ever clobbering the live file Claude mutates at runtime.
+          Bootstrap seed for ~/.claude/settings.json: copied whole on a fresh
+          machine; afterwards only the seed keys the live file lacks are added,
+          so a value Claude writes at runtime (/model) is never clobbered.
         '';
       };
     };
@@ -162,7 +162,16 @@ in
           $DRY_RUN_CMD mkdir -p "$HOME/.claude"
           $DRY_RUN_CMD install -m 0644 ${seedFile} "$claudeSettings"
         else
-          $VERBOSE_ECHO "Claude Code settings.json exists — leaving it untouched"
+          # A key the live file lacks is seeded, one it has is Claude's: a seat whose file predates a seed key gets it.
+          claudeSettingsNew="$(mktemp)"
+          ${pkgs.yq-go}/bin/yq -p=json -o=json '. as $live | load("${seedFile}") * $live' "$claudeSettings" >"$claudeSettingsNew"
+          if cmp -s "$claudeSettingsNew" "$claudeSettings"; then
+            $VERBOSE_ECHO "Claude Code settings.json has every seed key — leaving it untouched"
+          else
+            $VERBOSE_ECHO "Seeding the keys Claude Code settings.json lacks"
+            $DRY_RUN_CMD install -m 0644 "$claudeSettingsNew" "$claudeSettings"
+          fi
+          rm -f "$claudeSettingsNew"
         fi
       '';
 
