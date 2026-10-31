@@ -825,6 +825,13 @@ in
         }
       );
 
+      # A Tart VM never hands memory back to the host, so the ARC's peak is the
+      # host's loss; macOS already caches the same disk blocks (caching=cached).
+      # The bringup image sets its own cap (zfs.d/bringup-zfs-disk-images-install.sh).
+      extraModprobeConfig = lib.mkIf (config.zfsOverlays.enable && !bringupMode) ''
+        options zfs zfs_arc_max=${toString (2 * 1024 * 1024 * 1024)}
+      '';
+
       loader.systemd-boot.extraInstallCommands =
         lib.mkIf (config.boot.loader.systemd-boot.enable && !bringupMode)
           (

@@ -23,7 +23,8 @@ source @nixBashTrampoline@
 #      at install time, so a subtree added to the config after the pool was
 #      provisioned (e.g. rke2lab's dataplan on a running host) would never
 #      materialise without this create-if-absent pass.
-#   3. Reconcile ZFS dataset mountpoint properties for the explicit
+#   3. Force the declared primarycache on datasets that already exist.
+#   4. Reconcile ZFS dataset mountpoint properties for the explicit
 #      tank/nerd paths.
 
 zpool:init:configure() {
@@ -106,6 +107,29 @@ zpool:zfs:ensure_datasets() {
 	done <<<"$DATASETS_TABLE"
 }
 
+zpool:zfs:reconcile_primarycache() {
+	# The one property forced on datasets that already exist: the cache policy bounds
+	# the guest's memory, changes live, and touches no data.  Other drift stays out
+	# of scope (see ensure_datasets).
+	local dataset props kv declared
+	[ -n "${DATASETS_TABLE:-}" ] || return 0
+
+	while IFS=$'\t' read -r dataset props; do
+		[ -n "$dataset" ] || continue
+		declared=""
+		for kv in $props; do
+			[ "${kv%%=*}" = primarycache ] && declared="${kv#*=}"
+		done
+		[ -n "$declared" ] || continue
+		zfs list -H -o name "$dataset" >/dev/null 2>&1 || continue
+
+		if [ "$(zfs get -H -o value primarycache "$dataset")" != "$declared" ]; then
+			zfs set "primarycache=$declared" "$dataset" ||
+				: "[zpool-init][WARN] failed to set primarycache=$declared on $dataset"
+		fi
+	done <<<"$DATASETS_TABLE"
+}
+
 zpool:zfs:reconcile_nerd_mountpoints() {
 	# Drive the reconcile from the MOUNTPOINTS_TABLE env injected by zfs.nix
 	# (derived from config.disko.devices.zpool at eval time).  Empty table =
@@ -160,6 +184,7 @@ zpool:init:main() {
 	: "[zpool-init][INFO] reconciling ZFS mountpoint properties"
 	if zpool:is_imported tank; then
 		zpool:zfs:ensure_datasets
+		zpool:zfs:reconcile_primarycache
 		zpool:zfs:reconcile_nerd_mountpoints
 	fi
 
