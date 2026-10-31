@@ -1,4 +1,4 @@
-{ halfRamMiB, hardware }:
+{ hardware }:
 {
   lib,
   config,
@@ -29,7 +29,9 @@
 
     tart.configGenerator = {
       forceEnable = false;
-      vmMemoryMiB = halfRamMiB;
+      # 16 of 48 GiB: the seat keeps 32, so the bare metal is no longer overcommitted; with the
+      # guest ARC capped (zfs.nix) 13.2 GiB were measured with the clusters up.
+      vmMemoryMiB = 16384;
       # When the operator deploys nikopol's run manifest to a vz host
       # via `nerd-tart-nikopol-deploy`, the wrapper there reads these
       # defaults.  Mirror bioskop's headless+screen-bridge combo so the
