@@ -532,18 +532,36 @@ lib.mkIf enabled {
   # Earns the corporate box's screen openings (see offtailnetScreensSet above): after the ruleset
   # loads empty, and again every few minutes, so a re-assigned VIP shuts the door within one tick.
   # PartOf nftables: a reload empties the set, and this refills it right after.
+  #
+  # MagicDNS answers only once the node is on the tailnet, and tailscaled's readiness comes
+  # before that: ordered after tailscaled alone, the boot check ran before tailscaled even
+  # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
+  # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
+  # meanwhile, so the retry never opens anything early.
   systemd.services.offtailnet-screens-check = lib.mkIf screensOpen {
     description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
     after = [
       "nftables.service"
+      "network-online.target"
       "tailscaled.service"
+      "${ndhSystemd.tailscaleAutoconnectUnitName}.service"
     ];
-    wants = [ "tailscaled.service" ];
+    wants = [
+      "network-online.target"
+      "tailscaled.service"
+      "${ndhSystemd.tailscaleAutoconnectUnitName}.service"
+    ];
     partOf = [ "nftables.service" ];
     wantedBy = [ "nftables.service" ];
+    unitConfig = {
+      StartLimitIntervalSec = 600;
+      StartLimitBurst = 5;
+    };
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${offtailnetScreensCheck}/bin/offtailnet-screens-check";
+      Restart = "on-failure";
+      RestartSec = 15;
     };
   };
   systemd.timers.offtailnet-screens-check = lib.mkIf screensOpen {
