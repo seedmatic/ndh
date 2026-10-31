@@ -269,6 +269,17 @@ let
                 "nixos:mount-overlay" = "false";
               };
             };
+            # Source of Incus's `default` storage pool (incus.nix); Incus takes it empty and
+            # lays its own children under it, which inherit the cache policy.
+            # primarycache=metadata: the VM disks are opened by Tart with caching=cached, so
+            # macOS already caches these blocks; caching their data in the ARC too only
+            # pins guest memory that the host never gets back.
+            "nerd/incus" = {
+              type = "zfs_fs";
+              options = {
+                primarycache = "metadata";
+              };
+            };
             "nerd/var" = {
               type = "zfs_fs";
             };

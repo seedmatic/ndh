@@ -1,8 +1,6 @@
 let
   hardware = import ./hardware.nix;
 
-  halfRamMiB = hardware.ramGiB * 512; # half of physical RAM in MiB
-
   hostProfile = {
     hostName = "bioskop";
     vmProvider = "tart";
@@ -22,7 +20,7 @@ let
   };
 
   profileModule = import ./profile.nix { inherit hostProfile darwinProfile; };
-  darwinModule = import ./darwin.nix { inherit halfRamMiB hardware; };
+  darwinModule = import ./darwin.nix { inherit hardware; };
   nixosModule = import ./nixos.nix;
   developerToolsModule = import ./modules/darwin/developer-tools.nix;
 in

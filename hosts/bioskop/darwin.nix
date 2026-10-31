@@ -1,4 +1,4 @@
-{ halfRamMiB, hardware }:
+{ hardware }:
 {
   config,
   ...
@@ -72,7 +72,9 @@
       # M4 Pro: 12 cores, 8P+4E. 8 vCPUs took every P-core, and a vCPU the host preempts stops
       # answering IPIs: the guest's soft lockups and RCU stalls of 2026-10. 6 leaves macOS 2 P-cores.
       vmCpuCount = 6;
-      vmMemoryMiB = halfRamMiB;
+      # 24 of 64 GiB: with the guest ARC capped (zfs.nix) the clusters fit, and the rest stays
+      # with macOS for a local model on the GPU.
+      vmMemoryMiB = 24576;
       vmRunBridgeInterface = hardware.vmBridgeService;
       vmRunSerialBridgeEnable = true;
       vmRunSerialBridgeAutoScreen = true;
