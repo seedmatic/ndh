@@ -5433,6 +5433,9 @@
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 
+        # Overlay to disable tests for a2a-sdk package that causes permission errors during build
+        python313Overlay = inputs: import ./overlays/python313.nix inputs;
+
         direnvOverlay = _inputs: final: prev: {
           # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.
           # Keep runtime package deterministic by disabling checks in the canonical overlay path.
