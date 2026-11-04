@@ -177,8 +177,10 @@ in
       # (baseline for both NixOS and nix-darwin).
       extra-platforms = aarch64-darwin
       # Add binary caches for substitution
-      extra-trusted-substituters = ${cacheCatalog.flox.substituter}
-      extra-trusted-public-keys = ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey}
+      extra-trusted-substituters = ${cacheCatalog.flox.substituter} ${cacheCatalog."flox-hub".substituter}
+      extra-trusted-public-keys = ${cacheCatalog.nixos.publicKey} ${cacheCatalog.flox.publicKey} ${
+        cacheCatalog."flox-hub".publicKey
+      }
       # Increase download buffer size to prevent buffer full warnings
       download-buffer-size = 268435456  # 256 MB (was 64 MB default)
       # No `extra-substituters` here: modules/.common.d/cache-trust.nix is its SINGLE owner and
