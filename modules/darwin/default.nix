@@ -58,6 +58,7 @@
     ./tmpdir-tmpfs.nix
     ./claude-code-backend.nix
     ./claude-code-managed.nix
+    ./llm-gateway.nix
     ./ndh-switch.nix
     ./claude-wake.nix
   ];

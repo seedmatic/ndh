@@ -43,6 +43,11 @@
       sopsEncryptedTokenFile = ../../.secrets;
     };
 
+    services.llmGateway = {
+      enable = true;
+      sopsEncryptedFile = ../../.secrets;
+    };
+
     # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.
     ndh.incusClusterCert.atActivation = true;
 
