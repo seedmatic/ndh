@@ -52,6 +52,13 @@
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
 
+    # Local LLM gateway (llama-swap + LiteLLM) like bioskop: Qwen + OpenCode Go on :4000.
+    services.llmGateway = {
+      enable = true;
+      sopsEncryptedFile = ../../.secrets;
+      aikeyGatewayUrl = "http://nixos.nikopol:4001";
+    };
+
     ndh.claude-code.managedSettings.enable = true;
   };
 }

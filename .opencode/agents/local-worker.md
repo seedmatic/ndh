@@ -1,7 +1,7 @@
 ---
 description: Fast local helper (Qwen3-Coder, 30B) for simple shell/search/lookup tasks that need little reasoning.
 mode: subagent
-model: litellm@bioskop/local-agent
+model: litellm@bioskop/agent
 permissions:
   - action: read
     resource: "*"

@@ -11,7 +11,7 @@ let
   # only code-essential tools are enabled; heavy/rare ones are denied.
   opencodeSettings = {
     "$schema" = "https://opencode.ai/config.json";
-    model = "litellm@bioskop/local-agent";
+    model = "litellm@bioskop/agent";
 
     plugins = [
       "superpowers@git+https://github.com/obra/superpowers.git"
@@ -35,15 +35,22 @@ let
           chunkTimeout = false;
         };
         models = {
-          "local-agent" = {
-            name = "local-agent";
+          "agent" = {
+            name = "agent";
             limit = {
               context = 131072;
               output = 8192;
             };
           };
-          "local-small" = {
-            name = "local-small";
+          "agent-deep" = {
+            name = "agent-deep";
+            limit = {
+              context = 32768;
+              output = 4096;
+            };
+          };
+          "small" = {
+            name = "small";
             limit = {
               context = 16384;
               output = 4096;
@@ -56,7 +63,7 @@ let
     agents = {
       local = {
         mode = "primary";
-        model = "litellm@bioskop/local-agent";
+        model = "litellm@bioskop/agent";
         description = "Local llama.cpp model: Code Mode off (flat tools), browser tools off";
         permissions = [
           {
@@ -129,14 +136,20 @@ let
       };
     };
   };
+
+  opencodeConfigFile = pkgs.writeText "opencode.json" (builtins.toJSON opencodeSettings);
 in
 {
   # Declarative OpenCode configuration for the primary seat (bioskop).
   # Manages ~/.config/opencode/opencode.json via home-manager (xdg.configFile).
   # The opencode binary itself is installed separately (~/.opencode/bin/opencode);
   # home-manager only owns the config file here.
-  xdg.configFile."opencode/opencode.json" = {
-    text = builtins.toJSON opencodeSettings;
-    force = true;
-  };
+  # Seed OpenCode config only if absent (preserve runtime tuning).
+  home.activation.seedOpencodeConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    target="$HOME/.config/opencode/opencode.json"
+    if [ ! -e "$target" ]; then
+      mkdir -p "$(dirname "$target")"
+      install -m 0644 ${opencodeConfigFile} "$target"
+    fi
+  '';
 }

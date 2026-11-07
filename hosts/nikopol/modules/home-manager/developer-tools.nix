@@ -12,6 +12,8 @@
   imports = [
     ../../../../modules/home-manager/claude-code.nix
     ../../../../modules/home-manager/comet-debug.nix
+    ./omo.nix
+    ./opencode.nix
   ];
 
   ndh.claude-code.enable = true;

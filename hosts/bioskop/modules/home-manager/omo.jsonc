@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
+  "agents": {
+    "sisyphus":        { "model": "litellm-bioskop/agent" },
+    "hephaestus":      { "model": "litellm-bioskop/agent" },
+    "oracle":          { "model": "litellm-bioskop/agent-deep" },
+    "prometheus":      { "model": "litellm-bioskop/agent" },
+    "metis":           { "model": "litellm-bioskop/agent" },
+    "atlas":           { "model": "litellm-bioskop/agent" },
+    "momus":           { "model": "litellm-bioskop/agent-deep" },
+    "explore":         { "model": "litellm-bioskop/agent" },
+    "librarian":       { "model": "litellm-bioskop/agent" },
+    "code-reviewer":   { "model": "litellm-bioskop/agent" }
+  },
+  "categories": {
+    "quick":              { "model": "litellm-bioskop/agent" },
+    "deep-low":           { "model": "litellm-bioskop/agent-deep" },
+    "deep-high":          { "model": "litellm-bioskop/agent-deep" },
+    "ultrabrain":         { "model": "litellm-bioskop/agent-deep" },
+    "unspecified-low":    { "model": "litellm-bioskop/agent" },
+    "unspecified-high":   { "model": "litellm-bioskop/agent" },
+    "writing":            { "model": "litellm-bioskop/agent" },
+    "visual-engineering": { "model": "litellm-bioskop/agent" },
+    "artistry":           { "model": "litellm-bioskop/agent" },
+    "architect":          { "model": "litellm-bioskop/agent-deep" }
+  },
+  "task": {
+    "default_concurrency": 1,
+    "provider_concurrency": { "litellm-bioskop": 2 }
+  },
+  "memory": {
+    "recall": {
+      "category": "quick"
+    },
+    "facts": {
+      "model": "litellm-bioskop/agent"
+    }
+  },
+  "provenance": {
+    "workspaces": [
+      { "name": "nix-flake-commons", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/develop"] },
+      { "name": "ndh", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/ndh.d/develop"] },
+      { "name": "seat-roster", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/seat-roster.d/develop"] },
+      { "name": "rke2lab", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/rke2lab.d/develop"] },
+      { "name": "flox-controller", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/flox-controller.d/develop"] },
+      { "name": "nnh", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nnh.d/develop"] },
+      { "name": "nch", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nch.d/develop"] },
+      { "name": "flox-nri-plugin", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/flox-nri-plugin.d/develop"] },
+      { "name": "fleet", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/fleet.d/develop"] },
+      { "name": "macos-screen-sharing-addons", "git_owners": ["seedmatic"] },
+      { "name": "java-bbox-api-client", "git_owners": ["seedmatic"] },
+      { "name": "java-systemd", "git_owners": ["seedmatic"] }
+    ]
+  }
+}

@@ -28,6 +28,9 @@ let
   masterSecretPath = "${secretDir}/${masterSecret}";
   goSecretPath = "${secretDir}/${goSecret}";
 
+  aikeySecret = "bedrock";
+  aikeySecretPath = "${secretDir}/${aikeySecret}";
+
   # Config files generated in the nix store and handed to the services.
   swapConfig = pkgs.writeText "llama-swap-config.yaml" ''
     healthCheckTimeout: 500
@@ -47,7 +50,7 @@ let
 
     startPort: 5800
     sendLoadingState: false
-    globalTTL: 0
+    globalTTL: 1800
 
     apiKeys:
       - "''${env.LLAMA_SWAP_API_KEY}"
@@ -97,20 +100,64 @@ let
             resident:
               swap: false
               exclusive: false
-              members: [agent, small, embed]
+              members: [agent, agent-deep, small, embed]
   '';
+
+  aikeyModels =
+    if cfg.aikeyGatewayUrl != null then
+      ''
+        # Bedrock/Claude models aggregated from the aikey gateway (${cfg.aikeyGatewayUrl}).
+        - model_name: claude-haiku-4-5
+          litellm_params:
+            model: openai/claude-haiku-4-5
+            api_base: ${cfg.aikeyGatewayUrl}/v1
+            api_key: os.environ/AIKEY_API_KEY
+
+        - model_name: claude-sonnet-4-5
+          litellm_params:
+            model: openai/claude-sonnet-4-5
+            api_base: ${cfg.aikeyGatewayUrl}/v1
+            api_key: os.environ/AIKEY_API_KEY
+
+        - model_name: claude-sonnet-5-5
+          litellm_params:
+            model: openai/claude-sonnet-5-5
+            api_base: ${cfg.aikeyGatewayUrl}/v1
+            api_key: os.environ/AIKEY_API_KEY
+
+        - model_name: claude-opus-5-5
+          litellm_params:
+            model: openai/claude-opus-5-5
+            api_base: ${cfg.aikeyGatewayUrl}/v1
+            api_key: os.environ/AIKEY_API_KEY
+
+      ''
+    else
+      "";
 
   litellmConfig = pkgs.writeText "litellm-config.yaml" ''
     model_list:
-      - model_name: local-agent
+      - model_name: agent
         litellm_params:
           model: openai/agent
           api_base: http://localhost:8000/v1
           api_key: os.environ/LLAMA_SWAP_API_KEY
 
-      - model_name: local-small
+      - model_name: agent-deep
+        litellm_params:
+          model: openai/agent-deep
+          api_base: http://localhost:8000/v1
+          api_key: os.environ/LLAMA_SWAP_API_KEY
+
+      - model_name: small
         litellm_params:
           model: openai/small
+          api_base: http://localhost:8000/v1
+          api_key: os.environ/LLAMA_SWAP_API_KEY
+
+      - model_name: embed
+        litellm_params:
+          model: openai/embed
           api_base: http://localhost:8000/v1
           api_key: os.environ/LLAMA_SWAP_API_KEY
 
@@ -146,6 +193,7 @@ let
           extra_headers:
             User-Agent: opencode/1.0.41
 
+      ${aikeyModels}
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY
       trusted_proxy_ranges: []
@@ -171,7 +219,7 @@ let
     # llama-server -hf downloads into this cache on first model load.
     export LLAMA_CACHE=${lib.escapeShellArg modelsDir}
     exec ${pkgs.llama-swap}/bin/llama-swap \
-      -config ${swapConfig} \
+      -config ${lib.escapeShellArg "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-swap.config.yaml"} \
       -listen 0.0.0.0:8000 \
       -watch-config
   '';
@@ -188,13 +236,16 @@ let
     if [ -r "${goSecretPath}" ]; then
       export OPENCODE_GO_API_KEY="$(tr -d '[:space:]' < "${goSecretPath}")"
     fi
+    if [ -r "${aikeySecretPath}" ]; then
+      export AIKEY_API_KEY="$(tr -d '[:space:]' < "${aikeySecretPath}")"
+    fi
     # Wait for swap to be ready.
     for i in $(seq 1 60); do
       if ${pkgs.curl}/bin/curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then break; fi
       sleep 2
     done
     exec ${pkgs.litellm}/bin/litellm \
-      --config ${litellmConfig} \
+      --config ${lib.escapeShellArg "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-litellm.config.yaml"} \
       --host 0.0.0.0 \
       --port 4000
   '';
@@ -219,6 +270,12 @@ in
       type = types.path;
       default = worktreePath.of ".secrets";
       description = "sops-encrypted file carrying llm/* keys.";
+    };
+
+    aikeyGatewayUrl = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Base URL of an aikey/Bedrock gateway to aggregate into this litellm (e.g. http://127.0.0.1:4001). null disables aggregation.";
     };
   };
 
@@ -252,6 +309,14 @@ in
       sopsFile = cfg.sopsEncryptedFile;
       key = "llm/opencode_go_api_key";
       path = goSecretPath;
+      owner = primaryUser;
+      mode = "0400";
+    };
+    sops.secrets.${aikeySecret} = {
+      format = "yaml";
+      sopsFile = cfg.sopsEncryptedFile;
+      key = "llm/aikey_api_key";
+      path = aikeySecretPath;
       owner = primaryUser;
       mode = "0400";
     };
@@ -290,6 +355,7 @@ in
               swapSecret
               masterSecret
               goSecret
+              aikeySecret
             ];
             reason = "LLM gateway secret changed";
           }
@@ -299,5 +365,19 @@ in
           "io.seedmatic.ndh.llm-litellm"
         ]
     );
+    system.activationScripts.seedLlmGatewayConfigs.text = ''
+      set -eu
+      if [ ! -f "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-swap.config.yaml" ]; then
+        mkdir -p "${home}/Library/LaunchAgents"
+        cp ${swapConfig} "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-swap.config.yaml"
+        chown ${primaryUser}:staff "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-swap.config.yaml"
+      fi
+      if [ ! -f "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-litellm.config.yaml" ]; then
+        mkdir -p "${home}/Library/LaunchAgents"
+        cp ${litellmConfig} "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-litellm.config.yaml"
+        chown ${primaryUser}:staff "${home}/Library/LaunchAgents/io.seedmatic.ndh.llm-litellm.config.yaml"
+      fi
+    '';
+
   };
 }
