@@ -42,6 +42,7 @@
     nixos-hardware.follows = "flake-commons/nixos-hardware";
     nixpkgs.follows = "flake-commons/nixpkgs";
     nixpkgs-unstable.follows = "flake-commons/nixpkgs-unstable";
+    llm-agents.follows = "flake-commons/llm-agents";
     sops-nix.follows = "flake-commons/sops-nix";
     treefmt-nix.follows = "flake-commons/treefmt-nix";
 
@@ -5435,6 +5436,26 @@
 
         # Overlay to disable tests for a2a-sdk package that causes permission errors during build
         python313Overlay = inputs: import ./overlays/python313.nix inputs;
+
+        # Expose omo-ai from numtide/llm-agents.nix (via flake-commons).
+        omoAiOverlay = inputs: final: prev: {
+          omo-ai = inputs.llm-agents.packages.${final.stdenv.hostPlatform.system}.omo-ai;
+        };
+
+        # Use the newer llama-cpp from nixpkgs-unstable, which includes the fix
+        # for unanchored JSON Schema `pattern` fields in tool-calling requests
+        # (ggml-org/llama.cpp#26930, closed in PR #26939).  The pinned nixpkgs
+        # ships 9190, which rejects those patterns and breaks tool calling.
+        llamaCppOverlay = inputs: final: prev: {
+          llama-cpp =
+            (import inputs.nixpkgs-unstable {
+              system = final.stdenv.hostPlatform.system;
+              config = {
+                allowBroken = true;
+                checkAllPackages = false;
+              };
+            }).llama-cpp;
+        };
 
         direnvOverlay = _inputs: final: prev: {
           # Upstream direnv fish tests are intermittently SIGKILLed on this build fleet.
