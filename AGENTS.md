@@ -2,7 +2,7 @@
 
 ## Roles
 
-- **Primary agent (`build`)** runs on `litellm/local-agent` (local 30B Qwen3-Coder). Its job is to understand intent, reason, plan, and answer. Keep context focused on decisions.
+- **Primary agent (`build`)** runs on `litellm@bioskop/local-agent` (local 30B Qwen3-Coder). Its job is to understand intent, reason, plan, and answer. Keep context focused on decisions.
 - **`local-worker`** (subagent, same 30B model) handles concrete, well-scoped execution: reading files, searching code, running shell commands, gathering precise output, small edits. Returns concise results (file/line references, command output).
 - **`local-small`** (subagent, 1.5B) handles only trivial formatting, renaming, one-line lookups.
 

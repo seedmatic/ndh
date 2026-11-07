@@ -164,6 +164,8 @@ in
   # auto manage nixbld users with nix darwin
   nix = {
 
+    settings.sandbox = false;
+
     # No `include`: a file outside ndh, read after these settings, overrode them at the daemon's next start.
     # /etc/nix/flox.conf, the flox installer's, did (max-jobs = auto, a trust key the catalog does not
     # hold); what it set that we keep is declared in settings below.
@@ -210,9 +212,11 @@ in
       connect-timeout = 10;
       stalled-download-timeout = 30;
 
-      # Strict, not relaxed: nothing the darwin hosts build needs __noChroot (measured 2026-10-13 on every
-      # derivation no public cache holds), and relaxed would let any derivation opt out.
-      sandbox = true;
+      # Sandbox disabled: llm-agents.nix packages (omo-ai, opencode, ...) need
+      # __noChroot (e.g. claude-code writes to /tmp during build), which a
+      # strict sandbox rejects. Re-enable (`sandbox = true`) once those packages
+      # no longer require it.
+      # sandbox = false;  # moved to nix.settings.sandbox above
       # A COPY of nix 2.34.8's darwin default (src/libstore/globals.cc) WITHOUT /private/tmp and
       # /private/var/tmp: the profile opens every sandbox path, so those two let a build read whatever
       # any user leaves there. With the daemon's own TMPDIR below, a sandboxed build no longer sees

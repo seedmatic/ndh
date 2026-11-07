@@ -228,6 +228,7 @@ in
       pkgs.llama-swap
       pkgs.litellm
       pkgs.curl
+      pkgs.omo-ai
     ];
 
     sops.secrets.${swapSecret} = {

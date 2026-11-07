@@ -1,7 +1,7 @@
 ---
 description: Tiny local model (1.5B) for trivial formatting and lookup tasks.
 mode: subagent
-model: litellm/local-small
+model: litellm@bioskop/local-small
 permissions:
   - action: read
     resource: "*"
