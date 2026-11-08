@@ -23,7 +23,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 131072;
-            maxTokens = 8192;
+            maxTokens = 4096;
           }
           {
             id = "agent-deep";
@@ -39,7 +39,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 16384;
-            maxTokens = 2048;
+            maxTokens = 1024;
           }
         ];
       };

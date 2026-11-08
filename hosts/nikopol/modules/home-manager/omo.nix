@@ -23,7 +23,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 131072;
-            maxTokens = 8192;
+            maxTokens = 4096;
           }
           {
             id = "agent-deep";
@@ -39,7 +39,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 16384;
-            maxTokens = 2048;
+            maxTokens = 1024;
           }
         ];
       };
@@ -58,7 +58,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 1000000;
-            maxTokens = 64000;
+            maxTokens = 16384;
           }
           {
             id = "claude-opus-5-5";
@@ -66,7 +66,7 @@ let
             reasoning = true;
             input = [ "text" ];
             contextWindow = 1000000;
-            maxTokens = 128000;
+            maxTokens = 32768;
           }
           {
             id = "claude-haiku-4-5";
@@ -74,7 +74,7 @@ let
             reasoning = false;
             input = [ "text" ];
             contextWindow = 200000;
-            maxTokens = 64000;
+            maxTokens = 16384;
           }
         ];
       };
