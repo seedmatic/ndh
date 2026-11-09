@@ -1,33 +1,99 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
   "agents": {
-    "sisyphus":        { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40 },
-    "hephaestus":      { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40 },
-    "oracle":          { "model": "litellm-nikopol/agent-deep", "textVerbosity": "low", "reasoning": "medium", "max_turns": 40 },
-    "prometheus":      { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40 },
-    "metis":           { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40 },
-    "atlas":           { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40 },
-    "momus":           { "model": "litellm-nikopol/agent-deep", "textVerbosity": "low", "reasoning": "medium", "max_turns": 40 },
-    "explore":         { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40, "tools": { "write": false, "edit": false, "apply_patch": false, "bash": false } },
-    "librarian":       { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40, "tools": { "write": false, "edit": false, "apply_patch": false, "bash": false } },
-    "code-reviewer":   { "model": "litellm-nikopol/agent", "textVerbosity": "low", "max_turns": 40, "tools": { "write": false, "edit": false, "apply_patch": false } }
+    "explore": {
+      "model": "litellm-nikopol/agent",
+      "max_turns": 40,
+      "tools": {
+        "write": false,
+        "edit": false,
+        "apply_patch": false,
+        "bash": false
+      }
+    },
+    "librarian": {
+      "model": "litellm-nikopol/agent",
+      "max_turns": 40,
+      "tools": {
+        "write": false,
+        "edit": false,
+        "apply_patch": false,
+        "bash": false
+      }
+    },
+    "code-reviewer": {
+      "model": "litellm-nikopol/agent",
+      "max_turns": 40,
+      "tools": {
+        "write": false,
+        "edit": false,
+        "apply_patch": false
+      }
+    }
   },
   "categories": {
-    "quick":              { "model": "aikey-nikopol/claude-sonnet-5-5", "textVerbosity": "low", "reasoning": "off" },
-    "quick-local":        { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "deep-low":           { "model": "aikey-nikopol/claude-opus-5-5", "textVerbosity": "low", "reasoning": "medium" },
-    "deep-high":          { "model": "aikey-nikopol/claude-opus-5-5", "textVerbosity": "low", "reasoning": "medium" },
-    "ultrabrain":         { "model": "aikey-nikopol/claude-opus-5-5", "textVerbosity": "low", "reasoning": "high" },
-    "unspecified-low":    { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "unspecified-high":   { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "writing":            { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "visual-engineering": { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "artistry":           { "model": "litellm-nikopol/agent", "textVerbosity": "low", "reasoning": "off" },
-    "architect":          { "model": "aikey-nikopol/claude-opus-5-5", "textVerbosity": "low", "reasoning": "medium" }
+    "quick": {
+      "model": "aikey-nikopol/claude-sonnet-5-5",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "quick-local": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "deep-low": {
+      "model": "aikey-nikopol/claude-opus-5-5",
+      "textVerbosity": "low",
+      "reasoning": "medium"
+    },
+    "deep-high": {
+      "model": "aikey-nikopol/claude-opus-5-5",
+      "textVerbosity": "low",
+      "reasoning": "medium"
+    },
+    "ultrabrain": {
+      "model": "aikey-nikopol/claude-opus-5-5",
+      "textVerbosity": "low",
+      "reasoning": "high"
+    },
+    "unspecified-low": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "unspecified-high": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "writing": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "visual-engineering": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "artistry": {
+      "model": "litellm-nikopol/agent",
+      "textVerbosity": "low",
+      "reasoning": "off"
+    },
+    "architect": {
+      "model": "aikey-nikopol/claude-opus-5-5",
+      "textVerbosity": "low",
+      "reasoning": "medium"
+    }
   },
   "task": {
     "default_concurrency": 1,
-    "provider_concurrency": { "litellm-nikopol": 2, "aikey-nikopol": 2 },
+    "provider_concurrency": {
+      "litellm-nikopol": 2,
+      "aikey-nikopol": 2
+    },
     "dag": {
       "max_prompt_bytes": 131072
     }
@@ -39,7 +105,12 @@
       "max_items": 1,
       "tool_budget": 4,
       "sidecar_max_tokens": 24000,
-      "event_caps": { "tool_args": 200, "result_head": 300, "assistant": 800, "prompt": 2000 },
+      "event_caps": {
+        "tool_args": 200,
+        "result_head": 300,
+        "assistant": 800,
+        "prompt": 2000
+      },
       "query_expansion": false
     },
     "facts": {
@@ -52,8 +123,11 @@
       "every_user_turns": 20
     },
     "reflection": {
-      "enabled": false,
-      "trigger": { "step_count": 50, "on_compaction": true }
+      "enabled": true,
+      "trigger": {
+        "step_count": 25,
+        "on_compaction": true
+      }
     },
     "dream": {
       "enabled": false,
@@ -61,25 +135,224 @@
       "min_hours_between": 48
     }
   },
-  "disabled_skills": ["caveman","caveman-compress","caveman-review","caveman-commit","caveman-help","hyperplan","mass-ulw","ulw-loop","ulw-plan","ulw-execute","ulw-research","ultimate-browsing","computer-use","visualize","visual-qa","init-deep","onboarding","skill-miner","skill-generalizer","skill-personalizer","package-npm-nix","scaffold-exercises","migrate-to-shoehorn","setup-pre-commit","git-guardrails-claude-code","wizard","dag-library","eval-integrity","codebase-design","domain-modeling","prototype","give-me-tips","writing-for-agents","research","data-scientist","pr"],
+  "disabled_skills": [
+    "caveman",
+    "caveman-compress",
+    "caveman-review",
+    "caveman-commit",
+    "caveman-help",
+    "hyperplan",
+    "mass-ulw",
+    "ulw-loop",
+    "ulw-plan",
+    "ulw-execute",
+    "ulw-research",
+    "ultimate-browsing",
+    "computer-use",
+    "visualize",
+    "visual-qa",
+    "init-deep",
+    "onboarding",
+    "skill-miner",
+    "skill-generalizer",
+    "skill-personalizer",
+    "package-npm-nix",
+    "scaffold-exercises",
+    "migrate-to-shoehorn",
+    "setup-pre-commit",
+    "git-guardrails-claude-code",
+    "wizard",
+    "dag-library",
+    "eval-integrity",
+    "codebase-design",
+    "domain-modeling",
+    "prototype",
+    "give-me-tips",
+    "writing-for-agents",
+    "research",
+    "data-scientist",
+    "pr"
+  ],
   "_migrations": [
     "2026-08-reasoning-unification",
-    "2026-09-opencode-routing-notice"
+    "2026-09-category-deep-split",
+    "2026-09-harness-native-rename",
+    "2026-09-subscription-provider-rename"
   ],
   "provenance": {
     "workspaces": [
-      { "name": "nix-flake-commons", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/develop"] },
-      { "name": "ndh", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/ndh.d/develop"] },
-      { "name": "seat-roster", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/seat-roster.d/develop"] },
-      { "name": "rke2lab", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/rke2lab.d/develop"] },
-      { "name": "flox-controller", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/flox-controller.d/develop"] },
-      { "name": "nnh", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nnh.d/develop"] },
-      { "name": "nch", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/nch.d/develop"] },
-      { "name": "flox-nri-plugin", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/flox-nri-plugin.d/develop"] },
-      { "name": "fleet", "git_owners": ["seedmatic"], "paths": ["/Volumes/git-worktree-store/seedmatic/fleet.d/develop"] },
-      { "name": "macos-screen-sharing-addons", "git_owners": ["seedmatic"] },
-      { "name": "java-bbox-api-client", "git_owners": ["seedmatic"] },
-      { "name": "java-systemd", "git_owners": ["seedmatic"] }
+      {
+        "name": "nix-flake-commons",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/nix-flake-commons.d/develop"
+        ]
+      },
+      {
+        "name": "ndh",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/ndh.d/develop"
+        ]
+      },
+      {
+        "name": "seat-roster",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/seat-roster.d/develop"
+        ]
+      },
+      {
+        "name": "rke2lab",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/rke2lab.d/develop"
+        ]
+      },
+      {
+        "name": "flox-controller",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/flox-controller.d/develop"
+        ]
+      },
+      {
+        "name": "nnh",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/nnh.d/develop"
+        ]
+      },
+      {
+        "name": "nch",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/nch.d/develop"
+        ]
+      },
+      {
+        "name": "flox-nri-plugin",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/flox-nri-plugin.d/develop"
+        ]
+      },
+      {
+        "name": "fleet",
+        "git_owners": [
+          "seedmatic"
+        ],
+        "paths": [
+          "/Volumes/git-worktree-store/seedmatic/fleet.d/develop"
+        ]
+      },
+      {
+        "name": "macos-screen-sharing-addons",
+        "git_owners": [
+          "seedmatic"
+        ]
+      },
+      {
+        "name": "java-bbox-api-client",
+        "git_owners": [
+          "seedmatic"
+        ]
+      },
+      {
+        "name": "java-systemd",
+        "git_owners": [
+          "seedmatic"
+        ]
+      }
     ]
+  },
+  "[opencode]": {
+    "agents": {
+      "sisyphus": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40
+      },
+      "hephaestus": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40
+      },
+      "oracle": {
+        "model": "litellm-nikopol/agent-deep",
+        "textVerbosity": "low",
+        "reasoning": "medium",
+        "max_turns": 40
+      },
+      "prometheus": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40
+      },
+      "metis": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40
+      },
+      "atlas": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40
+      },
+      "momus": {
+        "model": "litellm-nikopol/agent-deep",
+        "textVerbosity": "low",
+        "reasoning": "medium",
+        "max_turns": 40
+      },
+      "explore": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40,
+        "tools": {
+          "write": false,
+          "edit": false,
+          "apply_patch": false,
+          "bash": false
+        }
+      },
+      "librarian": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40,
+        "tools": {
+          "write": false,
+          "edit": false,
+          "apply_patch": false,
+          "bash": false
+        }
+      },
+      "code-reviewer": {
+        "model": "litellm-nikopol/agent",
+        "textVerbosity": "low",
+        "max_turns": 40,
+        "tools": {
+          "write": false,
+          "edit": false,
+          "apply_patch": false
+        }
+      }
+    }
   }
 }

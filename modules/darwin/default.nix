@@ -38,6 +38,7 @@
     ./shell-keychain.nix
     ./activation-order.nix
     ./restart-on-secret-change.nix
+    ./omo-ps-setuid-check.nix
     ./incus-cluster-cert.nix
     ./attic-client.nix
     ./ssh-keys-enrichment.nix
