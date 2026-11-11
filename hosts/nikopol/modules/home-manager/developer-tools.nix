@@ -10,12 +10,9 @@
   # Enables Claude Code settings management and Comet browser with remote debugging
 
   imports = [
-    ../../../../modules/home-manager/comet-debug.nix
+    ../../../../modules/home-manager/browseros.nix
     ./omo.nix
   ];
 
-  ndh.cometDebug = {
-    enable = true;
-    debugPort = 9222;
-  };
+  ndh.browseros.enable = true;
 }

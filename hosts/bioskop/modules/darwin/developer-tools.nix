@@ -5,7 +5,6 @@
 # Enables:
 #   - Claude Code stable env (model vars; settings.json left mutable)
 #   - BrowserOS neo (secondary browser for AI agents)
-#   - Comet browser (disabled auto-launch; manual use)
 {
   config,
   lib,
