@@ -26,5 +26,8 @@ in
     darwinModule
     developerToolsModule
   ];
-  nixosExtraModules = [ nixosModule ];
+  nixosExtraModules = [
+    nixosModule
+    (import ../../modules/nixos/llm-gateway.nix)
+  ];
 }
