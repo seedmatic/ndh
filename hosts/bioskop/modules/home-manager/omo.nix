@@ -55,12 +55,22 @@ let
   modelsJsonFile = pkgs.writeText "models.json" modelsJson;
   settingsJsonFile = pkgs.writeText "settings.json" settingsJson;
   omoJsoncFile = ./omo.jsonc;
+
+  mcpJson = builtins.toJSON {
+    mcpServers = {
+      browseros = {
+        type = "http";
+        url = "http://127.0.0.1:9010/mcp";
+      };
+    };
+  };
+  mcpJsonFile = pkgs.writeText "mcp.json" mcpJson;
 in
 {
   # Declarative omo (AI coding assistant) configuration for the primary seat.
   # Uses the local LLM gateway (litellm -> llama-swap -> llama-server) by default.
   home.activation.seedOmoConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    for spec in "models.json:${modelsJsonFile}" "settings.json:${settingsJsonFile}"; do
+    for spec in "models.json:${modelsJsonFile}" "settings.json:${settingsJsonFile}" "mcp.json:${mcpJsonFile}"; do
       name="''${spec%%:*}"
       src="''${spec#*:}"
       target="$HOME/.omo/agent/$name"
