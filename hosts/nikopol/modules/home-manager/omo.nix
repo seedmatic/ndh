@@ -9,7 +9,7 @@ let
   modelsJson = builtins.toJSON {
     providers = {
       "litellm-nikopol" = {
-        baseUrl = "http://127.0.0.1:4000/v1";
+        baseUrl = "http://192.168.5.2:4000/v1";
         api = "openai-completions";
         apiKey = "ehlo";
         compat = {
