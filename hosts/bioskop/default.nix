@@ -30,5 +30,8 @@ in
     darwinModule
     developerToolsModule
   ];
-  nixosExtraModules = [ nixosModule ];
+  nixosExtraModules = [
+    nixosModule
+    (import ../../modules/nixos/dns-authoritative.nix)
+  ];
 }

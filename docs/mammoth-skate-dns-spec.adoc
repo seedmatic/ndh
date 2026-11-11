@@ -1,0 +1,115 @@
+= mammoth-skate.fr.eu.org - Authoritative DNS server (design)
+:toc: left
+:toclevels: 3
+:icons: font
+
+== Context and intent
+
+Self-host an authoritative DNS server for `mammoth-skate.fr.eu.org` so the
+zone (A, AAAA, MX, TXT, ...) can be managed directly instead of relying on a
+third-party DNS host. The server runs on the NixOS guest `nixos.bioskop`
+(Tart VM bridged to the LAN), reachable from the Internet through a port
+forward on the Bbox. Registration is done at nic.eu.org (free NS delegation).
+
+== Goals
+
+* Zone `mammoth-skate.fr.eu.org` hosted on nixos.bioskop (Knot DNS).
+* NS1 = `mammoth-skate.duckdns.org` (fixed public IP via DuckDNS, no glue
+  record).
+* NS2 = free secondary (afraid.org / FreeDNS).
+* Bbox port forward UDP+TCP 53 to the nixos.bioskop VM (bridged LAN IP).
+* Registration accepted at nic.eu.org (NS check OK).
+
+== Non-goals
+
+* No DNSSEC in the first iteration (can be added later).
+* No DNS server on macOS bioskop or nikopol.
+* No management of zones other than `mammoth-skate.fr.eu.org`.
+
+== Constraints
+
+* nic.eu.org requires the server to answer (SOA + NS) at submission time.
+* At least 2 name servers required.
+* Validation delay: weeks to months.
+* The VM is bridged (`vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1"`),
+  so it has a direct LAN IP (no NAT).
+* Public IP managed by DuckDNS (`mammoth-skate.duckdns.org`).
+
+== Architecture
+
+.Network and DNS topology
+[mermaid]
+....
+flowchart LR
+  Internet((Internet)) -->|port 53 UDP/TCP| Bbox[Bbox gateway]
+  Bbox -->|forward 53| VM[nixos.bioskop VM\nKnot DNS\nbridged LAN IP]
+  VM -->|zone mammoth-skate.fr.eu.org| Zone[(Zone file\nSOA + NS + A...)]
+  Internet -->|NS lookup| DuckDNS[mammoth-skate.duckdns.org\npublic IP]
+  Internet -->|NS secondary| Afraid[afraid.org\nFreeDNS secondary]
+....
+
+== Approaches considered
+
+1. **Knot DNS on nixos.bioskop + afraid.org secondary** (chosen) - lightweight,
+   native NixOS module, full zone control.
+2. Knot DNS on macOS bioskop - simpler (single port forward) but departs from
+   intent (nixos.bioskop).
+3. Hosted DNS (Cloudflare/hostry) as primary - zero port forward but no control
+   and incompatible with the initial nic.eu.org submission.
+
+== Design
+
+=== NixOS module
+
+New module `modules/nixos/dns-authoritative.nix`:
+
+* `services.knot.enable = true`
+* Zone `mammoth-skate.fr.eu.org` with:
+** SOA: `mammoth-skate.duckdns.org.` as MNAME, contact email, serial,
+   refresh/retry/expire/minimum.
+** NS: `mammoth-skate.duckdns.org.` and the afraid.org secondary.
+** A/AAAA for `mammoth-skate.fr.eu.org` and any desired records.
+* `networking.firewall.allowedUDPPorts = [ 53 ]` and
+  `allowedTCPPorts = [ 53 ]`.
+* Knot listens on `0.0.0.0:53`.
+
+=== Bbox port forward
+
+* UDP 53 to the nixos.bioskop VM LAN IP
+* TCP 53 to the nixos.bioskop VM LAN IP
+
+=== Secondary DNS (afraid.org)
+
+* Create a secondary zone on FreeDNS (afraid.org) with
+  `mammoth-skate.duckdns.org` as master.
+* FreeDNS provides a secondary NS (e.g. `ns2.afraid.org`).
+
+=== nic.eu.org registration
+
+1. Create a Handle at https://nic.eu.org/arf/en/contact/create/.
+2. Submit `mammoth-skate.fr.eu.org` with NS = `mammoth-skate.duckdns.org` +
+   afraid.org secondary.
+3. Verify the NS check returns "No error, storing for validation...".
+4. Wait for validation.
+
+=== Verification
+
+* `dig @<public-ip> mammoth-skate.fr.eu.org SOA` returns an authoritative
+  answer.
+* `dig @<public-ip> mammoth-skate.fr.eu.org NS` returns 2+ NS.
+* Test from outside (e.g. `dig @8.8.8.8`).
+
+== Left to the builder
+
+* Serial scheme choice (date-based or incremental).
+* Exact Knot configuration (ACL, template, zone file path).
+* Module activation in `hosts/bioskop/nixos.nix` (nixosExtraModules).
+* Port-forward documentation in the repo.
+
+== Decisions made
+
+* Secondary DNS: afraid.org (user preference by name).
+* Domain: `mammoth-skate.fr.eu.org` (consistency with mammoth-skate.duckdns.org
+  and mammoth-skate.ts.net).
+* Software: Knot DNS (lightweight, native NixOS module).
+* Host: nixos.bioskop (bridged VM).

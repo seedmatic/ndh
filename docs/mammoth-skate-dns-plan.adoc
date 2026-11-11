@@ -1,0 +1,82 @@
+= mammoth-skate.fr.eu.org - Authoritative DNS: Implementation Plan
+:toc: left
+:toclevels: 3
+:icons: font
+
+== Plan header
+
+*Goal:* Deploy an authoritative Knot DNS server for `mammoth-skate.fr.eu.org` on
+the NixOS guest `nixos.bioskop`, exposed on the public Internet via Bbox port
+forward, with a free secondary on afraid.org, then register the delegation at
+nic.eu.org.
+
+*Architecture:* A new NixOS module `modules/nixos/dns-authoritative.nix`
+configures Knot DNS (zone + SOA + NS + A/AAAA) and opens firewall port 53
+(UDP+TCP). Activated in `hosts/bioskop/nixos.nix`. Port-forward and DNS
+secondary setup are manual ops steps.
+
+*Tech stack:* NixOS, Knot DNS (`services.knot`), afraid.org (FreeDNS secondary).
+
+*Spec:* `docs/mammoth-skate-dns-spec.adoc`
+
+== Global constraints
+
+* Domain: `mammoth-skate.fr.eu.org`.
+* NS1: `mammoth-skate.duckdns.org` (no glue record needed).
+* NS2: afraid.org secondary (to be created).
+* Knot listens on `0.0.0.0:53`.
+* Firewall: UDP 53 and TCP 53 open.
+* No DNSSEC in v1.
+
+== Review focus
+
+* The zone must respond authoritatively (SOA + NS) before nic.eu.org submission.
+* Port 53 must be reachable from the public Internet (both UDP and TCP).
+* The secondary must successfully AXFR the zone from the primary.
+* The VM bridged IP must be stable (DHCP reservation on Bbox recommended).
+
+== File structure
+
+* Create: `modules/nixos/dns-authoritative.nix`
+* Modify: `hosts/bioskop/nixos.nix` (add to nixosExtraModules)
+* Manual: Bbox port-forward, afraid.org secondary setup, nic.eu.org registration
+
+== Task 1: Create the NixOS DNS module
+
+*Files:* Create `modules/nixos/dns-authoritative.nix`
+
+* [ ] Step 1: Write the module with Knot config, zone definition, and firewall rules.
+* [ ] Step 2: Evaluate the module by building nixos.bioskop.
+
+== Task 2: Activate the module
+
+*Files:* Modify `hosts/bioskop/nixos.nix`
+
+* [ ] Step 1: Add `dns-authoritative.nix` to `nixosExtraModules`.
+* [ ] Step 2: Build nixos.bioskop to verify.
+
+== Task 3: Port-forward and secondary DNS (manual)
+
+* [ ] Step 1: Configure Bbox port-forward UDP+TCP 53 to the VM LAN IP.
+* [ ] Step 2: Create a secondary zone on afraid.org with master
+  `mammoth-skate.duckdns.org`.
+* [ ] Step 3: Verify AXFR: `dig @ns2.afraid.org mammoth-skate.fr.eu.org SOA`.
+
+== Task 4: Register at nic.eu.org (manual)
+
+* [ ] Step 1: Create a Handle at https://nic.eu.org/arf/en/contact/create/.
+* [ ] Step 2: Submit `mammoth-skate.fr.eu.org` with NS = `mammoth-skate.duckdns.org`
+  + afraid.org secondary.
+* [ ] Step 3: Verify NS check passes ("No error, storing for validation...").
+
+== Task 5: Verification
+
+* [ ] Step 1: `dig @<public-ip> mammoth-skate.fr.eu.org SOA` returns authoritative.
+* [ ] Step 2: `dig @<public-ip> mammoth-skate.fr.eu.org NS` returns 2+ NS.
+* [ ] Step 3: Test from outside (`dig @8.8.8.8 mammoth-skate.fr.eu.org`).
+
+== Execution
+
+Plan complete. Please review. Does it capture what you want?
+
+If approved, I will implement Task 1 and 2 (code), then guide you through Tasks 3-5 (manual ops).
