@@ -34,6 +34,8 @@ forward on the Bbox. Registration is done at nic.eu.org (free NS delegation).
 * The VM is bridged (`vmRunBridgeInterface = "Thunderbolt Ethernet Slot 1"`),
   so it has a direct LAN IP (no NAT).
 * Public IP managed by DuckDNS (`mammoth-skate.duckdns.org`).
+* Contact email for nic.eu.org registration: `stephane.lacoin@proton.me`
+  (nic.eu.org does not accept Google email addresses).
 
 == Architecture
 
