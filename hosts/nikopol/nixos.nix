@@ -41,7 +41,7 @@ in
     # omo (AI coding assistant) on NixOS
     environment.systemPackages = [ pkgs.omo-ai ];
     home-manager.users.${config.profile.user.name}.imports = [
-      ../modules/home-manager/omo.nix
+      ./modules/home-manager/omo.nix
     ];
 
     # LLM gateway (LiteLLM proxy) on NixOS VM — points to darwin host's llama-swap (GPU).

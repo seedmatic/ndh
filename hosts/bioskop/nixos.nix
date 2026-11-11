@@ -30,7 +30,7 @@
     # omo (AI coding assistant) on NixOS
     environment.systemPackages = [ pkgs.omo-ai ];
     home-manager.users.${config.profile.user.name}.imports = [
-      ../modules/home-manager/omo.nix
+      ./modules/home-manager/omo.nix
     ];
 
     # Vector observability agent forwards build events to Darwin aggregator
