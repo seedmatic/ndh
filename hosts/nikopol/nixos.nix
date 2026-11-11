@@ -42,7 +42,7 @@ in
     services.llmGateway = {
       enable = true;
       sopsEncryptedFile = ../../.secrets;
-      remoteSwapUrl = "http://192.168.5.2:8000";
+      remoteSwapUrl = "http://darwin.nikopol:8000";
     };
 
     # Vector observability agent forwards build events to Darwin aggregator
