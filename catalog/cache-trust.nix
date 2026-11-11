@@ -22,9 +22,10 @@
     };
 
     flox-hub = {
-      substituter = "https://cache.flox-hub.org";
+      substituter = "https://cache.flox.dev";
       publicKey = "floxhub-1:0QOAlcobcEvq1mqEf4qAYCaWnTTOXpyoRv/PmqfSixM=";
     };
+
     # ⚠️ An entry here with a `substituter` is ACTIVE on every host — the module walks this set and
     # appends each one to `extra-substituters` (see the emission contract at the top of
     # modules/.common.d/cache-trust.nix). There is no "documented but inactive" shape, so do NOT
