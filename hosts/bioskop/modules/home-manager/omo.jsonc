@@ -119,6 +119,7 @@
     "reflection": {
       "enabled": true,
       "model": "litellm-bioskop/go-beam-free",
+      "sandbox": "off",
       "trigger": {
         "step_count": 25,
         "on_compaction": true
