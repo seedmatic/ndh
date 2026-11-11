@@ -8,6 +8,10 @@
 let
   domain = "mammoth-skate.fr.eu.org";
   ns1 = "mammoth-skate.duckdns.org";
+  # Knot binds only to the VM's bridged LAN IP to avoid clashing with
+  # dnsmasq (which owns 127.0.0.1, 10.80.x.1, 172.16.x.1 on port 53).
+  # Reserve this address in the Bbox DHCP for the VM's MAC.
+  listenAddress = "192.168.1.130";
 
   zoneContent = ''
     $ORIGIN ${domain}.
@@ -30,7 +34,7 @@ in
     enable = true;
     settings = {
       server = {
-        listen = [ "0.0.0.0@53" ];
+        listen = [ "${listenAddress}@53" ];
       };
       template = [
         {
