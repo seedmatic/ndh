@@ -96,6 +96,7 @@ in
       clients = [
         "100.76.71.8" # darwin.bioskop
         "100.89.203.77" # darwin.nikopol
+        bm.netGateway # nixos.nikopol itself: local consumers (omo on the guest)
       ];
     };
 
