@@ -124,6 +124,8 @@
     },
     "reflection": {
       "enabled": true,
+      "model": "litellm-nikopol/agent",
+      "sandbox": "off",
       "trigger": {
         "step_count": 25,
         "on_compaction": true
