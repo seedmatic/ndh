@@ -10,8 +10,9 @@ let
   ns1 = "mammoth-skate.duckdns.org";
   # Knot binds only to the VM's bridged LAN IP to avoid clashing with
   # dnsmasq (which owns 127.0.0.1, 10.80.x.1, 172.16.x.1 on port 53).
-  # Reserve this address in the Bbox DHCP for the VM's MAC.
   listenAddress = "192.168.1.130";
+  # afraid.org secondary (ns2.afraid.org) IP for AXFR
+  afraidSecondaryIP = "69.65.50.223";
 
   zoneContent = ''
     $ORIGIN ${domain}.
@@ -36,11 +37,19 @@ in
       server = {
         listen = [ "${listenAddress}@53" ];
       };
+      acl = [
+        {
+          id = "afraid-axfr";
+          address = [ afraidSecondaryIP ];
+          action = "transfer";
+        }
+      ];
       template = [
         {
           id = "default";
           storage = "/var/lib/knot";
           file = zoneFile;
+          acl = [ "afraid-axfr" ];
         }
       ];
       zone = [
