@@ -1,4 +1,4 @@
-{ ... }:
+{ config, pkgs, ... }:
 {
   config = {
     # Cache signing (private deploy + trusted-public-keys + /etc/nix/*.pub)
