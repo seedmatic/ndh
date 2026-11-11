@@ -93,11 +93,8 @@
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
 
-    ndh.claude-code.managedSettings.enable = true;
     # The guests are evaluated here and pushed, so the fleet is switched from this seat only.
     ndh.ndhSwitch.enable = true;
-    # The Claude sessions live in this seat's VS Code: after a cold restart, the integration reopens them from here.
-    ndh.claudeWake.enable = true;
     # bioskop holds the keyring (ndh-keyring).
     ndh.keyring.enable = true;
     # keyhole's bare lives here: the git sops filters derive its age identity from keyring@keyhole's ssh key.

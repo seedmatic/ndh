@@ -7,10 +7,6 @@ schema-version = "1.11.0"
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-claude-code.pkg-path = "claude-code"
-claude-code-acp.pkg-path = "claude-code-acp"
-claude-monitor.pkg-path = "claude-monitor"
-claude-agent-acp.pkg-path = "claude-agent-acp"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

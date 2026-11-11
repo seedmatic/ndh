@@ -212,8 +212,8 @@ in
       connect-timeout = 10;
       stalled-download-timeout = 30;
 
-      # Sandbox disabled: llm-agents.nix packages (omo-ai, opencode, ...) need
-      # __noChroot (e.g. claude-code writes to /tmp during build), which a
+      # Sandbox disabled: llm-agents.nix packages (omo-ai, ...) need
+      # __noChroot (e.g. builds write to /tmp during build), which a
       # strict sandbox rejects. Re-enable (`sandbox = true`) once those packages
       # no longer require it.
       # sandbox = false;  # moved to nix.settings.sandbox above

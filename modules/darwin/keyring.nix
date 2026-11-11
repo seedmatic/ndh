@@ -41,7 +41,7 @@ in
     environment.systemPackages = [ config.ndh.keyring.package ];
     home-manager.users.${user}.home.sessionVariables.SOPS_AGE_KEY_CMD =
       "${config.ndh.keyring.ageKeyCommand}";
-    # GUI-launched processes read the launchd session's environment, not the shell's (see claude-code-backend.nix).
+    # GUI-launched processes read the launchd session's environment, not the shell's.
     launchd.user.agents.sops-age-key-cmd = {
       command = "/bin/launchctl setenv SOPS_AGE_KEY_CMD ${config.ndh.keyring.ageKeyCommand}";
       serviceConfig = {

@@ -154,7 +154,6 @@
       ];
       # The checks that cannot run on aarch64-linux, each with why. The linux set is the darwin set minus exactly these.
       darwinOnlyChecks = {
-        claude-code-backend-seats = "runs each darwin seat's own claudeCodeBackend activation, whose yq is an aarch64-darwin binary";
       };
       # The checks of every system from ONE body that drops nothing: linux is cut by darwinOnlyChecks alone, and any other
       # difference between the systems (an optionalAttrs on system inside the body, a stale entry) fails the evaluation.
@@ -1150,8 +1149,6 @@
         system:
         let
           pkgs = pkgsFor { inherit system; };
-          managed = import ./modules/darwin/claude-code-managed.d/package.nix { inherit pkgs; };
-          sessionHooks = import ./modules/home-manager/claude-code.d/hooks/package.nix { inherit pkgs; };
           # Names no fleet machine answers to (roles × keys S3a): the corporate bare-metal, a home-LAN
           # device, the bring-up guest, a stranger. The host authority must not vouch for them.
           outsideFleet = [
@@ -1190,26 +1187,6 @@
           };
         in
         {
-          claude-code-managed-settings = managed.settings;
-          claude-code-deny-hook = managed.tests;
-          claude-code-session-hooks = sessionHooks.tests;
-          claude-code-session-cost =
-            (import ./modules/home-manager/claude-code.d/session-cost/package.nix { inherit pkgs; }).tests;
-          claude-code-purge-backend-env =
-            (import ./modules/home-manager/claude-code.d/purge-backend-env.nix {
-              inherit pkgs;
-              nixBashTrampoline = "/the-check-stubs-it";
-              loggerTag = "check";
-            }).tests;
-          claude-code-purge-flox-snapshot =
-            (import ./modules/home-manager/claude-code.d/purge-flox-snapshot.nix {
-              inherit pkgs;
-              nixBashTrampoline = "/the-check-stubs-it";
-              loggerTag = "check";
-            }).tests;
-          claude-code-auto-mode = import ./modules/home-manager/claude-code.d/auto-mode/package.nix {
-            inherit pkgs;
-          };
           ssh-keys-bats = import ./modules/.common.d/ssh-keys.d/tests/package.nix {
             inherit pkgs;
             trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
@@ -3526,7 +3503,6 @@
             inherit pkgs;
             catalog = catalogData;
           };
-          ndh-claude-wake-bats = import ./modules/.common.d/claude-wake.d/tests/package.nix { inherit pkgs; };
           canary-proven-record-bats =
             import ./modules/nixos/secret-material-guard.d/canary-proven.d/tests/package.nix
               {
@@ -3545,40 +3521,6 @@
                 if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
             };
           };
-          # A darwin switch run over ssh: its user-launchd step must not need the Aqua session, since SIP
-          # refuses a bare `launchctl setenv` from the System one (150), and the backend env agent is there.
-          darwin-user-launchd-over-ssh =
-            let
-              hosts = [
-                "bioskop"
-                "nikopol"
-              ];
-              config = h: self.darwinConfigurations.${h}.config;
-              text = h: builtins.unsafeDiscardStringContext (config h).system.activationScripts.userLaunchd.text;
-              agent = h: (config h).launchd.user.agents ? claude-code-backend-env;
-            in
-            pkgs.runCommand "darwin-user-launchd-over-ssh"
-              (
-                {
-                  passAsFile = hosts;
-                  agents = pkgs.lib.concatMapStringsSep " " (h: "${h}=${pkgs.lib.boolToString (agent h)}") hosts;
-                }
-                // pkgs.lib.genAttrs hosts text
-              )
-              ''
-                fail=0
-                for h in ${pkgs.lib.concatStringsSep " " hosts}; do
-                  f="''${h}Path"
-                  if grep -nE '^[[:space:]]*sudo --user=[^ ]+ -- launchctl setenv ' "''${!f}"; then
-                    echo "$h: a user-launchd setenv outside launchctl asuser: it fails over ssh" >&2
-                    fail=1
-                  fi
-                done
-                for a in $agents; do
-                  [ "''${a#*=}" = true ] || { echo "''${a%%=*}: no claude-code-backend-env agent" >&2; fail=1; }
-                done
-                [ "$fail" = 0 ] && touch "$out"
-              '';
           ndh-ops-bats = import ./modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
           viewer-kubeconfig-bats = import ./modules/.common.d/viewer-kubeconfig.d/tests/package.nix {
             inherit pkgs;
@@ -4190,135 +4132,6 @@
               pkgs = linuxPkgs;
               nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
             };
-          # Every seat carries the backend's values in its three layers (shells, the GUI launchd domain, settings.json's
-          # env), telemetry off included, and no layer names a retired backend key.
-          claude-code-backend-seats =
-            let
-              hosts = [
-                "bioskop"
-                "nikopol"
-              ];
-              backend = import ./modules/claude-code-backend-env.nix;
-              darwin = h: self.darwinConfigurations.${h}.config;
-              session = h: (darwin h).home-manager.users.${(darwin h).system.primaryUser}.home.sessionVariables;
-              # The settings.json layer is checked by RUNNING the seat's own activation text on a fixture HOME, then reading
-              # what it wrote: comparing the JSON the activation reads with the declaration said nothing of its merge
-              # expression (a mutant writing `fallbackModel = []` passed, measured). The text keeps its string context, so
-              # the sandbox holds everything it names.
-              activation =
-                h:
-                pkgs.writeText "claude-code-backend-activation-${h}" (
-                  (darwin h)
-                  .home-manager.users.${(darwin h).system.primaryUser}.home.activation.claudeCodeBackend.data
-                );
-              # The GUI layer is a script of launchctl lines: it must unset every retired key and set every value. It is
-              # read as the exec target of nix-darwin's wait4path wrapper, so an agent that loses the wrapper has no
-              # script to check and is refused, rather than checked as nothing. The match drops the context; it is put back.
-              script =
-                c:
-                let
-                  args = c.launchd.user.agents.claude-code-backend-env.serviceConfig.ProgramArguments or [ ];
-                  m =
-                    if pkgs.lib.length args == 3 then
-                      builtins.match "/bin/wait4path /nix/store && exec (/nix/store/[^ ]+)" (pkgs.lib.elemAt args 2)
-                    else
-                      null;
-                in
-                if m == null then
-                  null
-                else
-                  builtins.appendContext (builtins.head m) (builtins.getContext (pkgs.lib.elemAt args 2));
-              agent =
-                h:
-                let
-                  s = script (darwin h);
-                in
-                assert pkgs.lib.assertMsg (
-                  s != null
-                ) "${h}: claude-code-backend-env does not run its script behind the wait4path wrapper";
-                s;
-              mutant =
-                script
-                  (self.darwinConfigurations.bioskop.extendModules {
-                    modules = [
-                      {
-                        launchd.user.agents.claude-code-backend-env = {
-                          command = pkgs.lib.mkForce "";
-                          serviceConfig.ProgramArguments = [ "/nix/store/x-mutant-claude-code-backend-env" ];
-                        };
-                      }
-                    ];
-                  }).config;
-              missing =
-                h:
-                pkgs.lib.filter (k: ((session h).${k} or null) != backend.env.${k}) (
-                  builtins.attrNames backend.env
-                );
-              kept = h: pkgs.lib.filter (k: (session h) ? ${k}) backend.retired;
-              owned = [ "env" ] ++ builtins.attrNames backend.settings;
-              report = pkgs.lib.concatMapStrings (
-                h:
-                pkgs.lib.optionalString (missing h != [ ]) "${h}: the shell env lacks ${toString (missing h)}\n"
-                + pkgs.lib.optionalString (kept h != [ ]) "${h}: the shell env keeps ${toString (kept h)}\n"
-              ) hosts;
-            in
-            assert pkgs.lib.assertMsg (
-              mutant == null
-            ) "claude-code-backend-seats: an agent without the wrapper was not refused";
-            pkgs.runCommand "claude-code-backend-seats"
-              {
-                inherit report;
-                agents = map agent hosts;
-                activations = map activation hosts;
-                expected = builtins.toJSON ({ inherit (backend) env; } // backend.settings);
-                pick = "pick([${pkgs.lib.concatMapStringsSep ", " (k: ''"${k}"'') owned}])";
-                drop = "del(${pkgs.lib.concatMapStringsSep ", " (k: ".${k}") owned})";
-                # A settings.json as a seat has it: keys the activation must keep, and an old backend it must replace whole.
-                fixture = builtins.toJSON {
-                  model = "opus";
-                  theme = "dark";
-                  hooks.SessionStart = [ ];
-                  permissions.allow = [ "Bash(ls)" ];
-                  env = {
-                    CLAUDE_CODE_USE_BEDROCK = "1";
-                    AWS_PROFILE = "old";
-                  };
-                  fallbackModel = [ "old-model" ];
-                  promptCacheTtl = "5m";
-                };
-                sets = pkgs.lib.concatStringsSep " " (pkgs.lib.mapAttrsToList (k: v: "${k}=${v}") backend.env);
-                unsets = pkgs.lib.concatStringsSep " " backend.retired;
-              }
-              ''
-                fail=0
-                if [ -n "$report" ]; then printf '%s' "$report" >&2; fail=1; fi
-                yq=${pkgs.yq-go}/bin/yq
-                canon() { $yq -p=json -o=json -I0 'sort_keys(..)'; }
-                want_backend="$(printf '%s' "$expected" | canon)"
-                want_rest="$(printf '%s' "$fixture" | $yq -p=json -o=json -I0 "$drop | sort_keys(..)")"
-                for a in $activations; do
-                  home="$(mktemp -d)"
-                  mkdir -p "$home/.claude"
-                  printf '%s' "$fixture" >"$home/.claude/settings.json"
-                  HOME="$home" DRY_RUN_CMD= ${pkgs.bash}/bin/bash -e "$a" ||
-                    { echo "$a: the activation failed on the fixture" >&2; fail=1; continue; }
-                  got="$home/.claude/settings.json"
-                  [ "$($yq -p=json -o=json -I0 "$pick" "$got" | canon)" = "$want_backend" ] ||
-                    { echo "$a: settings.json's backend keys differ from the backend after the activation" >&2; fail=1; }
-                  [ "$($yq -p=json -o=json -I0 "$drop | sort_keys(..)" "$got")" = "$want_rest" ] ||
-                    { echo "$a: the activation changed settings.json keys it does not own" >&2; fail=1; }
-                done
-                for a in $agents; do
-                  for kv in $sets; do
-                    grep -qxF "/bin/launchctl setenv ''${kv%%=*} ''${kv#*=}" "$a" ||
-                      { echo "$a: no setenv ''${kv%%=*}" >&2; fail=1; }
-                  done
-                  for k in $unsets; do
-                    grep -qxF "/bin/launchctl unsetenv $k" "$a" || { echo "$a: no unsetenv $k" >&2; fail=1; }
-                  done
-                done
-                [ "$fail" = 0 ] && touch "$out"
-              '';
         }
       );
 
@@ -5034,11 +4847,6 @@
             }/bin/ndh-canary-proven";
             meta.description = "Prove the in-guest secret-material canary at the checkout's revision and, only on a green build that refused the planted key, record its derivation (the record a bringup image is gated on) — run from a clean ndh checkout — src: modules/nixos/secret-material-guard.d/canary-proven.d/";
           };
-          ndh-claude-wake = {
-            type = "app";
-            program = "${self.darwinConfigurations.bioskop.config.ndh.claudeWake.package}/bin/ndh-claude-wake";
-            meta.description = "After a cold restart, reopen every Claude session security engraved, each in its VS Code workspace, by the extension's open?session= link; never runs claude itself — run from darwin.bioskop — src: modules/.common.d/claude-wake.d/";
-          };
           ndh-switch = {
             type = "app";
             program = "${self.darwinConfigurations.bioskop.config.ndh.ndhSwitch.package}/bin/ndh-switch";
@@ -5422,6 +5230,7 @@
             #inherit (self.packages.${hostSystem}) sysdo pyEnv;
 
             # rancher-desktop = final.callPackage ./pkgs/rancher-desktop.nix {};
+            browseros-neo = final.callPackage ./pkgs/browseros-neo.nix { };
             tart-guest-agent = final.callPackage ./pkgs/tart-guest-agent.nix { };
             inherit (inputs.maven-mvnd.packages.${hostSystem}) maven-mvnd-m39;
             inherit (inputs.disko.packages.${hostSystem}) disko;

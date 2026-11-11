@@ -57,11 +57,8 @@
     ./tls-authority-keychain.nix
     ./launchd-orphan-cleanup.nix
     ./tmpdir-tmpfs.nix
-    ./claude-code-backend.nix
-    ./claude-code-managed.nix
     ./llm-gateway.nix
     ./ndh-switch.nix
-    ./claude-wake.nix
   ];
 
   # Active le résolveur .lan par défaut (modifiable par hôte).  Le nameserver et le

@@ -5,7 +5,7 @@
 #   - diff textconv: renders a sops blob decrypted, so `git diff` shows what moved;
 #   - filter smudge: decrypts at checkout, and writes nothing when it cannot;
 #   - filter clean: encrypts at `git add`, for the recipients of the file's OWN creation rule.
-# Claude sessions neutralise all of them (claude-code.d/hooks/sops-git-env.sh).
+# Sessions neutralise all of them.
 # The filters hold the plaintext only in a 0700 directory under the user's TMPDIR, removed on exit; a
 # SIGKILL skips that trap and can leave it there, private to the user, until the system's tmp sweep.
 # ★ xtrace-guard — no trace, whatever the invocation (bash -x, an inherited SHELLOPTS=xtrace, a

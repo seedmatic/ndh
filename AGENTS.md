@@ -18,7 +18,7 @@ Delegate to a subagent whenever the task requires **precise, concrete output** t
 
 Do not do exploratory tool calls in the primary agent when a subagent can return a compact answer.
 
-The primary agent may only launch `local-worker` and `local-small` (enforced by permissions in `.opencode/agents/`).
+The primary agent may only launch `local-worker` and `local-small`.
 
 ## Cloud models
 

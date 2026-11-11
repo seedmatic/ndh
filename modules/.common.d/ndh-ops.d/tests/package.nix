@@ -3,7 +3,7 @@
 # runs with the check, and asserts no never-delegated tool is in its table.
 { pkgs }:
 let
-  verbs = builtins.fromJSON (builtins.readFile ../../../darwin/claude-code-managed.d/verbs.json);
+  verbs = builtins.fromJSON (builtins.readFile ../verbs.json);
   inherit (pkgs) lib;
   neverDelegated = verbs.operator_tools.never_delegated;
   operatorTools = lib.subtractLists neverDelegated verbs.operator_tools.programs;

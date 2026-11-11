@@ -4,7 +4,8 @@
 #
 # Enables:
 #   - Claude Code stable env (model vars; settings.json left mutable)
-#   - Comet browser with Chrome DevTools remote debugging (port 9222)
+#   - BrowserOS neo (secondary browser for AI agents)
+#   - Comet browser (disabled auto-launch; manual use)
 {
   config,
   lib,

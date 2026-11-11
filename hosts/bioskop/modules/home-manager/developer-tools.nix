@@ -10,19 +10,14 @@
   # Enables Claude Code settings management and Comet browser with remote debugging
 
   imports = [
-    ../../../../modules/home-manager/claude-code.nix
     ../../../../modules/home-manager/comet-debug.nix
-    ./opencode.nix
+    ../../../../modules/home-manager/browseros.nix
     ./omo.nix
   ];
 
-  ndh.claude-code.enable = true;
-  ndh.claude-code.sessionHooks.enable = true;
-  ndh.claude-code.autoMode.enable = true;
-  ndh.claude-code.backendSettings.enable = true;
+  # Comet's launchd agent pointed at a non-existent path; disable the broken
+  # auto-launch while we move to BrowserOS neo. Comet stays manually usable.
+  ndh.cometDebug.enable = false;
 
-  ndh.cometDebug = {
-    enable = true;
-    debugPort = 9222;
-  };
+  ndh.browseros.enable = true;
 }
