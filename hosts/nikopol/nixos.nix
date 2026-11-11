@@ -60,8 +60,8 @@ in
     };
 
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount, read-only, as nxmatic — the operator who owns the trees — with the
-    # guest's own host key, which the seat authorizes for sftp only; remote files map back to uid/gid 501:30001.
+    # Root executes the mount, read-write, as nxmatic — the operator who owns the trees — with the
+    # guest's own host key, which the seat authorizes for read-write sftp only; remote files map back to uid/gid 501:30001.
     # nikopol keeps its git trees on dedicated /Volumes stores.
     services.sshfsMounts = {
       enable = true;

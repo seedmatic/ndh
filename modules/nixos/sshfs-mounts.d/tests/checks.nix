@@ -1,6 +1,6 @@
 # The sshfs mounts of the operator seats' git stores (roles × keys S3b), read from the evaluated configurations.
-# A guest mounts read-only with its own host key, verifying its seat by the fleet's authority; its seat authorizes
-# that host key for read-only sftp only.
+# A guest mounts read-write with its own host key, verifying its seat by the fleet's authority; its seat authorizes
+# that host key for read-write sftp only.
 {
   pkgs,
   lib,
@@ -17,7 +17,7 @@ let
     lib.assertMsg (
       actual == wanted
     ) "${what}: ${builtins.toJSON actual}, expected ${builtins.toJSON wanted}";
-  sftpReadOnly = ''restrict,command="internal-sftp -R"'';
+  sftpReadWrite = ''restrict,command="internal-sftp"'';
 
   guest =
     name:
@@ -37,7 +37,6 @@ let
         "ServerAliveInterval=15"
         "ServerAliveCountMax=3"
         "ConnectTimeout=10"
-        "ro"
         "StrictHostKeyChecking=yes"
         "compression=no"
         "cache=yes"
@@ -62,18 +61,18 @@ let
       user = darwinConfigurations.${seat}.config.profile.user.name;
       line = "ssh-ed25519 AAAAtest ${name}";
       authorizedOf = c: c.environment.etc."ssh/nix_authorized_keys.d/${user}".text or "";
-      sshfsLines = c: lib.filter (lib.hasPrefix sftpReadOnly) (lib.splitString "\n" (authorizedOf c));
+      sshfsLines = c: lib.filter (lib.hasPrefix sftpReadWrite) (lib.splitString "\n" (authorizedOf c));
       committed = darwinConfigurations.${seat}.config;
       tested =
         (darwinConfigurations.${seat}.extendModules {
           modules = [ { ndh.sshfs.guestKeyLines = lib.mkForce [ line ]; } ];
         }).config;
     in
-    assert expect "${seat}: its sshfs key options" committed.ndh.sshfs.authorizedOptions sftpReadOnly;
+    assert expect "${seat}: its sshfs key options" committed.ndh.sshfs.authorizedOptions sftpReadWrite;
     assert expect "${seat}: the sshfs key it authorizes, with a test public" (sshfsLines tested) [
-      "${sftpReadOnly} ${line}"
+      "${sftpReadWrite} ${line}"
     ];
-    # As committed: exactly the guest's own host key, read-only.
+    # As committed: exactly the guest's own host key, read-write.
     assert expect "${seat}: the guest key lines" committed.ndh.sshfs.guestKeyLines (
       committed.ndh.keysYaml.authorizedLinesFor [ name ]
     );
@@ -81,7 +80,7 @@ let
       committed.ndh.sshfs.guestKeyLines != [ ]
     ) "${seat}: authorizes no host key of ${name}";
     assert expect "${seat}: the sshfs keys it authorizes, as committed" (sshfsLines committed) (
-      map (l: "${sftpReadOnly} ${l}") committed.ndh.sshfs.guestKeyLines
+      map (l: "${sftpReadWrite} ${l}") committed.ndh.sshfs.guestKeyLines
     );
     pkgs.runCommand "sshfs-authorized-${seat}" { } "touch $out";
 in

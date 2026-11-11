@@ -3433,7 +3433,7 @@
               "ceremony VM: the guest has a disk, a share or a network";
             assert lib.assertMsg (!(guestSealed shared.config)) "ceremony VM: a guest with a 9p share passed";
             pkgs.runCommand "ceremony-vm-sealed" { } "touch $out";
-          # What the operator seat serves a guest's sshfs key, internal-sftp -R, refuses every write.
+          # What the operator seat serves a guest's sshfs key, internal-sftp, allows read-write access.
           sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
             pkgs = pkgsForLinux;
             inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;

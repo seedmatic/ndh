@@ -9,7 +9,7 @@ let
 
   # Reliability options shared by every sshfs mount. sshfs rides ONE ssh channel — no nfsd /
   # lockd / statd / mountd / portmapper / stale-handles (the whole NFS surface that hung us). The key
-  # is the guest's own host key, born on it (ndh.hostKey.file), authorized on its seat for read-only sftp.
+  # is the guest's own host key, born on it (ndh.hostKey.file), authorized on its seat for read-write sftp.
   #   reconnect + ServerAlive*  → survive a dropped link (roaming / hotspot) and re-establish.
   #   cache + kernel_cache      → cut the FUSE+SSH per-op latency (read-mostly worktree/assets).
   #   x-systemd.automount       → mount on first access, not at boot (server may be down).
@@ -28,10 +28,9 @@ let
     "ServerAliveCountMax=3"
     "ConnectTimeout=10"
   ]
-  # Read-only (the seat serves `internal-sftp -R` to that key), and the seat verified like every fleet name, by the
-  # scoped @cert-authority, never by a pin taken on first use.
+  # Read-write: the seat serves `internal-sftp` (no -R) to that key, and the seat is verified like every fleet name,
+  # by the scoped @cert-authority, never by a pin taken on first use.
   ++ [
-    "ro"
     "StrictHostKeyChecking=yes"
   ]
   ++ [

@@ -41,8 +41,8 @@
     };
 
     # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount, read-only, as nxmatic — the operator who owns the trees — with the
-    # guest's own host key, which the seat authorizes for sftp only; remote files map back to uid/gid 501:30001.
+    # Root executes the mount, read-write, as nxmatic — the operator who owns the trees — with the
+    # guest's own host key, which the seat authorizes for read-write sftp only; remote files map back to uid/gid 501:30001.
     # bioskop now names the split the way nikopol does — object stores on one volume, coexisting
     # checkouts on the other — so this block is its twin, and the layout divergence is gone. The
     # old single /private/var/lib/git export is NOT kept: it carried 44 other orgs beside the

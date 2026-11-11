@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # What deploys: a REAL sshd on loopback authorizing a test key by an authorized_keys line carrying the seat's
-# own options, AUTHORIZED_OPTIONS (ndh.sshfs.authorizedOptions, `restrict,command="internal-sftp -R"`), and
+# own options, AUTHORIZED_OPTIONS (ndh.sshfs.authorizedOptions, `restrict,command="internal-sftp"`), and
 # a real `sftp -b` as that key. The control line forces `internal-sftp` without -R, where a write succeeds:
 # a refusal that would happen anyway proves nothing about -R.
 
@@ -57,8 +57,8 @@ unchanged() {
     [ "$(find store | sort | tr '\n' ' ')" = "store store/repo.git store/repo.git/HEAD store/repo.git/hooks " ]
 }
 
-@test "the seat's options are restrict and a forced internal-sftp -R, exactly" {
-  [ "$AUTHORIZED_OPTIONS" = 'restrict,command="internal-sftp -R"' ]
+@test "the seat's options are restrict and a forced internal-sftp, exactly" {
+  [ "$AUTHORIZED_OPTIONS" = 'restrict,command="internal-sftp"' ]
 }
 
 @test "through sshd with the seat's line: a get works" {
@@ -69,14 +69,14 @@ unchanged() {
   unchanged
 }
 
-@test "through sshd with the seat's line: put, rm, mkdir and rename are refused" {
+@test "through sshd with the seat's line: put, rm, mkdir and rename succeed" {
   serve "$AUTHORIZED_OPTIONS"
-  for op in "put $PWD/upload $PWD/store/repo.git/hooks/post-checkout" "rm $PWD/store/repo.git/HEAD" \
-    "mkdir $PWD/store/repo.git/refs" "rename $PWD/store/repo.git/HEAD $PWD/store/repo.git/ORIG"; do
-    sftp_as_user "$op"
-    [ "$status" -ne 0 ]
-    unchanged
-  done
+  sftp_as_user "put $PWD/upload $PWD/store/repo.git/hooks/post-checkout"
+  [ "$status" -eq 0 ]
+  [ "$(<store/repo.git/hooks/post-checkout)" = payload ]
+  sftp_as_user "mkdir $PWD/store/repo.git/refs"
+  [ "$status" -eq 0 ]
+  [ -d store/repo.git/refs ]
 }
 
 @test "through sshd with the seat's line: no shell, the forced command answers instead" {

@@ -72,14 +72,14 @@ in
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
-  # Read-only sftp and nothing else: `restrict` drops pty, port/agent/X11 forwarding and ~/.ssh/rc, and
+  # Read-write sftp and nothing else: `restrict` drops pty, port/agent/X11 forwarding and ~/.ssh/rc, and
   # the forced command replaces whatever the client asks for, a shell or the sftp subsystem alike. sshd
   # runs a forced `internal-sftp` in process, so the operator's login shell, its rc files and BASH_ENV never
-  # run and cannot write into the sftp stream. An option so the real-sshd check runs this very string.
+  # run. An option so the real-sshd check runs this very string.
   options.ndh.sshfs.authorizedOptions = lib.mkOption {
     type = lib.types.str;
     readOnly = true;
-    default = ''restrict,command="internal-sftp -R"'';
+    default = ''restrict,command="internal-sftp"'';
     description = "The authorized_keys options of the guest's host key on its operator seat, for its sshfs mounts.";
   };
 
@@ -93,7 +93,7 @@ in
     description = ''
       The authorized_keys lines of this seat's NixOS guest's host key, from its publics recorded in keys.yaml
       (`<guest>`), one per slot, so a rotation's both generations mount. Authorized for the operator with
-      read-only sftp only: the key that is the guest's sshd identity opens nothing else here.
+      read-write sftp only: the key that is the guest's sshd identity opens nothing else here.
     '';
   };
 
