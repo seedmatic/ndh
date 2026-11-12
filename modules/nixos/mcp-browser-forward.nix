@@ -1,8 +1,7 @@
-{ config, lib, pkgs, ndh, ... }:
+{ config, lib, pkgs, ndh, ndhSystemd, ... }:
 let
   cfg = config.ndh.mcpBrowserForward;
   tailnetDomain = ndh.context.catalog.netplan.tailnet.domain;
-  ndhSystemd = config._module.args.ndhSystemd;
 in
 {
   imports = [ ./systemd/naming.nix ];

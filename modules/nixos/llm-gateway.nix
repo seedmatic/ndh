@@ -5,6 +5,7 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 with lib;
@@ -334,15 +335,15 @@ in
     };
 
     systemd.services = {
-      ${config._module.args.ndhSystemd.mkNdhServiceName "llm-litellm"} = {
+      ${ndhSystemd.mkNdhServiceName "llm-litellm"} = {
         description = "LiteLLM proxy";
         after = [
           "network.target"
           "sops-install-secrets.service"
         ]
-        ++ (if runSwap then [ "${config._module.args.ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ]);
+        ++ (if runSwap then [ "${ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ]);
         wants = [ "sops-install-secrets.service" ];
-        requires = if runSwap then [ "${config._module.args.ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ];
+        requires = if runSwap then [ "${ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ];
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
@@ -357,7 +358,7 @@ in
     // (
       if runSwap then
         {
-          ${config._module.args.ndhSystemd.mkNdhServiceName "llm-swap"} = {
+          ${ndhSystemd.mkNdhServiceName "llm-swap"} = {
             description = "llama-swap LLM server";
             after = [
               "network.target"

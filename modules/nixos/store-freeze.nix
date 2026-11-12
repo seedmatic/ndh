@@ -15,6 +15,7 @@
   config,
   lib,
   pkgs,
+  ndhSystemd,
   ...
 }:
 let
@@ -137,7 +138,7 @@ in
     fileSystems.${storeLayers.storeMountPoint}.enable = lib.mkForce false;
 
     boot.initrd.systemd.storePaths = [ "${stackScript}/bin/ndh-store-stack" ];
-    boot.initrd.systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "store-stack"} = {
+    boot.initrd.systemd.services.${ndhSystemd.mkNdhServiceName "store-stack"} = {
       description = "Build /nix/store from the stack manifest";
       unitConfig = {
         DefaultDependencies = false;

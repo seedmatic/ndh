@@ -2,6 +2,7 @@
   config,
   pkgs,
   lib,
+  ndhSystemd,
   ...
 }:
 
@@ -11,8 +12,8 @@ let
   cfg = config.networking.tailnet;
   tailnet = config.tailnet;
   defaultHostname = config.networking.hostName;
-  tailscaleAutoconnectUnitName = config._module.args.ndhSystemd.mkUnitName "tailscaled-autoconnect";
-  contributedTargetName = config._module.args.ndhSystemd.contributedTargetName;
+  tailscaleAutoconnectUnitName = ndhSystemd.mkUnitName "tailscaled-autoconnect";
+  contributedTargetName = ndhSystemd.contributedTargetName;
 
   # NixOS guests always register with the `nixos` kind
   # (tag:headless,tag:nixos).  Fixed at the platform level rather than reading back
@@ -171,7 +172,7 @@ in
     # autoconnect unit because `serve set-config` needs a logged-in daemon; failure is
     # NOT fatal to the boot — a node that cannot advertise a service must still come up
     # and be reachable, which is exactly when an operator needs to log into it.
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "rke2lab-tailnet-services"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "rke2lab-tailnet-services"} = {
       description = "Reconcile advertised Tailscale Services from the catalog";
       after = [
         "tailscaled.service"

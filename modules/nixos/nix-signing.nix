@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  ndhSystemd,
   ...
 }:
 # NixOS wiring for the builder's derived nix signing key (modules/.common.d/nix-signing.nix). Wanted by nix-daemon,
@@ -12,7 +13,7 @@
   imports = [ ./systemd/naming.nix ];
 
   config = lib.mkIf config.ndh.nixSigning.signs {
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "nix-signing-key"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "nix-signing-key"} = {
     description = "Place this machine's nix signing key, derived from its own host key (@codebase)";
     wantedBy = [ "nix-daemon.service" ];
     before = [ "nix-daemon.service" ];

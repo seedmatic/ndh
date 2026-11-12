@@ -14,6 +14,7 @@
   lib,
   pkgs,
   ndh,
+  ndhSystemd,
   ...
 }:
 let
@@ -105,7 +106,7 @@ let
       };
     };
 
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-server-secret"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-server-secret"} = {
       description = "atticd's server secret, generated once in the cache container";
       requiredBy = [ "atticd.service" ];
       before = [ "atticd.service" ];
@@ -162,10 +163,10 @@ let
     # The tokens, minted here for every target and pulled by each machine (F6): weekly, valid twice that, so a missed
     # tick is harmless and two fail closed. `systemctl start attic-token-mint` is the « mint now » that follows a
     # rotation of the token-signing secret.
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-token-mint"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-token-mint"} = {
       description = "Mint the private cache's tokens for every machine, sealed to each access point";
-      requires = [ "${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
-      after = [ "${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
+      requires = [ "${ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
+      after = [ "${ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
       # atticd-atticadm as attic-cache-ensure takes it: the atticd module's wrapper, which loads atticd's own config
       # and secret.
       path = [ "/run/current-system/sw" ];
@@ -194,7 +195,7 @@ let
         }/bin/attic-token-mint ${tokensDir}";
       };
     };
-    systemd.timers.${config._module.args.ndhSystemd.mkNdhServiceName "attic-token-mint"} = {
+    systemd.timers.${ndhSystemd.mkNdhServiceName "attic-token-mint"} = {
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnCalendar = cfg.tokens.period;
@@ -205,20 +206,20 @@ let
     # A mint at every start of the container (a cold start included), and at every switch that changes who gets a
     # token (a seat's new host key): a oneshot that stays active, restarted when the targets change, starting the
     # mint. Not RemainAfterExit on the mint itself: its timer would then never run it again.
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-token-mint-on-change"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-token-mint-on-change"} = {
       description = "Mint now: at start, and whenever the token targets change";
       wantedBy = [ "multi-user.target" ];
-      requires = [ "${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
-      after = [ "${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
+      requires = [ "${ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
+      after = [ "${ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service" ];
       restartTriggers = [ (builtins.toJSON cfg.tokenTargets) ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.systemd}/bin/systemctl start --no-block ${config._module.args.ndhSystemd.mkNdhServiceName "attic-token-mint"}.service";
+        ExecStart = "${pkgs.systemd}/bin/systemctl start --no-block ${ndhSystemd.mkNdhServiceName "attic-token-mint"}.service";
       };
     };
 
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-cache-ensure"} = {
       description = "The private cache ${cfg.cacheName}, created and configured";
       wantedBy = [ "multi-user.target" ];
       requires = [ "atticd.service" ];
@@ -465,8 +466,8 @@ in
       # attic-cache-ensure is the one that proves the cache private and its key well named.
       health.units = [
         "atticd.service"
-        "${config._module.args.ndhSystemd.mkNdhServiceName "attic-server-secret"}.service"
-        "${config._module.args.ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service"
+        "${ndhSystemd.mkNdhServiceName "attic-server-secret"}.service"
+        "${ndhSystemd.mkNdhServiceName "attic-cache-ensure"}.service"
         "nginx.service"
       ];
       devices = {
@@ -507,11 +508,11 @@ in
         fi
       '';
     };
-    systemd.paths.${config._module.args.ndhSystemd.mkNdhServiceName "attic-publish"} = {
+    systemd.paths.${ndhSystemd.mkNdhServiceName "attic-publish"} = {
       wantedBy = [ "multi-user.target" ];
       pathConfig.PathChanged = "${paths.hostShared}/cache-key.public";
     };
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-publish"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-publish"} = {
       description = "Publish the cache container's public key, signed by this guest";
       serviceConfig = {
         Type = "oneshot";
@@ -519,7 +520,7 @@ in
       };
     };
 
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "attic-dataset"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "attic-dataset"} = {
       description = "The cache container's dataset, under its quota";
       wantedBy = [
         "multi-user.target"
