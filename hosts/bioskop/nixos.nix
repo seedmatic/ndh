@@ -55,11 +55,11 @@
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";
-          localPath = "/net/bioskop.local/Volumes/git-worktree-store";
+          localPath = "/Volumes/git-worktree-store";
         }
         {
           remotePath = "/Volumes/git-bare-store";
-          localPath = "/net/bioskop.local/Volumes/git-bare-store";
+          localPath = "/Volumes/git-bare-store";
         }
       ];
     };

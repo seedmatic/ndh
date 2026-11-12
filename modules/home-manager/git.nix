@@ -17,6 +17,16 @@ let
     else
       "${worktreePath.runtimeFile "modules/.common.d/shell.d/nix-bash-trampoline.sh"}";
   profile = config._module.specialArgs.profile;
+  hostProfile = profile.host or { };
+  # The host that holds the git-bare-store, derived from the evaluated profile
+  # (hostAlias when set, else hostName) — never hardcoded, so a host that is not
+  # bioskop (e.g. nikopol, or a guest whose store lives on its darwin host) does
+  # not inherit bioskop's store identity.
+  bareStoreHost =
+    if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+      hostProfile.hostAlias
+    else
+      (hostProfile.hostName or "bioskop");
   userName = profile.user.name;
   userEmail = profile.email;
   sshPaths = config.sshPaths;
@@ -49,7 +59,6 @@ let
   # The machine that holds the git-bare-store others reach over ssh://<it>/… (the claude-home
   # registry's descriptors name it). There, git rewrites those URLs to the local path instead of
   # opening ssh to itself; elsewhere the URL must stay ssh.
-  bareStoreHost = "bioskop";
   onBareStoreHost = (osConfig.networking.hostName or null) == bareStoreHost;
   loggerTag = "home-manager.activationScripts.${userName}.generateAllowedSigners";
 in

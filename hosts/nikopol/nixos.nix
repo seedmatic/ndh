@@ -43,6 +43,7 @@ in
     environment.systemPackages = [ pkgs.omo-ai ];
     home-manager.users.${config.profile.user.name}.imports = [
       ./modules/home-manager/omo.nix
+      ./modules/home-manager/ssh-lan-override.nix
     ];
 
     # LLM gateway (LiteLLM proxy) on NixOS VM — points to darwin host's llama-swap (GPU).
@@ -71,11 +72,11 @@ in
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";
-          localPath = "/net/nikopol.local/Volumes/git-worktree-store";
+          localPath = "/Volumes/git-worktree-store";
         }
         {
           remotePath = "/Volumes/git-bare-store";
-          localPath = "/net/nikopol.local/Volumes/git-bare-store";
+          localPath = "/Volumes/git-bare-store";
         }
       ];
     };
@@ -123,6 +124,9 @@ in
         listenPort = 9020;
       };
     };
+
+    # (Clone service removed: bare repos and worktrees are accessed via sshfs mounts
+    #  at /Volumes/... on the guest, matching the darwin host paths.)
 
   };
 }

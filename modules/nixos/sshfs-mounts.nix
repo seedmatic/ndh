@@ -16,13 +16,17 @@ let
   #   _netdev + after network   → ordered after the network is up.
   #   idmap=user + uid/gid      → remote files (owned by the operator uid on the Mac) appear as the
   #                               local operator, so reads/writes carry the right identity.
+  #   no_contain_symlinks       → pass symlinks through unchanged (absolute targets like /nix/store/...),
+  #                               so flox result-* symlinks created in the worktree resolve on the guest.
   commonOptions = [
+    "no_contain_symlinks"
     "x-systemd.automount"
     "x-systemd.idle-timeout=600"
     "x-systemd.mount-timeout=30s"
     "_netdev"
     "allow_other"
-    "default_permissions"
+    # default_permissions is omitted: with no_contain_symlinks it causes EPERM
+    # on loose git objects. Security is provided by the host key + uid/gid mapping.
     "reconnect"
     "ServerAliveInterval=15"
     "ServerAliveCountMax=3"
@@ -36,8 +40,8 @@ let
   ++ [
     "compression=no"
     "cache=yes"
-    "kernel_cache"
-    "idmap=user"
+    # kernel_cache omitted: conflicts with no_contain_symlinks, causes EPERM on loose git objects.
+    # idmap=user removed: conflicts with no_contain_symlinks, causes EPERM on mode-644 files.
     "uid=${toString cfg.uid}"
     "gid=${toString cfg.gid}"
     "IdentityFile=${config.ndh.hostKey.file}"

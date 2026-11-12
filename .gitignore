@@ -3,6 +3,7 @@
 # Claude Code's own per-checkout files: nothing under .claude/ is tracked
 /.claude/
 **/result
+**/result-*
 .git/
 .git.clone.d/
 .devenv/
