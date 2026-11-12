@@ -4,7 +4,6 @@
   lib,
   ndh,
   self,
-  ndhSystemd,
   ...
 }:
 # Per-metalspace instance segment for a NixOS Incus host.  Any host whose
@@ -221,10 +220,9 @@ let
   dhcpRangeParts = lib.splitString "-" bm.dhcpRange;
   dhcpRangeSetting = "${builtins.head dhcpRangeParts},${lib.last dhcpRangeParts},${netNetmask},${dhcpLease}";
   dhcpLease = "1h";
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   config = lib.mkIf enabled {
   # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
   # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
@@ -328,17 +326,17 @@ in
   # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
   # attached to the contributed target so it re-runs each activation, re-shipping the
   # rotated key.
-  systemd.services.${ndhSystemd.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
-    ndhSystemd.attachToContributedTarget {
+  systemd.services.${ndhPrefix.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
+    ndhPrefix.attachToContributedTarget {
       description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
       # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
       # the fabric.
       after = [
-        (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+        (ndhPrefix.mkServiceName "ssh-keys-enrichment")
         "network-online.target"
       ];
       wants = [
-        (ndhSystemd.mkServiceName "ssh-keys-enrichment")
+        (ndhPrefix.mkServiceName "ssh-keys-enrichment")
         "network-online.target"
       ];
       # network-online is not the vz-host answering: after a cold start the deploy probed it
@@ -541,18 +539,18 @@ in
   # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
   # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
   # meanwhile, so the retry never opens anything early.
-  systemd.services.${ndhSystemd.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+  systemd.services.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
     description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
     after = [
       "nftables.service"
       "network-online.target"
       "tailscaled.service"
-      "${ndhSystemd.tailscaleAutoconnectUnitName}.service"
+      "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
     ];
     wants = [
       "network-online.target"
       "tailscaled.service"
-      "${ndhSystemd.tailscaleAutoconnectUnitName}.service"
+      "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
     ];
     partOf = [ "nftables.service" ];
     wantedBy = [ "nftables.service" ];
@@ -567,7 +565,7 @@ in
       RestartSec = 15;
     };
   };
-  systemd.timers.${ndhSystemd.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+  systemd.timers.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "1min";

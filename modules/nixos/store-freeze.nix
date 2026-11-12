@@ -15,11 +15,11 @@
   config,
   lib,
   pkgs,
-  ndhSystemd,
   ...
 }:
 let
   cfg = config.ndh.storeFreeze;
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
   runtimeInputs = import ./store-freeze.d/runtime-inputs.nix { inherit pkgs; };
   incusEnabled = config.virtualisation.incus.enable;
   storeLayers = import ./erofs-store-layers.nix;
@@ -112,8 +112,6 @@ let
   ];
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   options.ndh.storeFreeze.enable = lib.mkEnableOption ''
     the store freeze: /nix/store built at boot from a stack manifest of frozen ZFS snapshot layers
     over the EROFS layers, and the `ndh-store` gestures
@@ -138,7 +136,7 @@ in
     fileSystems.${storeLayers.storeMountPoint}.enable = lib.mkForce false;
 
     boot.initrd.systemd.storePaths = [ "${stackScript}/bin/ndh-store-stack" ];
-    boot.initrd.systemd.services.${ndhSystemd.mkNdhServiceName "store-stack"} = {
+    boot.initrd.systemd.services.${ndhPrefix.mkNdhServiceName "store-stack"} = {
       description = "Build /nix/store from the stack manifest";
       unitConfig = {
         DefaultDependencies = false;

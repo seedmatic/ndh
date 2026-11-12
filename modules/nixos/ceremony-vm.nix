@@ -3,9 +3,11 @@
   lib,
   pkgs,
   modulesPath,
-  ndhSystemd,
   ...
 }:
+let
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
+in
 # The seedmatic root's ceremony VM (roles × keys ⑧, docs/root-ceremony.adoc): a netboot system, so the root is a
 # tmpfs and the store a squashfs in the initrd, both in RAM, with no disk of its own. It has no network service
 # and runs no daemon that listens; the runner (modules/darwin/ceremony-vm.d) gives it no network device at all.
@@ -13,7 +15,6 @@
 {
   imports = [
     "${modulesPath}/installer/netboot/netboot.nix"
-    ./systemd/naming.nix
   ];
 
   system.stateVersion = "26.05";
@@ -53,7 +54,7 @@
   };
 
   # `ndh-ceremony-vm --smoke` (🎛️'s check, no drive): print what the VM sees, then power off.
-  systemd.services.${ndhSystemd.mkNdhServiceName "ceremony-smoke"} = {
+  systemd.services.${ndhPrefix.mkNdhServiceName "ceremony-smoke"} = {
     description = "Show the ceremony VM's links and mounts, then power off";
     wantedBy = [ "multi-user.target" ];
     unitConfig.ConditionKernelCommandLine = "ceremony.smoke=1";

@@ -11,11 +11,11 @@
   config,
   lib,
   pkgs,
-  ndhSystemd,
   ...
 }:
 let
   storeLayers = import ./erofs-store-layers.nix;
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
 
   # overlayfs searches lowerdir left to right, so the newest layer must come first: when a later
   # generation re-packs a path, its copy wins.
@@ -36,14 +36,12 @@ let
   };
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   environment.etc."ndh/store-layers.json".text = builtins.toJSON layerContract;
 
   # The layers' upstream paths get their own cache.nixos.org signatures back (the registration loaded
   # them unsigned), so attic's upload filter can skip them: erofs-store-mount.d/upstream-sigs.sh.
   # Best-effort, after the network: it fails nothing, and a boot without network retries later.
-  systemd.services.${ndhSystemd.mkNdhServiceName "layer-upstream-sigs"} = {
+  systemd.services.${ndhPrefix.mkNdhServiceName "layer-upstream-sigs"} = {
     description = "Copy cache.nixos.org's own signatures onto the EROFS layers' upstream paths";
     wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" ];

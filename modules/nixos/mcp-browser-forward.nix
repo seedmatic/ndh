@@ -1,11 +1,10 @@
-{ config, lib, pkgs, ndh, ndhSystemd, ... }:
+{ config, lib, pkgs, ndh, ... }:
 let
   cfg = config.ndh.mcpBrowserForward;
   tailnetDomain = ndh.context.catalog.netplan.tailnet.domain;
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   options.ndh.mcpBrowserForward = {
     enable = lib.mkEnableOption "system-level forward of the Darwin BrowserOS MCP server on :9010";
     host = lib.mkOption {
@@ -16,7 +15,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.${ndhSystemd.mkNdhServiceName "mcp-browser-forward"} = {
+    systemd.services.${ndhPrefix.mkNdhServiceName "mcp-browser-forward"} = {
       description = "Forward TCP/9010 to Darwin MCP browser server (${cfg.host})";
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];

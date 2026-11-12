@@ -14,7 +14,6 @@
   lib,
   pkgs,
   modulesPath,
-  ndhSystemd,
   ...
 }:
 let
@@ -35,12 +34,12 @@ let
     "daemon-trust-override"
     "mounted-ssh-store"
   ];
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
 in
 {
   imports = [
     "${modulesPath}/virtualisation/lxc-container.nix"
     "${modulesPath}/virtualisation/lxc-image-metadata.nix"
-    ./systemd/naming.nix
   ];
   disabledModules = [ "${modulesPath}/virtualisation/lxc-instance-common.nix" ];
 
@@ -245,7 +244,7 @@ in
     ];
 
     # Its nix key, born here at first start; the public is logged for the cluster's scenario to record.
-    systemd.services.${ndhSystemd.mkNdhServiceName "cluster-builder-signing-key"} = {
+    systemd.services.${ndhPrefix.mkNdhServiceName "cluster-builder-signing-key"} = {
       description = "Generate this cluster builder's nix signing key";
       wantedBy = [ "multi-user.target" ];
       before = [ "nix-daemon.service" ];

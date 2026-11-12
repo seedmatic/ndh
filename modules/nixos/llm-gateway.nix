@@ -5,7 +5,6 @@
   config,
   pkgs,
   lib,
-  ndhSystemd,
   ...
 }:
 with lib;
@@ -14,6 +13,7 @@ let
   cfg = config.services.llmGateway;
   svcUser = "llm-gateway";
   dataDir = cfg.dataDir;
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
   modelsDir = "${dataDir}/models";
   configDir = "${dataDir}/config";
 
@@ -244,8 +244,6 @@ let
   '';
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   options.services.llmGateway = {
     enable = mkEnableOption "LLM gateway (LiteLLM proxy, optionally + llama-swap) on this NixOS host";
 
@@ -335,15 +333,15 @@ in
     };
 
     systemd.services = {
-      ${ndhSystemd.mkNdhServiceName "llm-litellm"} = {
+      ${ndhPrefix.mkNdhServiceName "llm-litellm"} = {
         description = "LiteLLM proxy";
         after = [
           "network.target"
           "sops-install-secrets.service"
         ]
-        ++ (if runSwap then [ "${ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ]);
+        ++ (if runSwap then [ "${ndhPrefix.mkNdhServiceName "llm-swap"}.service" ] else [ ]);
         wants = [ "sops-install-secrets.service" ];
-        requires = if runSwap then [ "${ndhSystemd.mkNdhServiceName "llm-swap"}.service" ] else [ ];
+        requires = if runSwap then [ "${ndhPrefix.mkNdhServiceName "llm-swap"}.service" ] else [ ];
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
@@ -358,7 +356,7 @@ in
     // (
       if runSwap then
         {
-          ${ndhSystemd.mkNdhServiceName "llm-swap"} = {
+          ${ndhPrefix.mkNdhServiceName "llm-swap"} = {
             description = "llama-swap LLM server";
             after = [
               "network.target"

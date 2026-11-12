@@ -7,10 +7,10 @@
   lib,
   options,
   pkgs,
-  ndhSystemd,
   ...
 }:
 let
+  ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
   # Whether this guest has KVM is decided when the VM is LAUNCHED (Tart's --nested, which
   # NESTED_VIRT overrides at runtime), not when it is evaluated. So the evaluated settings never
   # advertise kvm; a boot-time unit states what the running VM actually has, in a file the
@@ -27,8 +27,6 @@ let
   defaultFeatures = (options.nix.settings.type.getSubOptions [ ]).system-features.default;
 in
 {
-  imports = [ ./systemd/naming.nix ];
-
   nix.settings = {
     auto-optimise-store = false; # Manual optimise keeps build latency predictable during development.
     # Builds run as the nixbldN users. NixOS emits no build-users-group here, so
@@ -62,7 +60,7 @@ in
     }
   ];
 
-  systemd.services.${ndhSystemd.mkNdhServiceName "nix-kvm-features"} = {
+  systemd.services.${ndhPrefix.mkNdhServiceName "nix-kvm-features"} = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
     wantedBy = [ "multi-user.target" ];
     before = [ "nix-daemon.service" ];
