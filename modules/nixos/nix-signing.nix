@@ -9,7 +9,7 @@
 # machine could not build its own fix. Builds that sign then fail loudly on the missing file, and root builds the fix
 # with `--option secret-key-files ''`.
 lib.mkIf config.ndh.nixSigning.signs {
-  systemd.services.ndh-nix-signing-key = {
+  systemd.services.io-seedmatic-ndh-nix-signing-key = {
     description = "Place this machine's nix signing key, derived from its own host key (@codebase)";
     wantedBy = [ "nix-daemon.service" ];
     before = [ "nix-daemon.service" ];

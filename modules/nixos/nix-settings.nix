@@ -59,7 +59,7 @@ in
     }
   ];
 
-  systemd.services.ndh-nix-kvm-features = {
+  systemd.services.io-seedmatic-ndh-nix-kvm-features = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
     wantedBy = [ "multi-user.target" ];
     before = [ "nix-daemon.service" ];
