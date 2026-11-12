@@ -135,7 +135,7 @@ in
     fileSystems.${storeLayers.storeMountPoint}.enable = lib.mkForce false;
 
     boot.initrd.systemd.storePaths = [ "${stackScript}/bin/ndh-store-stack" ];
-    boot.initrd.systemd.services.ndh-store-stack = {
+    boot.initrd.systemd.services.io-seedmatic-ndh-store-stack = {
       description = "Build /nix/store from the stack manifest";
       unitConfig = {
         DefaultDependencies = false;

@@ -170,7 +170,7 @@ in
     # autoconnect unit because `serve set-config` needs a logged-in daemon; failure is
     # NOT fatal to the boot — a node that cannot advertise a service must still come up
     # and be reachable, which is exactly when an operator needs to log into it.
-    systemd.services.rke2lab-tailnet-services = {
+    systemd.services.io-seedmatic-ndh-rke2lab-tailnet-services = {
       description = "Reconcile advertised Tailscale Services from the catalog";
       after = [
         "tailscaled.service"

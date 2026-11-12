@@ -243,7 +243,7 @@ in
     ];
 
     # Its nix key, born here at first start; the public is logged for the cluster's scenario to record.
-    systemd.services.cluster-builder-signing-key = {
+    systemd.services.io-seedmatic-ndh-cluster-builder-signing-key = {
       description = "Generate this cluster builder's nix signing key";
       wantedBy = [ "multi-user.target" ];
       before = [ "nix-daemon.service" ];

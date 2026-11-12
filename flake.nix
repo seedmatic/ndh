@@ -3423,7 +3423,7 @@
             assert lib.assertMsg (lib.hasInfix "[[ -t 0 ]] || die" runner)
               "ceremony VM: a ceremony could run without a terminal, from a session that would keep the passphrase";
             assert lib.assertMsg (
-              ceremonyVm.config.systemd.services.ceremony-smoke.unitConfig.ConditionKernelCommandLine
+              ceremonyVm.config.systemd.services.io-seedmatic-ndh-ceremony-smoke.unitConfig.ConditionKernelCommandLine
               == "ceremony.smoke=1"
             ) "ceremony VM: the smoke check could run in a real ceremony";
             assert lib.assertMsg (

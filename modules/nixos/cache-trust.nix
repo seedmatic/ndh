@@ -20,7 +20,7 @@
       name:
       lib.nameValuePair "${name}.key.bare" {
         restartUnits = [
-          "cache-trust-compose.service"
+          "io-seedmatic-ndh-cache-trust-compose.service"
           "nix-daemon.service"
         ];
       }
@@ -28,7 +28,7 @@
   );
 
   # Every machine runs it: it writes the fleet keys it signs with and removes the ones it no longer signs with.
-  config.systemd.services.cache-trust-compose = {
+  config.systemd.services.io-seedmatic-ndh-cache-trust-compose = {
     description = "Compose fleet cache signing keys from SOPS-deployed bare values (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [ "sops-install-secrets.service" ];

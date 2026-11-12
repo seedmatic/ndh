@@ -48,7 +48,7 @@
   };
 
   # `ndh-ceremony-vm --smoke` (🎛️'s check, no drive): print what the VM sees, then power off.
-  systemd.services.ceremony-smoke = {
+  systemd.services.io-seedmatic-ndh-ceremony-smoke = {
     description = "Show the ceremony VM's links and mounts, then power off";
     wantedBy = [ "multi-user.target" ];
     unitConfig.ConditionKernelCommandLine = "ceremony.smoke=1";
