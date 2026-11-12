@@ -332,15 +332,15 @@ in
     };
 
     systemd.services = {
-      llm-litellm = {
+      io-seedmatic-ndh-llm-litellm = {
         description = "LiteLLM proxy";
         after = [
           "network.target"
           "sops-install-secrets.service"
         ]
-        ++ (if runSwap then [ "llm-swap.service" ] else [ ]);
+        ++ (if runSwap then [ "io-seedmatic-ndh-llm-swap.service" ] else [ ]);
         wants = [ "sops-install-secrets.service" ];
-        requires = if runSwap then [ "llm-swap.service" ] else [ ];
+        requires = if runSwap then [ "io-seedmatic-ndh-llm-swap.service" ] else [ ];
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
@@ -355,7 +355,7 @@ in
     // (
       if runSwap then
         {
-          llm-swap = {
+          io-seedmatic-ndh-llm-swap = {
             description = "llama-swap LLM server";
             after = [
               "network.target"
