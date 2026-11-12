@@ -1,5 +1,6 @@
 { config, pkgs, ... }:
 {
+  imports = [ ../../modules/nixos/mcp-browser-forward.nix ];
   config = {
     # Cache signing (private deploy + trusted-public-keys + /etc/nix/*.pub)
     # is wired fleet-wide in modules/.common.d/nix-signing.nix — nothing
@@ -65,14 +66,15 @@
 
     # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
     # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
+    ndh.mcpBrowserForward = {
+      enable = true;
+      host = "bioskop";
+    };
     ndh.onDemandTunnel = {
+      # browseros-bioskop is now provided by the system service
+      # io-seedmatic-ndh-mcp-browser-forward (no user session required).
       browseros-nikopol = {
         host = "nikopol";
-        port = 9010;
-        listenPort = 9010;
-      };
-      browseros-bioskop = {
-        host = "bioskop";
         port = 9010;
         listenPort = 9020;
       };

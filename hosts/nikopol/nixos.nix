@@ -9,6 +9,7 @@ let
   bm = ndh.context.catalog.netplan.baremetal.nikopol;
 in
 {
+  imports = [ ../../modules/nixos/mcp-browser-forward.nix ];
   config = {
     profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
 
@@ -109,17 +110,19 @@ in
 
     # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
     # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
+    ndh.mcpBrowserForward = {
+      enable = true;
+      host = "nikopol";
+    };
     ndh.onDemandTunnel = {
-      browseros-nikopol = {
-        host = "nikopol";
-        port = 9010;
-        listenPort = 9010;
-      };
+      # browseros-nikopol is now provided by the system service
+      # io-seedmatic-ndh-mcp-browser-forward (no user session required).
       browseros-bioskop = {
         host = "bioskop";
         port = 9010;
         listenPort = 9020;
       };
     };
+
   };
 }
