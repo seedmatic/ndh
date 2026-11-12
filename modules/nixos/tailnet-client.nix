@@ -12,7 +12,7 @@ let
   tailnet = config.tailnet;
   defaultHostname = config.networking.hostName;
   ndhPrefix = import ./systemd/ndh-prefix.nix { inherit lib; };
-  tailscaleAutoconnectUnitName = ndhPrefix.mkUnitName "tailscaled-autoconnect";
+  tailscaleAutoconnectUnitName = ndhPrefix.mkNdhUnitName "tailscaled-autoconnect";
   contributedTargetName = ndhPrefix.contributedTargetName;
 
   # NixOS guests always register with the `nixos` kind
