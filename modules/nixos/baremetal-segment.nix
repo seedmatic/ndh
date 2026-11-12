@@ -222,9 +222,10 @@ let
   dhcpRangeSetting = "${builtins.head dhcpRangeParts},${lib.last dhcpRangeParts},${netNetmask},${dhcpLease}";
   dhcpLease = "1h";
 in
-lib.mkIf enabled {
+{
   imports = [ ./systemd/naming.nix ];
 
+  config = lib.mkIf enabled {
   # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
   # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
   # instances attach to it as an UNMANAGED parent bridge (`nictype=bridged, parent=fabric-br`),
@@ -573,4 +574,5 @@ lib.mkIf enabled {
       OnUnitActiveSec = "5min";
     };
   };
+};
 }
