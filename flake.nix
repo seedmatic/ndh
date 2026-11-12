@@ -1928,7 +1928,9 @@
                 modules = [ (given "seedmatic-bioskop-1") ];
               };
               mutant = nixos.extendModules {
-                modules = [ { systemd.services.io-seedmatic-ndh-nix-signing-key.requiredBy = [ "nix-daemon.service" ]; } ];
+                modules = [
+                  { systemd.services.io-seedmatic-ndh-nix-signing-key.requiredBy = [ "nix-daemon.service" ]; }
+                ];
               };
               placedOnly =
                 c: name:
@@ -1945,7 +1947,9 @@
                 lib.elem "nix-daemon.service" unit.wantedBy
                 && lib.elem "nix-daemon.service" unit.before
                 && !(lib.elem "nix-daemon.service" unit.requiredBy)
-                && !(lib.elem "io-seedmatic-ndh-nix-signing-key.service" (c.systemd.services.nix-daemon.requires or [ ]));
+                && !(lib.elem "io-seedmatic-ndh-nix-signing-key.service" (
+                  c.systemd.services.nix-daemon.requires or [ ]
+                ));
             in
             assert lib.assertMsg (placedOnly nixos.config "seedmatic-bioskop-nixos-1")
               "nix-signing: the guest's secret-key-files";

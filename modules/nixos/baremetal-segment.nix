@@ -224,353 +224,353 @@ let
 in
 {
   config = lib.mkIf enabled {
-  # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
-  # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
-  # instances attach to it as an UNMANAGED parent bridge (`nictype=bridged, parent=fabric-br`),
-  # which is already how rke2lab attaches them — its `ensureNetwork` explicitly skips this name as
-  # "the canonical host-provided bridge".
-  #
-  # Why the ownership moved off Incus. A CLUSTERED Incus requires that "all members of a cluster
-  # must have identical networks defined": only `bridge.external_interfaces`, `parent`,
-  # `bgp.ipv4.nexthop` and `bgp.ipv6.nexthop` may differ per member — `ipv4.address` may NOT. Our
-  # fabric subnets differ BY DESIGN (one routed slice per metalspace, each advertised into the
-  # tailnet) and so do the zones (`.bioskop` / `.nikopol`). As an Incus-managed network that is
-  # unrepresentable in a cluster; as a host bridge it is just a NAME that resolves locally on each
-  # member, so everything cluster-wide referring to `fabric-br` keeps working unchanged.
-  #
-  # Two things fall out for free, independent of clustering:
-  #
-  # * the create-vs-reconcile race is GONE with its oneshot. That race was real, measured on both
-  #   bare-metals 2026-09-24: `incus admin init --preseed` runs on EVERY activation (it is not
-  #   create-only, as had been assumed) and fails when a declared network already exists —
-  #   "Failed to create local member network \"fabric-br\": Network \"fabric-br\" already exists" —
-  #   taking `switch-to-configuration` to exit 4. Ordering `After = incus-preseed.service` did not
-  #   fix it either, because `switch-to-configuration` starts new and restarts changed units in
-  #   SEPARATE systemctl invocations, so `After` — which orders within one transaction — never
-  #   applied. With no Incus object there is no second creator to race.
-  # * `no-hosts` below closes a trap this zone was exposed to: Incus's dnsmasq served the HOST's
-  #   `/etc/hosts`, where NixOS writes `127.0.0.2 <hostname>`, so a client asking for the bare host
-  #   name got the asker's own loopback back ("certificate is valid for localhost"). Declaring the
-  #   zone ourselves lets us refuse to serve that file at all.
+    # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
+    # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
+    # instances attach to it as an UNMANAGED parent bridge (`nictype=bridged, parent=fabric-br`),
+    # which is already how rke2lab attaches them — its `ensureNetwork` explicitly skips this name as
+    # "the canonical host-provided bridge".
+    #
+    # Why the ownership moved off Incus. A CLUSTERED Incus requires that "all members of a cluster
+    # must have identical networks defined": only `bridge.external_interfaces`, `parent`,
+    # `bgp.ipv4.nexthop` and `bgp.ipv6.nexthop` may differ per member — `ipv4.address` may NOT. Our
+    # fabric subnets differ BY DESIGN (one routed slice per metalspace, each advertised into the
+    # tailnet) and so do the zones (`.bioskop` / `.nikopol`). As an Incus-managed network that is
+    # unrepresentable in a cluster; as a host bridge it is just a NAME that resolves locally on each
+    # member, so everything cluster-wide referring to `fabric-br` keeps working unchanged.
+    #
+    # Two things fall out for free, independent of clustering:
+    #
+    # * the create-vs-reconcile race is GONE with its oneshot. That race was real, measured on both
+    #   bare-metals 2026-09-24: `incus admin init --preseed` runs on EVERY activation (it is not
+    #   create-only, as had been assumed) and fails when a declared network already exists —
+    #   "Failed to create local member network \"fabric-br\": Network \"fabric-br\" already exists" —
+    #   taking `switch-to-configuration` to exit 4. Ordering `After = incus-preseed.service` did not
+    #   fix it either, because `switch-to-configuration` starts new and restarts changed units in
+    #   SEPARATE systemctl invocations, so `After` — which orders within one transaction — never
+    #   applied. With no Incus object there is no second creator to race.
+    # * `no-hosts` below closes a trap this zone was exposed to: Incus's dnsmasq served the HOST's
+    #   `/etc/hosts`, where NixOS writes `127.0.0.2 <hostname>`, so a client asking for the bare host
+    #   name got the asker's own loopback back ("certificate is valid for localhost"). Declaring the
+    #   zone ourselves lets us refuse to serve that file at all.
 
-  systemd.network.netdevs."40-fabric-br".netdevConfig = {
-    Name = "fabric-br";
-    Kind = "bridge";
-  };
-
-  systemd.network.networks."40-fabric-br" = {
-    matchConfig.Name = "fabric-br";
-    address = [ "${bm.netGateway}/${netPrefix}" ];
-    networkConfig = {
-      # A bridge with no member has NO CARRIER, and networkd withholds addresses from a
-      # carrier-less link — so without this the gateway address (and with it dnsmasq's bind
-      # target) would appear only once the first instance plugged in, which is exactly backwards:
-      # the instance needs DHCP to come up. This bridge does sit memberless — measured
-      # `used_by: []`, link DOWN on bioskop.
-      ConfigureWithoutCarrier = true;
-      # The Incus network this replaces carried `ipv6.address = none`; keep the plane v4-only
-      # rather than acquire a link-local the addressing plan does not describe.
-      LinkLocalAddressing = "no";
-      IPv6AcceptRA = false;
+    systemd.network.netdevs."40-fabric-br".netdevConfig = {
+      Name = "fabric-br";
+      Kind = "bridge";
     };
-  };
 
-  # The zone's authority: DHCP + DNS for this bare-metal's slice, and nothing else.
-  services.dnsmasq = {
-    enable = true;
-    # Do NOT become the host's resolver. The host resolves through its own path (tailnet / home
-    # LAN); this daemon exists for the instances on the bridge, and for the tailnet peers that
-    # reach the `.<domain>` zone through the advertised route + split-DNS.
-    resolveLocalQueries = false;
-    settings = {
-      # Bind ONLY the bridge, so nothing here competes with the host's resolver stack.
-      interface = [ "fabric-br" ];
-      bind-interfaces = true;
-      # Never serve the host's /etc/hosts — see the rationale above.
-      no-hosts = true;
-      # The zone. `local` makes this daemon authoritative for it, so a miss answers NXDOMAIN here
-      # instead of leaking the query upstream to a resolver that cannot know the answer.
-      domain = bm.domain;
-      local = "/${bm.domain}/";
-      # A sibling bare-metal's zone goes to ITS dnsmasq, never upstream (see peerZoneServers),
-      # and the TAILNET zone goes to this node's own MagicDNS proxy.  That last forward is what
-      # lets a client of this zone resolve a Tailscale SERVICE — `<name>.<tailnetDomain>` — which
-      # matters for the one client that can never be a tailnet member: a FOREIGN vz-host reaches
-      # the shared screens and the router UI by service name only if this daemon can answer for
-      # them (its scoped resolver on the Mac sends the query here).  Verified 2026-09-27 that
-      # 100.100.100.100 answers for service names, not just for machines.
-      #
-      # Unconditional rather than gated on `deliversLink`: a resolver that could answer and does
-      # not is worse than one that cannot, and every client of this zone sits behind a tailnet
-      # member either way.  If tailscaled is down the failure is scoped to this one domain — the
-      # zone itself stays authoritative.
-      server = peerZoneServers ++ [ "/${tailnetZone}/100.100.100.100" ];
-      # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
-      # Incus spelled `dns.mode = dynamic`, and the reason a consumer's collector/probe appear under
-      # their real names rather than under an instance name.
-      expand-hosts = true;
-      dhcp-authoritative = true;
-      dhcp-range = [ dhcpRangeSetting ];
-      dhcp-host = map (h: "${h.mac},${qualify h.name},${h.ip}") pinnedHosts;
-      host-record = map (h: "${qualify h.name},${h.ip}") namedHosts;
+    systemd.network.networks."40-fabric-br" = {
+      matchConfig.Name = "fabric-br";
+      address = [ "${bm.netGateway}/${netPrefix}" ];
+      networkConfig = {
+        # A bridge with no member has NO CARRIER, and networkd withholds addresses from a
+        # carrier-less link — so without this the gateway address (and with it dnsmasq's bind
+        # target) would appear only once the first instance plugged in, which is exactly backwards:
+        # the instance needs DHCP to come up. This bridge does sit memberless — measured
+        # `used_by: []`, link DOWN on bioskop.
+        ConfigureWithoutCarrier = true;
+        # The Incus network this replaces carried `ipv6.address = none`; keep the plane v4-only
+        # rather than acquire a link-local the addressing plan does not describe.
+        LinkLocalAddressing = "no";
+        IPv6AcceptRA = false;
+      };
     };
-  };
 
-  # For a FOREIGN vz-host (deliversLink): once this host has provisioned its system
-  # keys (ssh-keys-enrichment lands the rotating, CA-signed vz-nudge in systemKeysDir),
-  # ship that identity to the corp Mac and (re)load its baremetal-link daemon — so the
-  # Mac's WatchPaths link-up.sh can authenticate the guest-reconfigure nudge (see
-  # pkgs/baremetal-link.d/). The oneshot runs as root: it reads the 0600 vz-nudge
-  # private and connects to the corp Mac as the operator login with the root-readable
-  # operator cert (the Mac refuses root ssh). Best-effort + idempotent — the CA cert is
-  # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
-  # attached to the contributed target so it re-runs each activation, re-shipping the
-  # rotated key.
-  systemd.services.${ndhPrefix.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
-    ndhPrefix.attachToContributedTarget {
-      description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
-      # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
-      # the fabric.
+    # The zone's authority: DHCP + DNS for this bare-metal's slice, and nothing else.
+    services.dnsmasq = {
+      enable = true;
+      # Do NOT become the host's resolver. The host resolves through its own path (tailnet / home
+      # LAN); this daemon exists for the instances on the bridge, and for the tailnet peers that
+      # reach the `.<domain>` zone through the advertised route + split-DNS.
+      resolveLocalQueries = false;
+      settings = {
+        # Bind ONLY the bridge, so nothing here competes with the host's resolver stack.
+        interface = [ "fabric-br" ];
+        bind-interfaces = true;
+        # Never serve the host's /etc/hosts — see the rationale above.
+        no-hosts = true;
+        # The zone. `local` makes this daemon authoritative for it, so a miss answers NXDOMAIN here
+        # instead of leaking the query upstream to a resolver that cannot know the answer.
+        domain = bm.domain;
+        local = "/${bm.domain}/";
+        # A sibling bare-metal's zone goes to ITS dnsmasq, never upstream (see peerZoneServers),
+        # and the TAILNET zone goes to this node's own MagicDNS proxy.  That last forward is what
+        # lets a client of this zone resolve a Tailscale SERVICE — `<name>.<tailnetDomain>` — which
+        # matters for the one client that can never be a tailnet member: a FOREIGN vz-host reaches
+        # the shared screens and the router UI by service name only if this daemon can answer for
+        # them (its scoped resolver on the Mac sends the query here).  Verified 2026-09-27 that
+        # 100.100.100.100 answers for service names, not just for machines.
+        #
+        # Unconditional rather than gated on `deliversLink`: a resolver that could answer and does
+        # not is worse than one that cannot, and every client of this zone sits behind a tailnet
+        # member either way.  If tailscaled is down the failure is scoped to this one domain — the
+        # zone itself stays authoritative.
+        server = peerZoneServers ++ [ "/${tailnetZone}/100.100.100.100" ];
+        # Register a DHCP client under the hostname IT sends, qualified into the zone — the property
+        # Incus spelled `dns.mode = dynamic`, and the reason a consumer's collector/probe appear under
+        # their real names rather than under an instance name.
+        expand-hosts = true;
+        dhcp-authoritative = true;
+        dhcp-range = [ dhcpRangeSetting ];
+        dhcp-host = map (h: "${h.mac},${qualify h.name},${h.ip}") pinnedHosts;
+        host-record = map (h: "${qualify h.name},${h.ip}") namedHosts;
+      };
+    };
+
+    # For a FOREIGN vz-host (deliversLink): once this host has provisioned its system
+    # keys (ssh-keys-enrichment lands the rotating, CA-signed vz-nudge in systemKeysDir),
+    # ship that identity to the corp Mac and (re)load its baremetal-link daemon — so the
+    # Mac's WatchPaths link-up.sh can authenticate the guest-reconfigure nudge (see
+    # pkgs/baremetal-link.d/). The oneshot runs as root: it reads the 0600 vz-nudge
+    # private and connects to the corp Mac as the operator login with the root-readable
+    # operator cert (the Mac refuses root ssh). Best-effort + idempotent — the CA cert is
+    # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
+    # attached to the contributed target so it re-runs each activation, re-shipping the
+    # rotated key.
+    systemd.services.${ndhPrefix.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
+      ndhPrefix.attachToContributedTarget {
+        description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
+        # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
+        # the fabric.
+        after = [
+          (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
+          "network-online.target"
+        ];
+        wants = [
+          (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
+          "network-online.target"
+        ];
+        # network-online is not the vz-host answering: after a cold start the deploy probed it
+        # before it was up and applied nothing, and with no restart policy it stayed so (measured
+        # on nikopol-nixos, 2026-10-23). The deploy's own bounded probe is the wait; systemd only
+        # repeats it. 6 tries in 15 min, then the unit stays failed and says so.
+        unitConfig = {
+          StartLimitIntervalSec = 900;
+          StartLimitBurst = 6;
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          Restart = "on-failure";
+          RestartSec = 60;
+          # Invoke bash explicitly (as incus.nix's ExecStartPre does): the service's minimal
+          # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
+          # fails with exit 127 (`env: 'bash': No such file or directory`).
+          ExecStart =
+            let
+              deploy = self.packages.${pkgs.stdenv.hostPlatform.system}."${bm.domain}-baremetal-link-deploy";
+            in
+            "${pkgs.bash}/bin/bash ${deploy}/bin/${bm.domain}-baremetal-link-deploy";
+        };
+      }
+    );
+
+    networking.firewall.trustedInterfaces = [ "fabric-br" ];
+    networking.networkmanager.unmanaged = [ "interface-name:fabric-br" ];
+
+    # Advertise this baremetal segment's aggregate into the tailnet, so peers reach
+    # the instances and the vz-host by name (paired with the split-DNS `.<domain>`
+    # zone → this host's dnsmasq).  On the Tailscale SaaS controller the route still
+    # needs console approval + the split-DNS nameserver entry (runtime); both become
+    # declarative once Headscale is the live control-plane.  Dormant if the headscale
+    # client is disabled on this host.
+    #
+    # ⚠️ The home LAN is deliberately NOT advertised, and re-adding it is a regression.
+    #
+    # A LAN-fixed baremetal used to advertise `netplan.lan.cidr` too, so off-site peers
+    # could reach every device on the home LAN (including vzhost.<host> at its LAN
+    # address). The cost was measured on 2026-09-27 and it is not acceptable: a peer
+    # that ACCEPTS tailnet routes and sits ON that LAN installs `192.168.1.0/24 → utun0`,
+    # which DISPLACES its own connected route. The bioskop Mac lost its en9 route that
+    # way, keeping only the host routes for itself and the box, which produced an
+    # asymmetric path — vzhost→bioskop direct over L2 (TTL 64), bioskop→vzhost out
+    # through the tunnel, through bioskop-nixos and back onto the LAN (TTL 63). Only the
+    # SYN-ACK survived it: Screen Sharing and LAN ssh both hung with no banner, while
+    # `nc` to the same port ON the host answered. Nothing looked broken, which is what
+    # made it expensive.
+    #
+    # An advertiser cannot know whether a given accepter is on the LAN, and
+    # `--accept-routes` is all-or-nothing per client, so there is no scoping that makes
+    # this safe. Off-site access to home-LAN devices has to come from somewhere else.
+    # ★ And macOS did NOT restore the connected route when the advertisement went away —
+    # it took `route -n add -net 192.168.1.0/24 -interface en9` by hand, so a recovery
+    # is not just "stop advertising".
+    #
+    # The segment aggregate below stays: no host is physically on another's /20, so
+    # accepting it displaces nothing.
+    networking.tailnet.advertiseRoutes = [
+      bm.advertiseCidr
+    ];
+
+    # The SYMMETRIC half of that role: advertise our slice, ACCEPT our peers'. Each bare-metal held
+    # only its own /21 and sent a sibling's segment to the home router, which drops it — measured
+    # 2026-09-26, `ip route get 172.16.16.1` on bioskop-nixos answered `via 192.168.1.254 dev
+    # lan-br`, and symmetrically on nikopol-nixos. Nothing in the tailnet policy was ever the
+    # obstacle: both hosts carry `tag:headless`, the `headless → tag:headless:*` rule covers a
+    # peer's approved routes (proven by a `tag:console` Mac reaching 172.16.16.1, an address behind
+    # the node rather than one of its own), and manage-tailnet already derives
+    # `autoApprovers.routes` from every `advertiseCidr` → tag:nixos, so there is no console step.
+    # Paired with peerZoneServers above: this gives the ADDRESS, that gives the NAME.
+    #
+    # ⚠️ `--accept-routes` is all-or-nothing, so this host also installs the home-LAN route the
+    # LAN-FIXED bare-metal advertises. On that host it is inert — a node never installs its own
+    # advertisement. On a ROAMING host it is what we want off-site (the home LAN becomes reachable
+    # through its peer), but the on-LAN case is UNMEASURED: tailscale installs into table 52, whose
+    # ip rule is consulted before main, so the accepted /24 may out-prioritise the directly
+    # connected one. The Mac accepts routes and kept its local route, but macOS routing is not
+    # evidence for Linux. Measure with `tailscale set --accept-routes` + `ip route get` on the
+    # roaming host while it sits on that LAN before trusting this off-site.
+    networking.tailnet.acceptRoutes = true;
+
+    # This host is a subnet router for its fabric-br /21 (advertised into the tailnet):
+    # forward between fabric-br and the tailnet, and clamp forwarded TCP MSS to the
+    # per-route MTU.  fabric-br/lan-br are 1500-MTU, tailscale0 is 1280 — an instance ↔
+    # tailnet peer SYN crosses that step and would blackhole on PMTUD (DF set, ICMP
+    # frag-needed often filtered) without the clamp.  `size set rt mtu` rewrites the
+    # SYN MSS to the egress-route MTU per flow (intra-1500 stays 1460, tailnet-bound
+    # drops to 1240).  firewall.enable is off here, so this is its own nftables table.
+    boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkDefault 1;
+    networking.nftables.tables.mss-clamp = {
+      family = "inet";
+      content = ''
+        chain forward {
+          type filter hook forward priority mangle; policy accept;
+          tcp flags syn tcp option maxseg size set rt mtu
+        }
+      '';
+    };
+
+    # Public-internet egress for everything behind this bare-metal.  The managed network keeps
+    # `ipv4.nat = false` (source IPs must survive for nnh's flow attribution), so a
+    # blanket masquerade is wrong — it would rewrite the source of tailnet/LAN flows
+    # too and blind the collector.  Instead masquerade ONLY public-bound egress:
+    # traffic whose destination is NOT a private or tailnet range.  A packet to the
+    # internet then leaves with the host's LAN address (so the home router can route
+    # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
+    # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
+    # table (firewall.enable is off here), alongside mss-clamp.
+    #
+    # The source is the whole SLICE (`advertiseCidr`), not the fabric-br half (`netCidr`),
+    # because the slice is this bare-metal's unit of ownership — that is exactly what it
+    # advertises into the tailnet. Scoping to the /21 covered the fabric-br instances and left
+    # every slot at offset >= 8 out: correct today, since the only one in use is the
+    # vz-host /30 whose far end is a Mac with its own default route, but a silent hole for
+    # slots 9-15. An unmasqueraded public-bound packet is not refused, it BLACKHOLES, so
+    # the failure would arrive with no signal. Widening costs nothing: the destination
+    # exclusions are unchanged, so private and tailnet flows still carry real sources, and
+    # a vz-host that ever did route public traffic through this host would WANT the
+    # masquerade rather than be harmed by it.
+    networking.nftables.tables.baremetal-nat = {
+      family = "inet";
+      content = ''
+        chain postrouting {
+          type nat hook postrouting priority srcnat; policy accept;
+          ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
+        }
+      '';
+    };
+
+    # The home LAN reaches into the metalspace only by what it is GIVEN, never by routing through
+    # this host. Before this table every forward hook here was `policy accept`, so any LAN device
+    # with a route via this host's LAN address was forwarded into fabric-br and the vmnet planes,
+    # with its source kept (measured 2026-10-16 on both NixOS guests; the cache container now also
+    # filters its own sources — both layers, by the operator's decision).
+    #
+    # An ALLOWLIST on the ingress foot, not a denylist of protected bridges: `lan-br` is this
+    # metalspace's way OUT, so nothing legitimate is forwarded as NEW from it, and a bridge added
+    # later (a new vmnet role, an Incus-managed one) is covered without anyone remembering to list
+    # it. Replies to the metalspace's own egress, the public-bound masquerade included, pass as
+    # established. The tailnet path enters on tailscale0 and is untouched.
+    #
+    # The ONE measured exception is the vz-host's /30 end, scoped by WHAT KIND of machine it is:
+    #   * nix-managed (darwin.bioskop, the operator seat): it routes `172.16/21 via` its link, more
+    #     specific than the tailnet's /20, so it reaches the fabric's Incus containers this way. The
+    #     fabric /21, never the vmnet planes or the rest of the slice.
+    #   * foreign (vzhost.nikopol, the CORPORATE bare-metal): only its NetFlow export to nnh's inlet
+    #     in this metalspace, the one flow measured. Anything more it ever needs is a deliberate,
+    #     reviewed opening here — the accepted corp-IT risk covers what that host already controls,
+    #     not reach into the fabric's instances and cluster nodes. 2055 is nnh's NetFlow port; the
+    #     catalog carries the inlet's address, not its port.
+    #
+    # `drop`, not `reject`: a LAN scanner learns nothing. A drop in any base chain at this hook is
+    # final, so the other tables' `policy accept` cannot undo it.
+    networking.nftables.tables.metalspace-guard = {
+      family = "inet";
+      content = ''
+        ${lib.optionalString screensOpen ''
+          set ${offtailnetScreensSet} {
+            type ipv4_addr . inet_service
+          }
+        ''}
+        chain forward {
+          type filter hook forward priority filter; policy accept;
+          ct state established,related accept
+          ${lib.concatMapStrings (
+            r: ''iifname "lan-br" ether saddr ${vzHostMac} ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
+          ) vzHostForwardRules}
+          iifname "lan-br" ct state invalid drop
+          iifname "lan-br" ct state new counter drop
+        }
+      '';
+    };
+
+    # Static /30 link end toward an off-tailnet corp Mac — only for a host whose
+    # baremetal entry declares a `linkCidr`.  A secondary address on lan-br
+    # (systemd-networkd-managed); DHCP on lan-br still provides the LAN lease.
+    systemd.network.networks."40-lan-br".address = lib.optionals hasLink [
+      "${bm.hostAddress}/${linkPrefix}"
+    ];
+
+    # A pinned VIP must be a tailnet address: a typo would otherwise be checked against MagicDNS
+    # forever and never open, or worse, name an address outside the tailnet.
+    assertions = lib.optionals screensOpen (
+      map (o: {
+        assertion =
+          builtins.match "100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}" o.vip
+          != null;
+        message = "netplan.tailnet.services.${o.name}.vip = ${o.vip} is not inside the tailnet's 100.64.0.0/10";
+      }) offTailnetServiceOpenings
+    );
+
+    # Earns the corporate box's screen openings (see offtailnetScreensSet above): after the ruleset
+    # loads empty, and again every few minutes, so a re-assigned VIP shuts the door within one tick.
+    # PartOf nftables: a reload empties the set, and this refills it right after.
+    #
+    # MagicDNS answers only once the node is on the tailnet, and tailscaled's readiness comes
+    # before that: ordered after tailscaled alone, the boot check ran before tailscaled even
+    # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
+    # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
+    # meanwhile, so the retry never opens anything early.
+    systemd.services.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+      description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
       after = [
-        (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
+        "nftables.service"
         "network-online.target"
+        "tailscaled.service"
+        "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
       ];
       wants = [
-        (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
         "network-online.target"
+        "tailscaled.service"
+        "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
       ];
-      # network-online is not the vz-host answering: after a cold start the deploy probed it
-      # before it was up and applied nothing, and with no restart policy it stayed so (measured
-      # on nikopol-nixos, 2026-10-23). The deploy's own bounded probe is the wait; systemd only
-      # repeats it. 6 tries in 15 min, then the unit stays failed and says so.
+      partOf = [ "nftables.service" ];
+      wantedBy = [ "nftables.service" ];
       unitConfig = {
-        StartLimitIntervalSec = 900;
-        StartLimitBurst = 6;
+        StartLimitIntervalSec = 600;
+        StartLimitBurst = 5;
       };
       serviceConfig = {
         Type = "oneshot";
+        ExecStart = "${pkgs.bash}/bin/bash ${offtailnetScreensCheck}/bin/offtailnet-screens-check";
         Restart = "on-failure";
-        RestartSec = 60;
-        # Invoke bash explicitly (as incus.nix's ExecStartPre does): the service's minimal
-        # PATH has no `bash`, so the deploy bin's `#!/usr/bin/env -S bash` shebang
-        # fails with exit 127 (`env: 'bash': No such file or directory`).
-        ExecStart =
-          let
-            deploy = self.packages.${pkgs.stdenv.hostPlatform.system}."${bm.domain}-baremetal-link-deploy";
-          in
-          "${pkgs.bash}/bin/bash ${deploy}/bin/${bm.domain}-baremetal-link-deploy";
+        RestartSec = 15;
       };
-    }
-  );
-
-  networking.firewall.trustedInterfaces = [ "fabric-br" ];
-  networking.networkmanager.unmanaged = [ "interface-name:fabric-br" ];
-
-  # Advertise this baremetal segment's aggregate into the tailnet, so peers reach
-  # the instances and the vz-host by name (paired with the split-DNS `.<domain>`
-  # zone → this host's dnsmasq).  On the Tailscale SaaS controller the route still
-  # needs console approval + the split-DNS nameserver entry (runtime); both become
-  # declarative once Headscale is the live control-plane.  Dormant if the headscale
-  # client is disabled on this host.
-  #
-  # ⚠️ The home LAN is deliberately NOT advertised, and re-adding it is a regression.
-  #
-  # A LAN-fixed baremetal used to advertise `netplan.lan.cidr` too, so off-site peers
-  # could reach every device on the home LAN (including vzhost.<host> at its LAN
-  # address). The cost was measured on 2026-09-27 and it is not acceptable: a peer
-  # that ACCEPTS tailnet routes and sits ON that LAN installs `192.168.1.0/24 → utun0`,
-  # which DISPLACES its own connected route. The bioskop Mac lost its en9 route that
-  # way, keeping only the host routes for itself and the box, which produced an
-  # asymmetric path — vzhost→bioskop direct over L2 (TTL 64), bioskop→vzhost out
-  # through the tunnel, through bioskop-nixos and back onto the LAN (TTL 63). Only the
-  # SYN-ACK survived it: Screen Sharing and LAN ssh both hung with no banner, while
-  # `nc` to the same port ON the host answered. Nothing looked broken, which is what
-  # made it expensive.
-  #
-  # An advertiser cannot know whether a given accepter is on the LAN, and
-  # `--accept-routes` is all-or-nothing per client, so there is no scoping that makes
-  # this safe. Off-site access to home-LAN devices has to come from somewhere else.
-  # ★ And macOS did NOT restore the connected route when the advertisement went away —
-  # it took `route -n add -net 192.168.1.0/24 -interface en9` by hand, so a recovery
-  # is not just "stop advertising".
-  #
-  # The segment aggregate below stays: no host is physically on another's /20, so
-  # accepting it displaces nothing.
-  networking.tailnet.advertiseRoutes = [
-    bm.advertiseCidr
-  ];
-
-  # The SYMMETRIC half of that role: advertise our slice, ACCEPT our peers'. Each bare-metal held
-  # only its own /21 and sent a sibling's segment to the home router, which drops it — measured
-  # 2026-09-26, `ip route get 172.16.16.1` on bioskop-nixos answered `via 192.168.1.254 dev
-  # lan-br`, and symmetrically on nikopol-nixos. Nothing in the tailnet policy was ever the
-  # obstacle: both hosts carry `tag:headless`, the `headless → tag:headless:*` rule covers a
-  # peer's approved routes (proven by a `tag:console` Mac reaching 172.16.16.1, an address behind
-  # the node rather than one of its own), and manage-tailnet already derives
-  # `autoApprovers.routes` from every `advertiseCidr` → tag:nixos, so there is no console step.
-  # Paired with peerZoneServers above: this gives the ADDRESS, that gives the NAME.
-  #
-  # ⚠️ `--accept-routes` is all-or-nothing, so this host also installs the home-LAN route the
-  # LAN-FIXED bare-metal advertises. On that host it is inert — a node never installs its own
-  # advertisement. On a ROAMING host it is what we want off-site (the home LAN becomes reachable
-  # through its peer), but the on-LAN case is UNMEASURED: tailscale installs into table 52, whose
-  # ip rule is consulted before main, so the accepted /24 may out-prioritise the directly
-  # connected one. The Mac accepts routes and kept its local route, but macOS routing is not
-  # evidence for Linux. Measure with `tailscale set --accept-routes` + `ip route get` on the
-  # roaming host while it sits on that LAN before trusting this off-site.
-  networking.tailnet.acceptRoutes = true;
-
-  # This host is a subnet router for its fabric-br /21 (advertised into the tailnet):
-  # forward between fabric-br and the tailnet, and clamp forwarded TCP MSS to the
-  # per-route MTU.  fabric-br/lan-br are 1500-MTU, tailscale0 is 1280 — an instance ↔
-  # tailnet peer SYN crosses that step and would blackhole on PMTUD (DF set, ICMP
-  # frag-needed often filtered) without the clamp.  `size set rt mtu` rewrites the
-  # SYN MSS to the egress-route MTU per flow (intra-1500 stays 1460, tailnet-bound
-  # drops to 1240).  firewall.enable is off here, so this is its own nftables table.
-  boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkDefault 1;
-  networking.nftables.tables.mss-clamp = {
-    family = "inet";
-    content = ''
-      chain forward {
-        type filter hook forward priority mangle; policy accept;
-        tcp flags syn tcp option maxseg size set rt mtu
-      }
-    '';
-  };
-
-  # Public-internet egress for everything behind this bare-metal.  The managed network keeps
-  # `ipv4.nat = false` (source IPs must survive for nnh's flow attribution), so a
-  # blanket masquerade is wrong — it would rewrite the source of tailnet/LAN flows
-  # too and blind the collector.  Instead masquerade ONLY public-bound egress:
-  # traffic whose destination is NOT a private or tailnet range.  A packet to the
-  # internet then leaves with the host's LAN address (so the home router can route
-  # the reply back), while traffic to the tailnet (${netplan.tailnet.cidr}), the
-  # LAN, vzhost.${bm.domain} and other instances keeps its real source.  Own nftables
-  # table (firewall.enable is off here), alongside mss-clamp.
-  #
-  # The source is the whole SLICE (`advertiseCidr`), not the fabric-br half (`netCidr`),
-  # because the slice is this bare-metal's unit of ownership — that is exactly what it
-  # advertises into the tailnet. Scoping to the /21 covered the fabric-br instances and left
-  # every slot at offset >= 8 out: correct today, since the only one in use is the
-  # vz-host /30 whose far end is a Mac with its own default route, but a silent hole for
-  # slots 9-15. An unmasqueraded public-bound packet is not refused, it BLACKHOLES, so
-  # the failure would arrive with no signal. Widening costs nothing: the destination
-  # exclusions are unchanged, so private and tailnet flows still carry real sources, and
-  # a vz-host that ever did route public traffic through this host would WANT the
-  # masquerade rather than be harmed by it.
-  networking.nftables.tables.baremetal-nat = {
-    family = "inet";
-    content = ''
-      chain postrouting {
-        type nat hook postrouting priority srcnat; policy accept;
-        ip saddr ${bm.advertiseCidr} ip daddr != { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, ${netplan.tailnet.cidr} } masquerade
-      }
-    '';
-  };
-
-  # The home LAN reaches into the metalspace only by what it is GIVEN, never by routing through
-  # this host. Before this table every forward hook here was `policy accept`, so any LAN device
-  # with a route via this host's LAN address was forwarded into fabric-br and the vmnet planes,
-  # with its source kept (measured 2026-10-16 on both NixOS guests; the cache container now also
-  # filters its own sources — both layers, by the operator's decision).
-  #
-  # An ALLOWLIST on the ingress foot, not a denylist of protected bridges: `lan-br` is this
-  # metalspace's way OUT, so nothing legitimate is forwarded as NEW from it, and a bridge added
-  # later (a new vmnet role, an Incus-managed one) is covered without anyone remembering to list
-  # it. Replies to the metalspace's own egress, the public-bound masquerade included, pass as
-  # established. The tailnet path enters on tailscale0 and is untouched.
-  #
-  # The ONE measured exception is the vz-host's /30 end, scoped by WHAT KIND of machine it is:
-  #   * nix-managed (darwin.bioskop, the operator seat): it routes `172.16/21 via` its link, more
-  #     specific than the tailnet's /20, so it reaches the fabric's Incus containers this way. The
-  #     fabric /21, never the vmnet planes or the rest of the slice.
-  #   * foreign (vzhost.nikopol, the CORPORATE bare-metal): only its NetFlow export to nnh's inlet
-  #     in this metalspace, the one flow measured. Anything more it ever needs is a deliberate,
-  #     reviewed opening here — the accepted corp-IT risk covers what that host already controls,
-  #     not reach into the fabric's instances and cluster nodes. 2055 is nnh's NetFlow port; the
-  #     catalog carries the inlet's address, not its port.
-  #
-  # `drop`, not `reject`: a LAN scanner learns nothing. A drop in any base chain at this hook is
-  # final, so the other tables' `policy accept` cannot undo it.
-  networking.nftables.tables.metalspace-guard = {
-    family = "inet";
-    content = ''
-      ${lib.optionalString screensOpen ''
-        set ${offtailnetScreensSet} {
-          type ipv4_addr . inet_service
-        }
-      ''}
-      chain forward {
-        type filter hook forward priority filter; policy accept;
-        ct state established,related accept
-        ${lib.concatMapStrings (
-          r: ''iifname "lan-br" ether saddr ${vzHostMac} ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
-        ) vzHostForwardRules}
-        iifname "lan-br" ct state invalid drop
-        iifname "lan-br" ct state new counter drop
-      }
-    '';
-  };
-
-  # Static /30 link end toward an off-tailnet corp Mac — only for a host whose
-  # baremetal entry declares a `linkCidr`.  A secondary address on lan-br
-  # (systemd-networkd-managed); DHCP on lan-br still provides the LAN lease.
-  systemd.network.networks."40-lan-br".address = lib.optionals hasLink [
-    "${bm.hostAddress}/${linkPrefix}"
-  ];
-
-  # A pinned VIP must be a tailnet address: a typo would otherwise be checked against MagicDNS
-  # forever and never open, or worse, name an address outside the tailnet.
-  assertions = lib.optionals screensOpen (
-    map (o: {
-      assertion =
-        builtins.match "100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}" o.vip
-        != null;
-      message = "netplan.tailnet.services.${o.name}.vip = ${o.vip} is not inside the tailnet's 100.64.0.0/10";
-    }) offTailnetServiceOpenings
-  );
-
-  # Earns the corporate box's screen openings (see offtailnetScreensSet above): after the ruleset
-  # loads empty, and again every few minutes, so a re-assigned VIP shuts the door within one tick.
-  # PartOf nftables: a reload empties the set, and this refills it right after.
-  #
-  # MagicDNS answers only once the node is on the tailnet, and tailscaled's readiness comes
-  # before that: ordered after tailscaled alone, the boot check ran before tailscaled even
-  # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
-  # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
-  # meanwhile, so the retry never opens anything early.
-  systemd.services.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
-    description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
-    after = [
-      "nftables.service"
-      "network-online.target"
-      "tailscaled.service"
-      "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
-    ];
-    wants = [
-      "network-online.target"
-      "tailscaled.service"
-      "${ndhPrefix.tailscaleAutoconnectUnitName}.service"
-    ];
-    partOf = [ "nftables.service" ];
-    wantedBy = [ "nftables.service" ];
-    unitConfig = {
-      StartLimitIntervalSec = 600;
-      StartLimitBurst = 5;
     };
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash ${offtailnetScreensCheck}/bin/offtailnet-screens-check";
-      Restart = "on-failure";
-      RestartSec = 15;
+    systemd.timers.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "1min";
+        OnUnitActiveSec = "5min";
+      };
     };
   };
-  systemd.timers.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "1min";
-      OnUnitActiveSec = "5min";
-    };
-  };
-};
 }

@@ -14,16 +14,16 @@ in
 {
   config = lib.mkIf config.ndh.nixSigning.signs {
     systemd.services.${ndhPrefix.mkNdhServiceName "nix-signing-key"} = {
-    description = "Place this machine's nix signing key, derived from its own host key (@codebase)";
-    wantedBy = [ "nix-daemon.service" ];
-    before = [ "nix-daemon.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      User = "root";
-      Group = "root";
-      ExecStart = "${config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key";
+      description = "Place this machine's nix signing key, derived from its own host key (@codebase)";
+      wantedBy = [ "nix-daemon.service" ];
+      before = [ "nix-daemon.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = "root";
+        Group = "root";
+        ExecStart = "${config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key";
+      };
     };
   };
-};
 }

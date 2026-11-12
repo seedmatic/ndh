@@ -1,4 +1,10 @@
-{ config, lib, pkgs, ndh, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ndh,
+  ...
+}:
 let
   cfg = config.ndh.mcpBrowserForward;
   tailnetDomain = ndh.context.catalog.netplan.tailnet.domain;
@@ -28,16 +34,26 @@ in
         ExecStart = lib.escapeShellArgs [
           "${pkgs.openssh}/bin/ssh"
           "-N"
-          "-o" "BatchMode=yes"
-          "-o" "ControlMaster=no"
-          "-o" "ControlPath=none"
-          "-o" "ServerAliveInterval=15"
-          "-o" "ServerAliveCountMax=3"
-          "-o" "ExitOnForwardFailure=yes"
-          "-o" "StrictHostKeyChecking=yes"
-          "-o" "HostName=darwin.${cfg.host}"
-          "-o" "HostKeyAlias=${cfg.host}${tailnetDomain}"
-          "-L" "127.0.0.1:9010:localhost:9010"
+          "-o"
+          "BatchMode=yes"
+          "-o"
+          "ControlMaster=no"
+          "-o"
+          "ControlPath=none"
+          "-o"
+          "ServerAliveInterval=15"
+          "-o"
+          "ServerAliveCountMax=3"
+          "-o"
+          "ExitOnForwardFailure=yes"
+          "-o"
+          "StrictHostKeyChecking=yes"
+          "-o"
+          "HostName=darwin.${cfg.host}"
+          "-o"
+          "HostKeyAlias=${cfg.host}${tailnetDomain}"
+          "-L"
+          "127.0.0.1:9010:localhost:9010"
           "darwin.${cfg.host}"
         ];
         Restart = "always";
