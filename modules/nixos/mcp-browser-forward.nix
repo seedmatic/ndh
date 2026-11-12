@@ -23,6 +23,7 @@ in
         Type = "simple";
         User = config.profile.user.name;
         Group = config.profile.user.name;
+        Environment = "PATH=/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/bin:/usr/bin";
         ExecStart = lib.escapeShellArgs [
           "${pkgs.openssh}/bin/ssh"
           "-N"
