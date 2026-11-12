@@ -7,6 +7,7 @@
   lib,
   options,
   pkgs,
+  ndhSystemd,
   ...
 }:
 let
@@ -26,6 +27,8 @@ let
   defaultFeatures = (options.nix.settings.type.getSubOptions [ ]).system-features.default;
 in
 {
+  imports = [ ./systemd/naming.nix ];
+
   nix.settings = {
     auto-optimise-store = false; # Manual optimise keeps build latency predictable during development.
     # Builds run as the nixbldN users. NixOS emits no build-users-group here, so
@@ -59,7 +62,7 @@ in
     }
   ];
 
-  systemd.services.io-seedmatic-ndh-nix-kvm-features = {
+  systemd.services.${ndhSystemd.mkNdhServiceName "nix-kvm-features"} = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
     wantedBy = [ "multi-user.target" ];
     before = [ "nix-daemon.service" ];

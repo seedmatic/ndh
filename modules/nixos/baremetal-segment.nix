@@ -223,6 +223,8 @@ let
   dhcpLease = "1h";
 in
 lib.mkIf enabled {
+  imports = [ ./systemd/naming.nix ];
+
   # ONE OWNER for this network, and it is now NIXOS — systemd-networkd owns the bridge,
   # `services.dnsmasq` owns the addressing and the zone.  Incus knows nothing about `fabric-br`:
   # instances attach to it as an UNMANAGED parent bridge (`nictype=bridged, parent=fabric-br`),
@@ -325,7 +327,7 @@ lib.mkIf enabled {
   # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
   # attached to the contributed target so it re-runs each activation, re-shipping the
   # rotated key.
-  systemd.services.io-seedmatic-ndh-baremetal-link-deploy = lib.mkIf deliversLink (
+  systemd.services.${ndhSystemd.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
     ndhSystemd.attachToContributedTarget {
       description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
       # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
@@ -538,7 +540,7 @@ lib.mkIf enabled {
   # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
   # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
   # meanwhile, so the retry never opens anything early.
-  systemd.services.io-seedmatic-ndh-offtailnet-screens-check = lib.mkIf screensOpen {
+  systemd.services.${ndhSystemd.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
     description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
     after = [
       "nftables.service"
@@ -564,7 +566,7 @@ lib.mkIf enabled {
       RestartSec = 15;
     };
   };
-  systemd.timers.io-seedmatic-ndh-offtailnet-screens-check = lib.mkIf screensOpen {
+  systemd.timers.${ndhSystemd.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "1min";

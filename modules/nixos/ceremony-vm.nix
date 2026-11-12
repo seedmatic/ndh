@@ -2,6 +2,7 @@
   lib,
   pkgs,
   modulesPath,
+  ndhSystemd,
   ...
 }:
 # The seedmatic root's ceremony VM (roles × keys ⑧, docs/root-ceremony.adoc): a netboot system, so the root is a
@@ -9,7 +10,10 @@
 # and runs no daemon that listens; the runner (modules/darwin/ceremony-vm.d) gives it no network device at all.
 # Two drives only: the operator's IN (read-only) and OUT, both vfat so the Mac can write and read them.
 {
-  imports = [ "${modulesPath}/installer/netboot/netboot.nix" ];
+  imports = [
+    "${modulesPath}/installer/netboot/netboot.nix"
+    ./systemd/naming.nix
+  ];
 
   system.stateVersion = "26.05";
   networking = {
@@ -48,7 +52,7 @@
   };
 
   # `ndh-ceremony-vm --smoke` (🎛️'s check, no drive): print what the VM sees, then power off.
-  systemd.services.io-seedmatic-ndh-ceremony-smoke = {
+  systemd.services.${ndhSystemd.mkNdhServiceName "ceremony-smoke"} = {
     description = "Show the ceremony VM's links and mounts, then power off";
     wantedBy = [ "multi-user.target" ];
     unitConfig.ConditionKernelCommandLine = "ceremony.smoke=1";

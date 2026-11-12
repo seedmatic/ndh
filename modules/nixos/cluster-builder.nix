@@ -14,6 +14,7 @@
   lib,
   pkgs,
   modulesPath,
+  ndhSystemd,
   ...
 }:
 let
@@ -39,6 +40,7 @@ in
   imports = [
     "${modulesPath}/virtualisation/lxc-container.nix"
     "${modulesPath}/virtualisation/lxc-image-metadata.nix"
+    ./systemd/naming.nix
   ];
   disabledModules = [ "${modulesPath}/virtualisation/lxc-instance-common.nix" ];
 
@@ -243,7 +245,7 @@ in
     ];
 
     # Its nix key, born here at first start; the public is logged for the cluster's scenario to record.
-    systemd.services.io-seedmatic-ndh-cluster-builder-signing-key = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "cluster-builder-signing-key"} = {
       description = "Generate this cluster builder's nix signing key";
       wantedBy = [ "multi-user.target" ];
       before = [ "nix-daemon.service" ];

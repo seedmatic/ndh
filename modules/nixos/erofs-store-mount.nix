@@ -11,6 +11,7 @@
   config,
   lib,
   pkgs,
+  ndhSystemd,
   ...
 }:
 let
@@ -35,12 +36,14 @@ let
   };
 in
 {
+  imports = [ ./systemd/naming.nix ];
+
   environment.etc."ndh/store-layers.json".text = builtins.toJSON layerContract;
 
   # The layers' upstream paths get their own cache.nixos.org signatures back (the registration loaded
   # them unsigned), so attic's upload filter can skip them: erofs-store-mount.d/upstream-sigs.sh.
   # Best-effort, after the network: it fails nothing, and a boot without network retries later.
-  systemd.services.io-seedmatic-ndh-layer-upstream-sigs = {
+  systemd.services.${ndhSystemd.mkNdhServiceName "layer-upstream-sigs"} = {
     description = "Copy cache.nixos.org's own signatures onto the EROFS layers' upstream paths";
     wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" ];

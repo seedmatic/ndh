@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  ndhSystemd,
   ...
 }:
 # NixOS wiring for the fleet cache signing compose step.
@@ -28,7 +29,9 @@
   );
 
   # Every machine runs it: it writes the fleet keys it signs with and removes the ones it no longer signs with.
-  config.systemd.services.io-seedmatic-ndh-cache-trust-compose = {
+  imports = [ ./systemd/naming.nix ];
+
+  config.systemd.services.${ndhSystemd.mkNdhServiceName "cache-trust-compose"} = {
     description = "Compose fleet cache signing keys from SOPS-deployed bare values (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [ "sops-install-secrets.service" ];
