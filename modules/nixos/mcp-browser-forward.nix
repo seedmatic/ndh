@@ -2,6 +2,7 @@
 let
   cfg = config.ndh.mcpBrowserForward;
   tailnetDomain = ndh.context.catalog.netplan.tailnet.domain;
+  ndhSystemd = config._module.args.ndhSystemd;
 in
 {
   imports = [ ./systemd/naming.nix ];
@@ -16,7 +17,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "mcp-browser-forward"} = {
+    systemd.services.${ndhSystemd.mkNdhServiceName "mcp-browser-forward"} = {
       description = "Forward TCP/9010 to Darwin MCP browser server (${cfg.host})";
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
