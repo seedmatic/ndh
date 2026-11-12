@@ -106,5 +106,20 @@ in
     # shared modules/nixos/baremetal-segment.nix, keyed off
     # catalog.netplan.baremetal.nikopol (bioskop gets the same, minus the /30).
     # Nothing baremetal-specific remains here.
+
+    # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
+    # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
+    ndh.onDemandTunnel = {
+      browseros-nikopol = {
+        host = "nikopol";
+        port = 9010;
+        listenPort = 9010;
+      };
+      browseros-bioskop = {
+        host = "bioskop";
+        port = 9010;
+        listenPort = 9020;
+      };
+    };
   };
 }

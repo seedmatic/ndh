@@ -157,6 +157,7 @@ let
     ./attic-cache.nix
     ./attic-client.nix
     ./loopback-forward.nix
+    ./on-demand-tunnel.nix
     ./store-freeze.nix
     ./cluster-vmnet.nix
     ./podman.nix
