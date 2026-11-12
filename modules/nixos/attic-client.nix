@@ -43,7 +43,7 @@ in
       # placed. Each machine pulls its own from every cache (F6): daily, and at boot after the identity; the unseal
       # runs at the end of each pull.
       systemd.tmpfiles.rules = [ "d ${tokens.store} 0700 root root - -" ];
-      systemd.services.ndh-attic-tokens = {
+      systemd.services.io-seedmatic-ndh-attic-tokens = {
         description = "Pull and unseal this machine's attic tokens into ${cfg.paths.dir}";
         wantedBy = [ "multi-user.target" ];
         # The attic names are this guest's own dnsmasq's: at boot the pull ran before it and could not resolve them. A
@@ -77,7 +77,7 @@ in
           );
         };
       };
-      systemd.timers.ndh-attic-tokens = {
+      systemd.timers.io-seedmatic-ndh-attic-tokens = {
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnCalendar = "daily";
@@ -88,11 +88,11 @@ in
 
     (lib.mkIf cfg.watchStore.enable {
       # Started as soon as the delivery writes the token, and at every boot once it is there.
-      systemd.paths.ndh-attic-watch-store = {
+      systemd.paths.io-seedmatic-ndh-attic-watch-store = {
         wantedBy = [ "multi-user.target" ];
         pathConfig.PathExists = cfg.paths.writeToken;
       };
-      systemd.services.ndh-attic-watch-store = {
+      systemd.services.io-seedmatic-ndh-attic-watch-store = {
         description = "Push this machine's new store paths into ${cfg.ownCache}";
         after = [
           "network-online.target"

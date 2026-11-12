@@ -1644,7 +1644,7 @@
               gaps =
                 c:
                 let
-                  u = c.config.systemd.services.ndh-attic-tokens;
+                  u = c.config.systemd.services.io-seedmatic-ndh-attic-tokens;
                 in
                 lib.filter (x: x != null) [
                   (if lib.elem "nss-lookup.target" u.after then null else "after nss-lookup.target")
@@ -1678,7 +1678,7 @@
                     }
                   ]
                   ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
-                }).config.systemd.services.attic-token-mint.serviceConfig;
+                }).config.systemd.services.io-seedmatic-ndh-attic-token-mint.serviceConfig;
               # The lines the mint reads: its targets file's when it has one, else TARGETS as Environment= keeps it.
               lines =
                 c:
@@ -3222,7 +3222,7 @@
               };
               nixos = (self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ on ]; }).config;
               darwin = (self.darwinConfigurations.bioskop.extendModules { modules = [ on ]; }).config;
-              service = nixos.systemd.services.ndh-attic-watch-store.serviceConfig;
+              service = nixos.systemd.services.io-seedmatic-ndh-attic-watch-store.serviceConfig;
               daemon = darwin.launchd.daemons.ndh-attic-watch-store.serviceConfig;
               account = darwin.ndh.atticClient.writeTokenOwner;
             in
