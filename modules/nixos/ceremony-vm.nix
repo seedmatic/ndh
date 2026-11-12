@@ -1,8 +1,8 @@
 {
+  config,
   lib,
   pkgs,
   modulesPath,
-  ndhSystemd,
   ...
 }:
 # The seedmatic root's ceremony VM (roles × keys ⑧, docs/root-ceremony.adoc): a netboot system, so the root is a
@@ -52,7 +52,7 @@
   };
 
   # `ndh-ceremony-vm --smoke` (🎛️'s check, no drive): print what the VM sees, then power off.
-  systemd.services.${ndhSystemd.mkNdhServiceName "ceremony-smoke"} = {
+  systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "ceremony-smoke"} = {
     description = "Show the ceremony VM's links and mounts, then power off";
     wantedBy = [ "multi-user.target" ];
     unitConfig.ConditionKernelCommandLine = "ceremony.smoke=1";

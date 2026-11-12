@@ -7,7 +7,6 @@
   lib,
   options,
   pkgs,
-  ndhSystemd,
   ...
 }:
 let
@@ -62,7 +61,7 @@ in
     }
   ];
 
-  systemd.services.${ndhSystemd.mkNdhServiceName "nix-kvm-features"} = {
+  systemd.services.${config._module.args.ndhSystemd.mkNdhServiceName "nix-kvm-features"} = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
     wantedBy = [ "multi-user.target" ];
     before = [ "nix-daemon.service" ];
