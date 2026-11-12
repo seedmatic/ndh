@@ -332,11 +332,11 @@ in
       # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
       # the fabric.
       after = [
-        (ndhPrefix.mkServiceName "ssh-keys-enrichment")
+        (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
         "network-online.target"
       ];
       wants = [
-        (ndhPrefix.mkServiceName "ssh-keys-enrichment")
+        (ndhPrefix.mkNdhServiceName "ssh-keys-enrichment")
         "network-online.target"
       ];
       # network-online is not the vz-host answering: after a cold start the deploy probed it
