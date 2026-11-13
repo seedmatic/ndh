@@ -63,10 +63,15 @@
   ];
 
   # NFS: export only the git stores; disable /net autofs browsing.
+  # Client scopes derived from catalog.netplan CIDRs (lan, tailnet) + localhost/socket_vmnet.
   services.nfsDarwin = {
     exports = [
       "/Volumes/git-worktree-store"
       "/Volumes/git-bare-store"
+    ];
+    allowedNetworks = [
+      "lan"
+      "tailnet"
     ];
     autofs.enable = false;
   };

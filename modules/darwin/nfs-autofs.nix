@@ -66,7 +66,7 @@ let
             cidr = entry.cidr or null;
           in
           if cidr != null then
-            cidrToNetwork cidr
+            cidr
           else
             lib.warn "Missing cidr for network in nfsDarwin.allowedNetworks: ${name}" null
         else
@@ -190,11 +190,22 @@ let
 
   exportsText =
     let
+      # When clientScopes is empty, derive the client scopes from the catalog.netplan CIDRs
+      # named by allowedNetworks (lan, tailnet, ...), plus localhost and the socket_vmnet
+      # subnet which are not named networks but need NFS access.
       scopes =
         if cfg.clientScopes == [ ] then
-          [
+          (map (cidr: {
+            clients = cidr;
+            options = cfg.exportOptions;
+          }) allowedNetworks)
+          ++ [
             {
-              clients = "";
+              clients = "127.0.0.1/8";
+              options = cfg.exportOptions;
+            }
+            {
+              clients = "10.80.16.0/24";
               options = cfg.exportOptions;
             }
           ]
@@ -337,8 +348,8 @@ in
           };
         }
       );
-      default = shared.clientScopesDefault.darwin;
-      description = "Per-scope client/option pairs appended to each export.";
+      default = [ ];
+      description = "Per-scope client/option pairs appended to each export. Empty (default) derives scopes from allowedNetworks (catalog.netplan CIDRs) plus localhost/socket_vmnet.";
     };
 
     nfsConf = {
