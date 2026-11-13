@@ -333,15 +333,15 @@ in
     };
 
     systemd.services = {
-      ${ndhPrefix.mkNdhServiceName "llm-litellm"} = {
+      ${ndhPrefix.mkNdhUnitName "llm-litellm"} = {
         description = "LiteLLM proxy";
         after = [
           "network.target"
           "sops-install-secrets.service"
         ]
-        ++ (if runSwap then [ "${ndhPrefix.mkNdhServiceName "llm-swap"}.service" ] else [ ]);
+        ++ (if runSwap then [ "${ndhPrefix.mkNdhUnitName "llm-swap"}.service" ] else [ ]);
         wants = [ "sops-install-secrets.service" ];
-        requires = if runSwap then [ "${ndhPrefix.mkNdhServiceName "llm-swap"}.service" ] else [ ];
+        requires = if runSwap then [ "${ndhPrefix.mkNdhUnitName "llm-swap"}.service" ] else [ ];
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
           Type = "simple";
@@ -356,7 +356,7 @@ in
     // (
       if runSwap then
         {
-          ${ndhPrefix.mkNdhServiceName "llm-swap"} = {
+          ${ndhPrefix.mkNdhUnitName "llm-swap"} = {
             description = "llama-swap LLM server";
             after = [
               "network.target"

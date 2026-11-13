@@ -136,7 +136,7 @@ in
     fileSystems.${storeLayers.storeMountPoint}.enable = lib.mkForce false;
 
     boot.initrd.systemd.storePaths = [ "${stackScript}/bin/ndh-store-stack" ];
-    boot.initrd.systemd.services.${ndhPrefix.mkNdhServiceName "store-stack"} = {
+    boot.initrd.systemd.services.${ndhPrefix.mkNdhUnitName "store-stack"} = {
       description = "Build /nix/store from the stack manifest";
       unitConfig = {
         DefaultDependencies = false;

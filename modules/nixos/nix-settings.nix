@@ -60,7 +60,7 @@ in
     }
   ];
 
-  systemd.services.${ndhPrefix.mkNdhServiceName "nix-kvm-features"} = {
+  systemd.services.${ndhPrefix.mkNdhUnitName "nix-kvm-features"} = {
     description = "State whether this boot has /dev/kvm, for the nix daemon";
     wantedBy = [ "multi-user.target" ];
     before = [ "nix-daemon.service" ];

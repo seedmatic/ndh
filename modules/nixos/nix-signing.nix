@@ -13,7 +13,7 @@ in
 # with `--option secret-key-files ''`.
 {
   config = lib.mkIf config.ndh.nixSigning.signs {
-    systemd.services.${ndhPrefix.mkNdhServiceName "nix-signing-key"} = {
+    systemd.services.${ndhPrefix.mkNdhUnitName "nix-signing-key"} = {
       description = "Place this machine's nix signing key, derived from its own host key (@codebase)";
       wantedBy = [ "nix-daemon.service" ];
       before = [ "nix-daemon.service" ];

@@ -32,7 +32,7 @@ in
 
   # Every machine runs it: it writes the fleet keys it signs with and removes the ones it no longer signs with.
 
-  config.systemd.services.${ndhPrefix.mkNdhServiceName "cache-trust-compose"} = {
+  config.systemd.services.${ndhPrefix.mkNdhUnitName "cache-trust-compose"} = {
     description = "Compose fleet cache signing keys from SOPS-deployed bare values (@codebase)";
     wantedBy = [ "multi-user.target" ];
     wants = [ "sops-install-secrets.service" ];

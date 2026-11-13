@@ -326,7 +326,7 @@ in
     # long-lived, so a missed/failed run is harmless (the last shipped key keeps working);
     # attached to the contributed target so it re-runs each activation, re-shipping the
     # rotated key.
-    systemd.services.${ndhPrefix.mkNdhServiceName "baremetal-link-deploy"} = lib.mkIf deliversLink (
+    systemd.services.${ndhPrefix.mkNdhUnitName "baremetal-link-deploy"} = lib.mkIf deliversLink (
       ndhPrefix.attachToContributedTarget {
         description = "Ship vz-nudge + (re)load baremetal-link on the corp Mac (${bm.domain})";
         # No fabric-br ordering: the deploy reaches the vz-host over the /30 on lan-br, never over
@@ -539,7 +539,7 @@ in
     # started and failed on a DNS timeout (nikopol-nixos, 2026-10-31). Hence the autoconnect
     # unit, and a bounded retry for the seconds MagicDNS may still lag; the set stays empty
     # meanwhile, so the retry never opens anything early.
-    systemd.services.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+    systemd.services.${ndhPrefix.mkNdhUnitName "offtailnet-screens-check"} = lib.mkIf screensOpen {
       description = "Open the corporate box's seat-screen flows only for the VIPs MagicDNS vouches for";
       after = [
         "nftables.service"
@@ -565,7 +565,7 @@ in
         RestartSec = 15;
       };
     };
-    systemd.timers.${ndhPrefix.mkNdhServiceName "offtailnet-screens-check"} = lib.mkIf screensOpen {
+    systemd.timers.${ndhPrefix.mkNdhUnitName "offtailnet-screens-check"} = lib.mkIf screensOpen {
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnBootSec = "1min";
