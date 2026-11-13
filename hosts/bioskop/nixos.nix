@@ -48,6 +48,51 @@
     # checkouts on the other — so this block is its twin, and the layout divergence is gone. The
     # old single /private/var/lib/git export is NOT kept: it carried 44 other orgs beside the
     # seedmatic closure, and nothing on the NixOS side ever consumed it.
+    # NFS mounts of the Darwin-side git stores (systemd automounts).
+    services.rpcbind.enable = true;
+    fileSystems."/srv/darwin/git-worktree-store" = {
+      device = "bioskop.local:/Volumes/git-worktree-store";
+      fsType = "nfs";
+      options = [
+        "x-systemd.automount"
+        "noauto"
+        "x-systemd.idle-timeout=60"
+        "x-systemd.device-timeout=5s"
+        "x-systemd.mount-timeout=5s"
+        "vers=3"
+        "proto=tcp"
+        "soft"
+        "timeo=5"
+        "retrans=2"
+        "actimeo=5"
+        "rsize=65536"
+        "wsize=65536"
+        "inet"
+      ];
+    };
+    fileSystems."/srv/darwin/git-bare-store" = {
+      device = "bioskop.local:/Volumes/git-bare-store";
+      fsType = "nfs";
+      options = [
+        "x-systemd.automount"
+        "noauto"
+        "x-systemd.idle-timeout=60"
+        "x-systemd.device-timeout=5s"
+        "x-systemd.mount-timeout=5s"
+        "vers=3"
+        "proto=tcp"
+        "soft"
+        "timeo=5"
+        "retrans=2"
+        "actimeo=5"
+        "rsize=65536"
+        "wsize=65536"
+        "inet"
+      ];
+    };
+
+    # sshfs fallback mounts of the Darwin-side git stores (single-ssh-channel transport),
+    # kept alongside NFS on a separate /srv path.
     services.sshfsMounts = {
       enable = true;
       remoteHost = "bioskop.local";
@@ -55,11 +100,11 @@
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";
-          localPath = "/Volumes/git-worktree-store";
+          localPath = "/srv/darwin/.sshfs/git-worktree-store";
         }
         {
           remotePath = "/Volumes/git-bare-store";
-          localPath = "/Volumes/git-bare-store";
+          localPath = "/srv/darwin/.sshfs/git-bare-store";
         }
       ];
     };

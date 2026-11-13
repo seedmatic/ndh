@@ -61,10 +61,51 @@ in
       upstreamEndpoint = "http://192.168.5.2:9001";
     };
 
-    # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount, read-write, as nxmatic — the operator who owns the trees — with the
-    # guest's own host key, which the seat authorizes for read-write sftp only; remote files map back to uid/gid 501:30001.
-    # nikopol keeps its git trees on dedicated /Volumes stores.
+    # NFS mounts of the Darwin-side git stores (systemd automounts).
+    services.rpcbind.enable = true;
+    fileSystems."/srv/darwin/git-worktree-store" = {
+      device = "nikopol.local:/Volumes/git-worktree-store";
+      fsType = "nfs";
+      options = [
+        "x-systemd.automount"
+        "noauto"
+        "x-systemd.idle-timeout=60"
+        "x-systemd.device-timeout=5s"
+        "x-systemd.mount-timeout=5s"
+        "vers=3"
+        "proto=tcp"
+        "soft"
+        "timeo=5"
+        "retrans=2"
+        "actimeo=5"
+        "rsize=65536"
+        "wsize=65536"
+        "inet"
+      ];
+    };
+    fileSystems."/srv/darwin/git-bare-store" = {
+      device = "nikopol.local:/Volumes/git-bare-store";
+      fsType = "nfs";
+      options = [
+        "x-systemd.automount"
+        "noauto"
+        "x-systemd.idle-timeout=60"
+        "x-systemd.device-timeout=5s"
+        "x-systemd.mount-timeout=5s"
+        "vers=3"
+        "proto=tcp"
+        "soft"
+        "timeo=5"
+        "retrans=2"
+        "actimeo=5"
+        "rsize=65536"
+        "wsize=65536"
+        "inet"
+      ];
+    };
+
+    # sshfs fallback mounts of the Darwin-side git stores (single-ssh-channel transport),
+    # kept alongside NFS on a separate /srv path.
     services.sshfsMounts = {
       enable = true;
       remoteHost = "nikopol.local";
@@ -72,11 +113,11 @@ in
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";
-          localPath = "/Volumes/git-worktree-store";
+          localPath = "/srv/darwin/.sshfs/git-worktree-store";
         }
         {
           remotePath = "/Volumes/git-bare-store";
-          localPath = "/Volumes/git-bare-store";
+          localPath = "/srv/darwin/.sshfs/git-bare-store";
         }
       ];
     };

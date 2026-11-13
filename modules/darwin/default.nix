@@ -18,6 +18,7 @@
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
     ./nfsd-off.nix
+    ./nfs-autofs.nix
     ./corp-egress-guard.nix
     ./tailnet-client.nix
     ./headscale-daemon.nix
@@ -60,6 +61,15 @@
     ./llm-gateway.nix
     ./ndh-switch.nix
   ];
+
+  # NFS: export only the git stores; disable /net autofs browsing.
+  services.nfsDarwin = {
+    exports = [
+      "/Volumes/git-worktree-store"
+      "/Volumes/git-bare-store"
+    ];
+    autofs.enable = false;
+  };
 
   # Active le résolveur .lan par défaut (modifiable par hôte).  Le nameserver et le
   # domaine de recherche viennent du catalogue (defaults de l'option) — pas de
