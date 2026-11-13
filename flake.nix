@@ -2180,7 +2180,7 @@
                   };
                 };
               };
-              keys.host-g = entry;
+              keys.g = entry;
               catalog.machines = [
                 {
                   name = "g";
@@ -3826,8 +3826,10 @@
             };
           # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
           # own metadata is read. The files are the ones .sops.yaml's rules match, so a new sealed file cannot escape.
-          # The guests' age identity directory is root's alone (0700), and no other tmpfiles rule names it with
-          # another mode; the mutant without the rule proves the predicate bites.
+          # A guest with an age identity file has its directory root's alone (0700), and no other tmpfiles rule names
+          # it with another mode; the mutant without the rule proves the predicate bites. The guests decrypt with
+          # their own served host key and have no age file (keyFile null, a4d55f84): the case is the same guest with a
+          # keyring-born serving slot, which keeps the age file, and the guests themselves must name no such directory.
           sops-key-dir-0700 =
             let
               lib = nixpkgs.lib;
@@ -3835,20 +3837,43 @@
                 "bioskop-nixos"
                 "nikopol-nixos"
               ];
+              rulesNaming =
+                c: dir:
+                lib.filter (r: builtins.elemAt (lib.splitString " " r) 1 == dir) (
+                  lib.filter (r: lib.length (lib.splitString " " r) > 1) c.systemd.tmpfiles.rules
+                );
               rootOnly =
                 c:
                 let
                   dir = builtins.dirOf c.sops.age.keyFile;
-                  naming = lib.filter (r: builtins.elemAt (lib.splitString " " r) 1 == dir) (
-                    lib.filter (r: lib.length (lib.splitString " " r) > 1) c.systemd.tmpfiles.rules
-                  );
                 in
-                naming == [ "d ${dir} 0700 root root -" ];
-              mutant = self.nixosConfigurations.bioskop-nixos.extendModules {
-                modules = [ { systemd.tmpfiles.rules = nixpkgs.lib.mkForce [ ]; } ];
+                rulesNaming c dir == [ "d ${dir} 0700 root root -" ];
+              withAgeFile = self.nixosConfigurations.bioskop-nixos.extendModules {
+                modules = [
+                  {
+                    ndh.hostKey.entry = lib.mkForce {
+                      type = "ssh-ed25519";
+                      slots."26-10-17" = {
+                        state = "serving";
+                        origin = "keyring";
+                        public = "AAAAkeyring";
+                      };
+                    };
+                  }
+                ];
+              };
+              mutant = withAgeFile.extendModules {
+                modules = [ { systemd.tmpfiles.rules = lib.mkForce [ ]; } ];
               };
             in
-            assert lib.all (g: rootOnly self.nixosConfigurations.${g}.config) guests;
+            assert lib.assertMsg (lib.all (
+              g: self.nixosConfigurations.${g}.config.sops.age.keyFile == null
+            ) guests) "sops-key-dir-0700: a guest has an age file again: check it by its own configuration";
+            assert lib.assertMsg (lib.all (
+              g: rulesNaming self.nixosConfigurations.${g}.config "/var/lib/sops-nix" == [ ]
+            ) guests) "sops-key-dir-0700: a guest without an age file names an age identity directory";
+            assert lib.assertMsg (rootOnly withAgeFile.config)
+              "sops-key-dir-0700: a guest with an age file does not make its directory 0700 root";
             assert lib.assertMsg (
               !(rootOnly mutant.config)
             ) "sops-key-dir-0700: the mutant without the rule passed";

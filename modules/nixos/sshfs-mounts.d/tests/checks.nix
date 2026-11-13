@@ -27,12 +27,12 @@ let
       seat = seatOf.${name};
       optionsOf = c: map (m: c.fileSystems.${m.localPath}.options) c.services.sshfsMounts.mounts;
       wanted = [
+        "no_contain_symlinks"
         "x-systemd.automount"
         "x-systemd.idle-timeout=600"
         "x-systemd.mount-timeout=30s"
         "_netdev"
         "allow_other"
-        "default_permissions"
         "reconnect"
         "ServerAliveInterval=15"
         "ServerAliveCountMax=3"
@@ -40,8 +40,6 @@ let
         "StrictHostKeyChecking=yes"
         "compression=no"
         "cache=yes"
-        "kernel_cache"
-        "idmap=user"
         "uid=${toString cfg.uid}"
         "gid=${toString cfg.gid}"
         "IdentityFile=${c.ndh.hostKey.file}"
