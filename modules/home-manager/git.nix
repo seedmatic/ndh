@@ -97,6 +97,9 @@ in
       core.hooksPath = "${config.xdg.configHome}/git/hooks";
       gh-get.root = "/var/lib/git";
       pull.rebase = true;
+      # Link worktrees with relative paths so bare/worktree pairs stay portable
+      # across hosts and mount points (darwin export vs nixos /Volumes or /srv/darwin).
+      worktree.useRelativePaths = true;
       # false rather than omitted, so it reads as a decision. With it on, an annotated tag git
       # considers reachable from a pushed ref travels with the push, which quietly publishes
       # local-only refs to a shared repository. That is not hypothetical: three
