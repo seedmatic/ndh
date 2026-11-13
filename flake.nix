@@ -142,6 +142,7 @@
       };
       defaultSystems = [
         "aarch64-darwin"
+        "aarch64-linux"
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs defaultSystems;
