@@ -93,7 +93,9 @@ let
     in
     lib.filter (net: net != null) (map resolveName (lib.unique requested));
 
-  allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks ++ (lib.optional (baremetalLinkCidr != null) baremetalLinkCidr);
+  allowedNetworks =
+    resolveAllowedNetworks cfg.allowedNetworks
+    ++ (lib.optional (baremetalLinkCidr != null) baremetalLinkCidr);
 
   nfsdReloadScript = ndh.store.runCommand "nfsd-reload.sh" { } ''
     cp ${
