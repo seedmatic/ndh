@@ -11,6 +11,25 @@ let
   ndhContext = ndh.context;
   nixBashTrampoline = "${ndhContext.nixBashTrampoline}";
   netplan = catalog.netplan or { };
+
+  # The bare-metal's own /30 link to its NixOS hypervisor (bioskop only, since it is the
+  # one nix-managed bare-metal). Instances reach the Mac over this link and cannot reach
+  # its LAN address, so the NFS exports must allow it too; otherwise the hypervisor's
+  # mounts (which resolve the Mac to this link first) get "Connection reset by peer".
+  baremetalLinkCidr =
+    let
+      hostProfile = config.profile.host or { };
+      effectiveHostName =
+        if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+          hostProfile.hostAlias
+        else
+          (hostProfile.hostName or "");
+      bm = (netplan.baremetal or { }).${effectiveHostName} or null;
+    in
+    if bm != null && (bm ? linkCidr) && ((bm.vzHostKind or "") == "nix-managed") then
+      bm.linkCidr
+    else
+      null;
   shared = import (worktreePath.of "modules/.common.d/nfs-shared.nix");
   # WARNING: Never let ZFS datasets or overlays mount or traverse /net (autofs)!
   # This prevents ZFS from hanging on network errors or unavailable NFS hosts.
@@ -74,7 +93,7 @@ let
     in
     lib.filter (net: net != null) (map resolveName (lib.unique requested));
 
-  allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks;
+  allowedNetworks = resolveAllowedNetworks cfg.allowedNetworks ++ (lib.optional (baremetalLinkCidr != null) baremetalLinkCidr);
 
   nfsdReloadScript = ndh.store.runCommand "nfsd-reload.sh" { } ''
     cp ${
