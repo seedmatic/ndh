@@ -1,41 +1,74 @@
-# Agentic delegation policy (ndh)
+# PROJECT KNOWLEDGE BASE
 
-## Roles
+**Generated:** 2026-11-14
+**Branch:** develop
 
-- **Primary agent (`build`)** runs on `litellm@bioskop/agent` (local 30B Qwen3-Coder). Its job is to understand intent, reason, plan, and answer. Keep context focused on decisions.
-- **`local-worker`** (subagent, same 30B model) handles concrete, well-scoped execution: reading files, searching code, running shell commands, gathering precise output, small edits. Returns concise results (file/line references, command output).
-- **`local-small`** (subagent, 1.5B) handles only trivial formatting, renaming, one-line lookups.
+## OVERVIEW
+NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + home-manager configs for hosts bioskop (macOS siege + hypervisor), nikopol (roaming laptop), nerd-nixos, and bringup images. Modular Nix modules with bash/bats tests.
 
-## Routing rules
+## STRUCTURE
+```
+./
+├── modules/        # .common.d (shared), darwin, nixos, home-manager, hardware
+├── hosts/          # per-host definitions (bioskop, nikopol, nerd-nixos)
+├── docs/           # AsciiDoc specs/runbooks (AsciiDoc only)
+├── catalog/        # config catalog (nix + yaml + trust statements)
+├── packages/       # Go helpers
+├── pkgs/           # nix package defs + bats tests
+├── overlays/       # nixpkgs overlays/patches
+├── nix/            # core nix expressions
+├── inventory/      # host inventory
+├── .flox/          # flox dev environments
+└── flake.nix       # entry point
+```
 
-Delegate to a subagent whenever the task requires **precise, concrete output** that would bloat the primary context:
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| Add shared module | modules/.common.d/ | consumed by darwin & nixos |
+| Darwin-only config | modules/darwin/ | feature.nix + .d/ assets |
+| NixOS-only config | modules/nixos/ | |
+| Home Manager config | modules/home-manager/ | |
+| New host | hosts/<name>/ | follow bioskop/nikopol |
+| Documentation | docs/*.adoc | AsciiDoc only |
+| Catalog data | catalog/ | drives ndh.context.catalog |
+| Go helpers | packages/ | |
+| Package wrappers/tests | pkgs/ | bats |
+| Overlays/patches | overlays/ | |
 
-1. Reading or searching files to extract specific facts → `local-worker`.
-2. Running shell commands whose output is needed → `local-worker`.
-3. Multi-step exploration of the repo → `local-worker`.
-4. Trivial formatting/renaming/lookup → `local-small`.
-5. Reasoning, design, synthesis, answering, final edits that depend on the above → primary agent.
+## CONVENTIONS
+- Nix: 2-space indent, max 200 chars/line.
+- Shell scripts: POSIX-compliant; no tabs.
+- Docs: AsciiDoc only (no Markdown in docs/).
+- Module layout: feature.nix + optional feature.d/ for assets/tests.
+- Tests: bats in pkgs/ and modules/*/.d/tests; run via `nix flake check`.
+- Secrets via sops-nix; never commit plaintext.
 
-Do not do exploratory tool calls in the primary agent when a subagent can return a compact answer.
+## ANTI-PATTERNS (THIS PROJECT)
+- Do not mix Markdown in docs/.
+- Do not edit flake.lock by hand; use `nix flake update`.
+- Do not commit secrets (.secrets is sops-encrypted).
+- Avoid tabs in shell scripts.
+- Don't duplicate logic between .common.d and platform dirs; prefer .common.d.
 
-The primary agent may only launch `local-worker` and `local-small`.
+## UNIQUE STYLES
+- Modules use ndh.context (catalog, inventory, hostProfile) for data-driven config.
+- Profile roles: bringup / system / user.
+- Flake inputs flow through flake-commons aggregator (indirect ids).
+- Hosts import modules/ + profile; secrets via sops.
 
-## Cloud models
+## COMMANDS
+```bash
+nix flake check          # validate
+nix develop              # dev shell
+nix build                # build
+nixos-rebuild switch     # apply (nixos)
+darwin-rebuild switch     # apply (darwin)
+nix fmt                  # format (treefmt)
+nvfetcher                # fetch external packages
+```
 
-Cloud models (`opencode-go/*`) are opt-in and only for cases where local quality is insufficient. Do not route routine work to them.
-
-## Shared worktree discipline
-
-This repo uses the shared stack worktree model (see `shared-worktree` skill). Summary:
-
-- One session writes at a time per worktree; reading takes nothing.
-- A session does not write until the integration session has assigned it a branch AND given it the lead. Both, not either.
-- A branch switch IS a lead transfer — announce it.
-- `git add <paths>` explicitly — never `-A` or `.`.
-- Check the branch before committing (`git rev-parse --abbrev-ref HEAD`).
-- Trunk is `develop`; `main` only receives `--no-ff` merge-downs.
-- Worktrees are external at `<repo>.d/<namespace>/<branch>` — never use `EnterWorktree`.
-
-## Memory
-
-Memory worktree is shared by every session; each session commits its explicit paths. Indexes stay shared.
+## NOTES
+- `result` symlink = last build (gitignored).
+- .flox/env provides dev environment.
+- AGENTS.root.md is legacy; AGENTS.md is canonical.
