@@ -141,7 +141,9 @@
   //      Covers nix-store copies between VMs, rke2 node-to-node
   //      operations, etc.
   //
-  // Headless nodes never SSH console nodes (no rule → implicit deny).
+  //   3. Headless nodes SSH console hosts too — a guest reaching its own
+  //      bare-metal host over the tailnet (`darwin.<host>`).  SSH only;
+  //      other ports stay denied.
   "ssh": [
     {
       "action": "accept",
@@ -153,6 +155,12 @@
       "action": "accept",
       "src":    ["tag:headless"],
       "dst":    ["tag:headless"],
+      "users":  ["nxmatic", "root"],
+    },
+    {
+      "action": "accept",
+      "src":    ["tag:headless"],
+      "dst":    ["tag:console"],
       "users":  ["nxmatic", "root"],
     },
   ],

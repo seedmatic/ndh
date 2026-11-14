@@ -370,6 +370,14 @@ let
           ++ vmnetCidrs;
           ip = [ "*" ];
         }
+        # Headless nodes (e.g. a guest VM) reach a console host's tailnet address on SSH only —
+        # not the rest of its ports.  Lets a NixOS guest SSH its own bare-metal host over the
+        # tailnet (darwin.<host>), which the SSH alias points at.
+        {
+          src = [ (tg t.role.headless) ];
+          dst = [ (tg t.role.console) ];
+          ip = [ "22" ];
+        }
         # The Tailscale operator's own devices inside a cluster (funnel / ingress
         # proxies).  They carry `tag:k8s` and NO role-axis tag, so neither rule
         # above reaches them: measured 2026-09-27, `bioskop-mgmt-flux-webhook` and
@@ -454,6 +462,17 @@ let
             "root"
           ];
         }
+        # Headless nodes SSH console hosts too — a guest reaching its own bare-metal host over the
+        # tailnet (the `darwin.<host>` alias).  SSH only; other ports stay denied (see grants).
+        {
+          action = "accept";
+          src = [ (tg t.role.headless) ];
+          dst = [ (tg t.role.console) ];
+          users = [
+            "autogroup:nonroot"
+            "root"
+          ];
+        }
         # Member devices reach their own devices.
         {
           action = "accept";
@@ -507,6 +526,7 @@ let
           # closing the gap had to be stated here in the same change.
           accept = [
             "${tg t.role.headless}:22"
+            "${tg t.role.console}:22" # a guest SSHing its own bare-metal host over the tailnet
           ] # nix copy, node-to-node ops
           ++ map (ip: "${ip}:22") segmentProbes;
           # Still asserted in the direction a mistake would WIDEN: role segmentation holds,
