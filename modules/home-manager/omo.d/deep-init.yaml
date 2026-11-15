@@ -1,0 +1,8 @@
+profile: deep-init
+targets:
+  - path: ~/.omo/omo.jsonc
+    kind: json
+    patches:
+      - op: set
+        path: .categories.deep-low.model
+        value: litellm-bioskop/agent-deep

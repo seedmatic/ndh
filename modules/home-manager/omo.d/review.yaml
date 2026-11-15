@@ -1,0 +1,8 @@
+profile: review
+targets:
+  - path: ~/.omo/omo.jsonc
+    kind: json
+    patches:
+      - op: set
+        path: .categories.quick.model
+        value: litellm-bioskop/agent

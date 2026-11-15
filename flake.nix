@@ -1870,6 +1870,10 @@
             inherit pkgs;
             floxConfig = import ./modules/home-manager/flox-config.d/package.nix { inherit pkgs; };
           };
+          omo-patch-bats = import ./modules/home-manager/omo-patch.d/tests/package.nix {
+            inherit pkgs;
+            omoPatch = import ./modules/home-manager/omo-patch.d/package.nix { inherit pkgs; };
+          };
           # No nix file here reads a derivation's output at evaluation (import-from-derivation).
           no-ifd-readfile = import ./nix/no-ifd-readfile.nix {
             inherit pkgs;
@@ -4831,6 +4835,13 @@
             program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
             meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
           };
+          omo-patch = {
+            type = "app";
+            program = "${
+              import ./modules/home-manager/omo-patch.d/package.nix { pkgs = pkgsForSystem; }
+            }/bin/omo-patch";
+            meta.description = "Apply JSON/MD patches to agentic assets (omo-patch) — src: modules/home-manager/omo-patch.d/";
+          };
           sops-rekey = {
             type = "app";
             program = "${
@@ -5270,6 +5281,7 @@
         qemuOverlay = inputs: import ./overlays/qemu.nix inputs;
         incusOverlay = inputs: import ./overlays/incus.nix inputs;
         lazygitOverlay = inputs: import ./overlays/lazygit.nix inputs;
+        mdpatchOverlay = inputs: import ./overlays/mdpatch.nix inputs;
         tailscaleOverlay = inputs: import ./overlays/tailscale.nix inputs;
         vmToolsDeterministicOverlay = inputs: import ./overlays/vm-tools-deterministic.nix inputs;
 
