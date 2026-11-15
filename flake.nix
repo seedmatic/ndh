@@ -4290,6 +4290,7 @@
           # travels in that direction. Cross-referencing it the other way — ndh importing rke2lab's
           # client — would have the host layer borrow a tool from the cluster layer that runs ON it.
           incus-client = systemPkgs.incus.passthru.client;
+          omo-patch = import ./modules/home-manager/omo-patch.d/package.nix { pkgs = systemPkgs; };
           inherit (systemPkgs) tailscale;
           ${ndhBringupRuntimeAttr} = mkNdhBootstrapRuntimePackage system;
           ndh-disko-module-pinned = mkNdhDiskoPinnedModule system;

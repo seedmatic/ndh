@@ -31,6 +31,9 @@ step-cli.pkg-path = "step-cli"
 # and fails since the flake provides no such attribute.
 manage-tailnet.flake = "path:.#manage-tailnet"
 manage-tailnet.systems = ["aarch64-darwin"]
+# omo-patch: apply JSON/MD patches to agentic assets (profiles, skills). Repo-local flake package.
+omo-patch.flake = "path:.#omo-patch"
+omo-patch.systems = ["aarch64-darwin", "aarch64-linux"]
 # incus-client: the Incus CLI, for driving the fleet's daemons from this shell — the two-member
 # cluster, and the remote-trust reconciliation in modules/darwin/incus-remote-trust.nix. ndh owns the
 # package (the daemon's NixOS modules live here), and rke2lab re-exports it for its own env.
