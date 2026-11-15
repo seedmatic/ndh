@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-11-15
-**Branch:** develop
-**Commit:** efcf9201
+**Branch:** docs/init-deep-refresh
+**Commit:** afeeb5ae
 
 ## OVERVIEW
 NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + home-manager configs for hosts bioskop (macOS siege + hypervisor), nikopol (roaming laptop), nerd-nixos, and bringup images. Modular Nix modules with bash/bats tests.
@@ -45,6 +45,9 @@ NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + hom
 - Module layout: feature.nix + optional feature.d/ for assets/tests.
 - Tests: bats in pkgs/ and modules/*/.d/tests; run via `nix flake check`.
 - Secrets via sops-nix; never commit plaintext.
+- Profile roles: bringup / system / user; Home Manager disabled in bringup.
+- Shared logic prefers modules/.common.d; guard platform bits with isNixosPlatform.
+- Hosts import modules/ + profile; shared logic in host-common.nix.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Do not mix Markdown in docs/.
@@ -55,9 +58,8 @@ NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + hom
 
 ## UNIQUE STYLES
 - Modules use ndh.context (catalog, inventory, hostProfile) for data-driven config.
-- Profile roles: bringup / system / user.
 - Flake inputs flow through flake-commons aggregator (indirect ids).
-- Hosts import modules/ + profile; secrets via sops.
+- Operator tools require arming (ndh-ops arm) before use.
 
 ## COMMANDS
 ```bash
