@@ -103,6 +103,13 @@
         "pkg-group": "nix",
         "outputs": "all"
       },
+      "omo-patch": {
+        "flake": "path:.#omo-patch",
+        "systems": [
+          "aarch64-darwin",
+          "aarch64-linux"
+        ]
+      },
       "openssh": {
         "pkg-path": "openssh",
         "pkg-group": "keyhole",
@@ -3773,6 +3780,52 @@
       "broken": false,
       "unfree": false,
       "priority": 5
+    },
+    {
+      "install_id": "omo-patch",
+      "locked-url": "path:/srv/darwin/.sshfs/git-worktree-store/seedmatic/ndh.d/develop?lastModified=1794757299&narHash=sha256-DpEx7d0Dk9tryTKoWEh76/xBA8vO5eaoVic2LiXPku8%3D",
+      "flake-description": "nix system configurations",
+      "locked-flake-attr-path": "packages.aarch64-darwin.omo-patch",
+      "derivation": "/nix/store/05s1l84y9b47micli3gjmldy7p1r3711-omo-patch.drv",
+      "outputs": {
+        "out": "/nix/store/abhnzzvm14iygcdlipqmmv258g0rfmwn-omo-patch"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-darwin",
+      "system": "aarch64-darwin",
+      "name": "omo-patch",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
+    },
+    {
+      "install_id": "omo-patch",
+      "locked-url": "path:/srv/darwin/.sshfs/git-worktree-store/seedmatic/ndh.d/develop?lastModified=1794757299&narHash=sha256-DpEx7d0Dk9tryTKoWEh76/xBA8vO5eaoVic2LiXPku8%3D",
+      "flake-description": "nix system configurations",
+      "locked-flake-attr-path": "packages.aarch64-linux.omo-patch",
+      "derivation": "/nix/store/zhjpdd81g2jg3dnp56wn7bwh4nkk8qhb-omo-patch.drv",
+      "outputs": {
+        "out": "/nix/store/80xhc5mq7ywf6smiixffn49yzs9sqra1-omo-patch"
+      },
+      "output-names": [
+        "out"
+      ],
+      "outputs-to-install": [
+        "out"
+      ],
+      "requested-outputs-to-install": [],
+      "package-system": "aarch64-linux",
+      "system": "aarch64-linux",
+      "name": "omo-patch",
+      "broken": false,
+      "unfree": false,
+      "priority": 5
     }
   ],
   "compose": {
@@ -3803,6 +3856,13 @@
         },
         "nixos-rebuild-ng": {
           "pkg-path": "nixos-rebuild-ng"
+        },
+        "omo-patch": {
+          "flake": "path:.#omo-patch",
+          "systems": [
+            "aarch64-darwin",
+            "aarch64-linux"
+          ]
         },
         "remake": {
           "pkg-path": "remake"

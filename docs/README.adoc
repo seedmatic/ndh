@@ -467,6 +467,15 @@ NOTE: Both repositories remain active. The standalone repo is ideal for focused 
 * Run `modules/nixos/rke2lab/bin/migrate-legacy-secrets.sh <legacy-secret-dir>` to import any remaining flat files into the YAML (the helper boots a template if missing, copies current plaintext values, and leaves the original files untouched so you can compare before cleaning up).
 * When rotating credentials, change the `.secrets` YAML, re-run `sops --in-place --input-type yaml --output-type yaml --filename-override .secrets modules/nixos/rke2lab/.secrets`, and restart the Incus nodes (or rerun the relevant systemd units) to propagate the refreshed values end-to-end.
 
+=== Agentic Runtime Patcher
+
+link:agentic-runtime-patcher-design.adoc[ndh omo/agent runtime patcher — design]::
+Overall design: context, containers, components, sequences, open decisions.
+
+
+link:omo-patch-spec.adoc[omo-patch spec]::
+Manages oh-my-openagent runtime config under `~/.omo/` (omo.jsonc, settings, models, mcp).
+
 == Contributing
 
 When updating documentation:
