@@ -24,6 +24,7 @@ usage() {
 Usage: omo-patch [options] <command> [args]
 
 Commands:
+  profiles                  List available profile fragments
   list                      List skills (present + enabled/disabled)
   add <skill>               Enable a skill (remove from disabled_skills)
   remove <skill>            Disable a skill (add to disabled_skills)
@@ -334,6 +335,21 @@ main() {
   case "$cmd" in
     --help|-h|help)
       usage; exit 0 ;;
+    profiles)
+      shift || true
+      log "Available profiles in $FRAGMENTS_DIR/omo.d/:"
+      if [ -d "$FRAGMENTS_DIR/omo.d" ]; then
+        for f in "$FRAGMENTS_DIR/omo.d"/*.yaml; do
+          [ -f "$f" ] || continue
+          local name; name="$(basename "$f" .yaml)"
+          local desc; desc="$(yq -r '.profile // .name // ""' "$f" 2>/dev/null)"
+          printf '  %-24s %s\n' "$name" "$desc"
+        done
+      else
+        echo "no fragments dir: $FRAGMENTS_DIR/omo.d" >&2
+      fi
+      exit 0
+      ;;
     list)
       shift || true
       log "Skills in $AGENTS_SKILLS:"

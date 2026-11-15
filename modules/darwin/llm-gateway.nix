@@ -185,6 +185,38 @@ let
           extra_headers:
             User-Agent: opencode/1.0.41
 
+      - model_name: go-glm-5.3
+        litellm_params:
+          model: openai/glm-5.3
+          api_base: https://opencode.ai/inference/go/openai/v1
+          api_key: os.environ/OPENCODE_GO_API_KEY
+          extra_headers:
+            User-Agent: opencode/1.0.41
+
+      - model_name: go-deepseek-pro
+        litellm_params:
+          model: openai/deepseek-v4-pro
+          api_base: https://opencode.ai/inference/go/openai/v1
+          api_key: os.environ/OPENCODE_GO_API_KEY
+          extra_headers:
+            User-Agent: opencode/1.0.41
+
+      - model_name: go-qwen-max
+        litellm_params:
+          model: openai/qwen3.8-max
+          api_base: https://opencode.ai/inference/go/anthropic/v1
+          api_key: os.environ/OPENCODE_GO_API_KEY
+          extra_headers:
+            User-Agent: opencode/1.0.41
+
+      - model_name: go-kimi-k3
+        litellm_params:
+          model: openai/kimi-k3
+          api_base: https://opencode.ai/inference/go/openai/v1
+          api_key: os.environ/OPENCODE_GO_API_KEY
+          extra_headers:
+            User-Agent: opencode/1.0.41
+
       - model_name: go-deepseek-free
         litellm_params:
           model: openai/deepseek-v4.1-flash-free
@@ -206,6 +238,10 @@ let
           - go-qwen-plus
           - go-glm-flash
           - go-deepseek-free
+          - go-glm-5.3
+          - go-deepseek-pro
+          - go-qwen-max
+          - go-kimi-k3
   '';
 
   swapLauncher = pkgs.writeShellScript "llm-swap-launcher" ''

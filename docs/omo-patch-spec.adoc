@@ -34,6 +34,7 @@ omo/senpi discover project-local assets first (when trusted), then global.
 omo-patch add <skill...>
 omo-patch remove <skill...>
 omo-patch list
+omo-patch profiles
 omo-patch --profile <name>
 ----
 

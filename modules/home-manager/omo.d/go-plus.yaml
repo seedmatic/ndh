@@ -1,0 +1,50 @@
+profile: go-plus
+targets:
+  - path: ~/.omo/omo.jsonc
+    kind: json
+    patches:
+      - op: set
+        path: .categories.quick.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .categories.deep-low.model
+        value: litellm-bioskop/go-deepseek-pro
+      - op: set
+        path: .categories.deep-high.model
+        value: litellm-bioskop/go-deepseek-pro
+      - op: set
+        path: .categories.ultrabrain.model
+        value: litellm-bioskop/go-qwen-max
+      - op: set
+        path: .categories.unspecified-low.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .categories.unspecified-high.model
+        value: litellm-bioskop/go-glm-5.3
+      - op: set
+        path: .categories.writing.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .categories.visual-engineering.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .categories.artistry.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .categories.architect.model
+        value: litellm-bioskop/go-glm-5.3
+      - op: set
+        path: .agents.explore.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .agents.librarian.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .agents.code-reviewer.model
+        value: litellm-bioskop/go-glm-flash
+      - op: set
+        path: .memory.reflection.model
+        value: litellm-bioskop/go-beam-free
+      - op: set
+        path: .memory.facts.model
+        value: litellm-bioskop/go-glm-flash
