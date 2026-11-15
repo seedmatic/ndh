@@ -1,14 +1,24 @@
 schema-version = "1.11.0"
 
 [install]
-go-2fa.pkg-path = "go-2fa"
+
+
   [install.age]
     pkg-group = "keyhole"
     pkg-path = "age"
 
+  [install.go-2fa]
+    pkg-group = "keyhole"
+    pkg-path = "go-2fa"
+
   [install.gnupg]
     pkg-group = "keyhole"
     pkg-path = "gnupg"
+
+  [install.pinentry_mac]
+    pkg-group = "keyhole"
+    pkg-path = "pinentry_mac"
+    systems = ["aarch64-darwin"]
 
   [install.keychain]
     pkg-group = "keyhole"
@@ -42,3 +52,15 @@ outputs = "all"
     pkg-path = "ssh-to-age"
 
 [options]
+
+[profile]
+  common = """
+    GITHUB_SIGNING_KEYFILE="$HOME"/.ssh/keys.d/github-signing
+    if [[ -r "$GITHUB_SIGNING_KEYFILE" ]]; then
+      set -a
+      SOPS_AGE_KEY=$( ssh-to-age -private-key < "$GITHUB_SIGNING_KEYFILE" )
+      set +a
+    else
+      echo no signing key
+    fi
+  """
