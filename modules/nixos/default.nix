@@ -296,6 +296,15 @@ in
         # A lockup report shows only the stuck CPU; the culprit is the CPU that never answered it.
         "kernel.softlockup_all_cpu_backtrace" = 1;
         "kernel.hardlockup_all_cpu_backtrace" = 1;
+      }
+      # BPF JIT on arm64 under Apple Virtualization (vz/tart) hangs inside
+      # bpf_int_jit_compile -> aarch64_insn_copy -> kick_all_cpus_sync: the
+      # cross-CPU icache sync IPI never completes and freezes the guest (soft
+      # lockup on CPU running systemd, 2026-11-15).  nftables does NOT use BPF,
+      # so tweaking firewall rules cannot fix this; disable JIT and run BPF
+      # programs through the interpreter instead.  Tart/vz guests only.
+      // lib.optionalAttrs isTartProvider {
+        "net.core.bpf_jit_enable" = 0;
       };
 
       # verbosity (consoleLogging.logLevel by default; override per-host if needed)
