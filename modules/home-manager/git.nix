@@ -76,9 +76,9 @@ in
     signing = {
       key = "${signingKeysDir}/github-signing.pub";
       format = "ssh";
-      # Signing goes through the agent, which only the operator seats (the Macs) hold: the agent is never forwarded, so a
-      # Linux guest commits unsigned and the work is signed and pushed from the operator seat.
-      signByDefault = pkgs.stdenv.isDarwin;
+      # Signing key is deployed to every host (operator seat and Linux), so commits are signed everywhere.
+      # Guests that lack the key simply fail to sign and the operator re-signs when pushing.
+      signByDefault = true;
     };
 
     settings = {
