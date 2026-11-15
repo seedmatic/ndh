@@ -1,7 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-11-14
+**Generated:** 2026-11-15
 **Branch:** develop
+**Commit:** efcf9201
 
 ## OVERVIEW
 NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + home-manager configs for hosts bioskop (macOS siege + hypervisor), nikopol (roaming laptop), nerd-nixos, and bringup images. Modular Nix modules with bash/bats tests.
@@ -18,6 +19,7 @@ NixOS/nix-darwin fleet configuration ("seedmatic"/ndh). Declarative system + hom
 ├── overlays/       # nixpkgs overlays/patches
 ├── nix/            # core nix expressions
 ├── inventory/      # host inventory
+├── examples/       # example configs
 ├── .flox/          # flox dev environments
 └── flake.nix       # entry point
 ```

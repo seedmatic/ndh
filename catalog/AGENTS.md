@@ -25,6 +25,3 @@ Configuration catalog: nix expressions + yaml metadata, trust statements, user m
 - Catalog consumed by ndh.context.
 - YAML for metadata, nix for logic.
 - No secrets in catalog.
-- Note 1: see repository tree for full inventory.
-- Note 2: see repository tree for full inventory.
-- Note 3: see repository tree for full inventory.

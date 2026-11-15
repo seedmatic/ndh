@@ -25,6 +25,3 @@ hosts/<name>/ contains host config importing modules. host-common.nix shared.
 - nikopol = roaming laptop.
 - Use host-common.nix for shared logic.
 - Secrets via sops-nix.
-- Note 1: see repository tree for full inventory.
-- Note 2: see repository tree for full inventory.
-- Note 3: see repository tree for full inventory.
