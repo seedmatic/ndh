@@ -1,2 +1,0 @@
-[diff "sops-json"]
-  textconv = @sopsConfigHome@/json-textconv

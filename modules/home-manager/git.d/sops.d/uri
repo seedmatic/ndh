@@ -1,2 +1,0 @@
-[diff "sops-uri"]
-  textconv = @sopsConfigHome@/uri-textconv

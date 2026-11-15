@@ -1,2 +1,0 @@
-[diff "sops-props"]
-  textconv = @sopsConfigHome@/props-textconv

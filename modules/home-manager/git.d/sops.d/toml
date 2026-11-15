@@ -1,2 +1,0 @@
-[diff "sops-toml"]
-  textconv = @sopsConfigHome@/toml-textconv

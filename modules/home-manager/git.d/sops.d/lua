@@ -1,2 +1,0 @@
-[diff "sops-lua"]
-  textconv = @sopsConfigHome@/lua-textconv

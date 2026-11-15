@@ -1,2 +1,0 @@
-[diff "sops-csv"]
-  textconv = @sopsConfigHome@/csv-textconv

@@ -1,2 +1,0 @@
-[diff "sops-xml"]
-  textconv = @sopsConfigHome@/xml-textconv

@@ -1,0 +1,66 @@
+schema-version = "1.11.0"
+
+[install]
+
+
+  [install.age]
+    pkg-group = "keyhole"
+    pkg-path = "age"
+
+  [install.go-2fa]
+    pkg-group = "keyhole"
+    pkg-path = "go-2fa"
+
+  [install.gnupg]
+    pkg-group = "keyhole"
+    pkg-path = "gnupg"
+
+  [install.pinentry_mac]
+    pkg-group = "keyhole"
+    pkg-path = "pinentry_mac"
+    systems = ["aarch64-darwin"]
+
+  [install.keychain]
+    pkg-group = "keyhole"
+    pkg-path = "keychain"
+
+  [install.openssh]
+    pkg-group = "keyhole"
+    pkg-path = "openssh"
+outputs = "all"
+
+  [install.openssl]
+    pkg-group = "keyhole"
+    pkg-path = "openssl"
+outputs = "all"
+
+  [install.pass]
+    pkg-group = "keyhole"
+    pkg-path = "pass"
+
+  [install.pwgen-secure]
+    pkg-group = "keyhole"
+    pkg-path = "pwgen-secure"
+outputs = "all"
+
+  [install.sops]
+    pkg-group = "keyhole"
+    pkg-path = "sops"
+
+  [install.ssh-to-age]
+    pkg-group = "keyhole"
+    pkg-path = "ssh-to-age"
+
+[options]
+
+[profile]
+  common = """
+    GITHUB_SIGNING_KEYFILE="$HOME"/.ssh/keys.d/github-signing
+    if [[ -r "$GITHUB_SIGNING_KEYFILE" ]]; then
+      set -a
+      SOPS_AGE_KEY=$( ssh-to-age -private-key < "$GITHUB_SIGNING_KEYFILE" )
+      set +a
+    else
+      echo no signing key
+    fi
+  """

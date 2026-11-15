@@ -1,2 +1,0 @@
-[diff "sops-base64"]
-  textconv = @sopsConfigHome@/base64-textconv
