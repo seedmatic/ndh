@@ -1,6 +1,6 @@
 ---
 name: fleet-status
-description: Report ndh fleet inventory and health: hosts, services, storage, tailnet. Use when checking overall fleet state or preparing a change.
+description: "Report ndh fleet inventory and health: hosts, services, storage, tailnet. Use when checking overall fleet state or preparing a change."
 ---
 
 # Fleet Status (ndh)

@@ -1,6 +1,6 @@
 ---
 name: storage-ops
-description: Operate ZFS storage in ndh: datasets, snapshots, replication, pool health. Use when managing storage, taking backups, or debugging ZFS issues.
+description: "Operate ZFS storage in ndh: datasets, snapshots, replication, pool health. Use when managing storage, taking backups, or debugging ZFS issues."
 ---
 
 # Storage Ops (ndh)

@@ -1,6 +1,6 @@
 ---
 name: tailnet-ops
-description: Operate the tailnet (Tailscale/Headscale) for ndh: node status, joining, ACLs, split DNS. Use when adding nodes, debugging connectivity, or changing tailnet policy.
+description: "Operate the tailnet (Tailscale/Headscale) for ndh: node status, joining, ACLs, split DNS. Use when adding nodes, debugging connectivity, or changing tailnet policy."
 ---
 
 # Tailnet Ops (ndh)

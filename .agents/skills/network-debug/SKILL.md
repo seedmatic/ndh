@@ -1,6 +1,6 @@
 ---
 name: network-debug
-description: Debug ndh networking: Tailscale, DNS, NFS, Kerberos. Use when resolving connectivity, name resolution, or mount failures.
+description: "Debug ndh networking: Tailscale, DNS, NFS, Kerberos. Use when resolving connectivity, name resolution, or mount failures."
 ---
 
 # Network Debug (ndh)

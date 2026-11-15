@@ -1,6 +1,6 @@
 ---
 name: secret-rotation
-description: Rotate sops-encrypted secrets in ndh: edit, re-encrypt, propagate, and verify no plaintext leaks. Use when a secret expires, a key is compromised, or a new host joins.
+description: "Rotate sops-encrypted secrets in ndh: edit, re-encrypt, propagate, and verify no plaintext leaks. Use when a secret expires, a key is compromised, or a new host joins."
 ---
 
 # Secret Rotation (ndh)

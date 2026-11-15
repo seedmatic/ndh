@@ -1,6 +1,6 @@
 ---
 name: host-provision
-description: Bootstrap or reinstall an ndh host (bioskop, nikopol, nerd-nixos): clone, sops secrets, rebuild, join tailnet. Use when adding a new host, recovering a machine, or re-running first-boot provisioning.
+description: "Bootstrap or reinstall an ndh host (bioskop, nikopol, nerd-nixos): clone, sops secrets, rebuild, join tailnet. Use when adding a new host, recovering a machine, or re-running first-boot provisioning."
 ---
 
 # Host Provision (ndh)
