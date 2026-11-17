@@ -52,11 +52,11 @@
     # see docs/host-builder-phases.adoc.
     ndh.hostBuilder = "steady";
 
-    # Local LLM gateway (llama-swap + LiteLLM) like bioskop: Qwen on :4000.
+    # Local LLM gateway (llama-swap only): Qwen on :8000.
+    # LiteLLM (the proxy/router) runs on the NixOS peer.
     services.llmGateway = {
       enable = true;
       sopsEncryptedFile = ../../.secrets;
-      aikeyGatewayUrl = "http://nixos.nikopol:4001";
     };
 
   };

@@ -46,7 +46,6 @@
     services.llmGateway = {
       enable = true;
       sopsEncryptedFile = ../../.secrets;
-      aikeyGatewayUrl = "http://172.16.16.1:4001";
     };
 
     # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.

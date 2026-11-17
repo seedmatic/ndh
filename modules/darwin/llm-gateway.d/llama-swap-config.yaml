@@ -1,0 +1,68 @@
+healthCheckTimeout: 500
+logLevel: info
+logTimeFormat: rfc3339
+logToStdout: "both"
+metricsMaxInMemory: 1000
+captureBuffer: 15
+
+ui:
+  activity:
+    session_id: ["X-Session-ID", "X-Litellm-Session-Id"]
+
+performance:
+  disabled: false
+  every: 15s
+
+startPort: 5800
+sendLoadingState: false
+globalTTL: 1800
+
+apiKeys:
+  - "${env.LLAMA_SWAP_API_KEY}"
+
+security:
+  cors:
+    allowedOrigins: ["*"]
+
+models:
+  agent:
+    cmd: >
+      llama-server --port ${PORT} --jinja -np 1
+      -hf @AGENT_MODEL@
+      --ctx-size 131072
+      --temp 0.7 --top-p 0.8 --top-k 20 --repeat-penalty 1.05
+      -fa on --cache-type-k q8_0 --cache-type-v q8_0 --cache-reuse 256
+
+  agent-deep:
+    cmd: >
+      llama-server --port ${PORT}
+      --alias agent-deep
+      --jinja -np 1
+      -hf TeichAI/Qwen3-30B-A3B-Thinking-2507-Claude-4.5-Sonnet-High-Reasoning-Distill-GGUF:Q4_K_M
+      --ctx-size 32768
+      -fa on
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+      --cache-reuse 256
+
+  small:
+    cmd: >
+      llama-server --port ${PORT} --jinja -np 2
+      -hf ggml-org/Qwen2.5-Coder-1.5B-Instruct-Q8_0-GGUF
+      --ctx-size 16384 --cache-type-k f16 --cache-type-v f16
+
+  embed:
+    cmd: >
+      llama-server --port ${PORT} --embeddings -np 1
+      -hf ggml-org/bge-small-en-v1.5-Q8_0-GGUF
+      --ctx-size 512 -b 512 -ub 512
+
+routing:
+  router:
+    use: group
+    settings:
+      groups:
+        resident:
+          swap: false
+          exclusive: false
+          members: [agent, agent-deep, small, embed]

@@ -4,6 +4,7 @@
   lib,
   pkgs,
   worktreePath,
+  ndh,
   ...
 }:
 {
@@ -63,16 +64,50 @@
   ];
 
   # NFS: export only the git stores; disable /net autofs browsing.
-  # Client scopes derived from catalog.netplan CIDRs (lan, tailnet) + localhost/socket_vmnet.
+  # Scope exports to this metalspace's fabric slice (172.16.x.0/20) instead of the
+  # whole LAN/tailnet — peer isolation: only the metalspace's own hypervisor +
+  # instances may mount.  Localhost and the socket_vmnet subnet keep their access.
   services.nfsDarwin = {
     exports = [
       "/Volumes/git-worktree-store"
       "/Volumes/git-bare-store"
     ];
-    allowedNetworks = [
-      "lan"
-      "tailnet"
-    ];
+    allowedNetworks = [ ];
+    clientScopes =
+      let
+        ndhContext = ndh.context or { };
+        catalog = ndhContext.catalog or { };
+        netplan = catalog.netplan or { };
+        hostProfile = config.profile.host or { };
+        effectiveHostName =
+          if (hostProfile ? hostAlias && hostProfile.hostAlias != null && hostProfile.hostAlias != "") then
+            hostProfile.hostAlias
+          else
+            (hostProfile.hostName or "");
+        bm = (netplan.baremetal or { }).${effectiveHostName} or null;
+        fabricCidr = if bm != null then (bm.advertiseCidr or null) else null;
+      in
+      (
+        if fabricCidr != null then
+          [
+            {
+              clients = fabricCidr;
+              options = "";
+            }
+          ]
+        else
+          [ ]
+      )
+      ++ [
+        {
+          clients = "127.0.0.1/8";
+          options = "";
+        }
+        {
+          clients = "10.80.16.0/24";
+          options = "";
+        }
+      ];
     autofs.enable = false;
   };
 
