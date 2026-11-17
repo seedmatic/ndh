@@ -1,0 +1,118 @@
+model_list:
+  - model_name: agent
+    litellm_params:
+      model: openai/agent
+      api_base: @SWAP_URL@/v1
+      api_key: os.environ/LLAMA_SWAP_API_KEY
+
+  - model_name: agent-deep
+    litellm_params:
+      model: openai/agent-deep
+      api_base: @SWAP_URL@/v1
+      api_key: os.environ/LLAMA_SWAP_API_KEY
+
+  - model_name: small
+    litellm_params:
+      model: openai/small
+      api_base: @SWAP_URL@/v1
+      api_key: os.environ/LLAMA_SWAP_API_KEY
+
+  - model_name: embed
+    litellm_params:
+      model: openai/embed
+      api_base: @SWAP_URL@/v1
+      api_key: os.environ/LLAMA_SWAP_API_KEY
+
+  - model_name: go-deepseek-flash
+    litellm_params:
+      model: opencode_go/deepseek-v4.1-flash
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: seedmatic-litellm/1.0
+
+  - model_name: go-qwen-plus
+    litellm_params:
+      model: opencode_go/qwen3.7-plus
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-glm-flash
+    litellm_params:
+      model: opencode_go/glm-5.3-flash
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-glm-5.3
+    litellm_params:
+      model: opencode_go/glm-5.3
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-deepseek-pro
+    litellm_params:
+      model: opencode_go/deepseek-v4-pro
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-qwen-max
+    litellm_params:
+      model: opencode_go/qwen3.8-max
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-kimi-k3
+    litellm_params:
+      model: opencode_go/kimi-k3
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-deepseek-free
+    litellm_params:
+      model: opencode_go/deepseek-v4.1-flash-free
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-beam-free
+    litellm_params:
+      model: opencode_go/beam-free
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-hy4-flash-free
+    litellm_params:
+      model: opencode_go/hy4-flash-free
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-iceman-free
+    litellm_params:
+      model: opencode_go/iceman-contributor-free
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+  - model_name: go-longcat-free
+    litellm_params:
+      model: opencode_go/longcat-2.5-free
+      api_key: os.environ/OPENCODE_GO_API_KEY
+      extra_headers:
+        User-Agent: opencode/1.0.41
+
+@AIKEY_MODELS@
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  trusted_proxy_ranges: []
+  cancel_on_disconnect: true
+
+litellm_settings:
+  callbacks:
+    - opencode_session_hook.session_hook
