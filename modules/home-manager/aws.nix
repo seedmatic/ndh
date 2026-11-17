@@ -57,6 +57,13 @@
     region = us-east-1
     output = yaml-stream
 
+    [profile hxai-dev]
+    sso_session = hyland
+    sso_account_id = 662386863434
+    sso_role_name = AWSAdministratorAccess
+    region = us-east-1
+    output = yaml-stream
+
     [profile cin-ccrepo-staging]
     sso_session = hyland
     sso_account_id = 144081923272
