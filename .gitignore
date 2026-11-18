@@ -25,3 +25,6 @@ sandbox/zfs-raidz1-lab/.tart
 # relock's guard rail — which is also why it cannot simply be `git add -f`'ed:
 # .gitignore stops protecting a file the moment it is tracked.
 flake-registry.local.json
+
+# Agent working state (plans, drafts, reports, boulder) — local only
+/.omo/
