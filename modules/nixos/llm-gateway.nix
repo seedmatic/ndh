@@ -72,9 +72,9 @@ let
     AIKEY_MODELS = aikeyModels;
   };
 
-  opencodeSessionHookDir = pkgs.writeTextDir "opencode_session_hook.py" (
-    builtins.readFile ../.common.d/llm-gateway/opencode_session_hook.py
-  );
+  # opencodeSessionHookDir = pkgs.writeTextDir "opencode_session_hook.py" (
+  #   builtins.readFile ../.common.d/llm-gateway/opencode_session_hook.py
+  # );
 
   litellmLauncher = pkgs.writeShellScript "litellm-launcher" ''
     set -euo pipefail
@@ -95,9 +95,8 @@ let
       if ${pkgs.curl}/bin/curl -fsS ${swapUrl}/health >/dev/null 2>&1; then break; fi
       sleep 2
     done
-    cp -f /etc/llm-gateway/litellm-config.yaml ${lib.escapeShellArg configDir}/litellm-config.yaml
     exec ${pkgs.litellm}/bin/litellm \
-      --config ${lib.escapeShellArg "${configDir}/litellm-config.yaml"} \
+      --config /etc/llm-gateway/litellm-config.yaml \
       --host 0.0.0.0 \
       --port 4000
   '';
