@@ -26,5 +26,6 @@ sandbox/zfs-raidz1-lab/.tart
 # .gitignore stops protecting a file the moment it is tracked.
 flake-registry.local.json
 
-# Agent working state (plans, drafts, reports, boulder) — local only
-/.omo/
+# Agent working state — local only, except shared agent defs
+/.omo/*
+!/.omo/agents/
