@@ -18,6 +18,78 @@ inputs: final: prev: {
       a2a-sdk = pyprev.a2a-sdk.overridePythonAttrs (_: {
         doCheck = false;
       });
+      litellm = pyprev.litellm.overridePythonAttrs (
+        old:
+        let
+          wheels = {
+            aarch64-darwin = {
+              url = "https://files.pythonhosted.org/packages/52/55/82e0ddb4ac036e29882f15b62a34a120b399059fb4da8d2eb8312f906832/litellm-1.110.0-cp310-abi3-macosx_11_0_arm64.whl";
+              hash = "sha256-vIT2fhjonjmZaEQ3jB6ASK6qSeO7uThV3wzgT5f2QDg=";
+            };
+            aarch64-linux = {
+              url = "https://files.pythonhosted.org/packages/71/61/a2ab3353b8b5c9e68482200873628a1df813bb617af62b9c2450d9952b8e/litellm-1.110.0-cp310-abi3-manylinux_2_28_aarch64.whl";
+              hash = "sha256-mXc4iOjdDQuEL8ivp4617XoLMcE/Gy0KEYzwQjvF24w=";
+            };
+            x86_64-linux = {
+              url = "https://files.pythonhosted.org/packages/5b/21/b502e48603205b9482f4cb5403556600c7aa6dc77bd336bb79b4ba0c67d2/litellm-1.110.0-cp310-abi3-manylinux_2_28_x86_64.whl";
+              hash = "sha256-Jx41dB+KlE7kv6vzE0LtzQU4W90gqThtGcCFyy5NxQc=";
+            };
+          };
+        in
+        {
+          version = "1.110.0";
+          format = "wheel";
+          pyproject = null;
+          src = prev.fetchurl wheels.${prev.stdenv.hostPlatform.system};
+          build-system = [ ];
+          postPatch = "";
+          patches = [ ];
+          nativeBuildInputs = [ ];
+          buildInputs = [ prev.stdenv.cc.cc.lib ];
+          dontCheckRuntimeDeps = true;
+          expression = pyfinal.buildPythonPackage {
+            pname = "expression";
+            version = "5.6.0";
+            format = "wheel";
+            src = prev.fetchurl {
+              url = "https://files.pythonhosted.org/packages/6b/a2/656b8bebe495117342a8676ccabf52b3885ce11a856c8dfe1fbbdc250d2d/expression-5.6.0-py3-none-any.whl";
+              hash = "sha256-9cYuOBhskofgiN7pzzk5sLveIctMWVcYchVKU9M918A=";
+            };
+            dependencies = [ pyfinal.typing-extensions ];
+            doCheck = false;
+          };
+          dependencies =
+            (old.dependencies or [ ])
+            ++ (with pyfinal; [
+              h2
+              filelock
+              packaging
+              huggingface-hub
+              anyio
+              pydantic-settings
+              boto3
+              certifi
+              typing-extensions
+              pyyaml
+            ]);
+          optional-dependencies = (old.optional-dependencies or { }) // {
+            proxy =
+              (old.optional-dependencies.proxy or [ ])
+              ++ (with pyfinal; [
+                httpx2
+                httpcore2
+                granian
+                starlette
+                hiredis
+                inquirerpy
+                tomlkit
+                semver
+                backports-zstd
+                expression
+              ]);
+          };
+        }
+      );
     };
   };
 }
