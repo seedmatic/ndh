@@ -34,6 +34,14 @@
       ./modules/home-manager/omo.nix
     ];
 
+    # LLM gateway (LiteLLM proxy) on NixOS VM — points to darwin host's llama-swap (GPU).
+    # LiteLLM itself runs on NixOS (no GPU needed), proxying to darwin host's llama-swap.
+    services.llmGateway = {
+      enable = true;
+      sopsEncryptedFile = ../../.secrets;
+      remoteSwapUrl = "http://darwin.bioskop:8000";
+    };
+
     # Vector observability agent forwards build events to Darwin aggregator
     bringupObserve = {
       # Forward to Darwin host Vector aggregator via VM network gateway

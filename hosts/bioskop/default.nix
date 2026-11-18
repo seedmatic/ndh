@@ -33,5 +33,6 @@ in
   nixosExtraModules = [
     nixosModule
     (import ../../modules/nixos/dns-authoritative.nix)
+    (import ../../modules/nixos/llm-gateway.nix)
   ];
 }
