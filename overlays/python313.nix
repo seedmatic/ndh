@@ -18,6 +18,17 @@ inputs: final: prev: {
       a2a-sdk = pyprev.a2a-sdk.overridePythonAttrs (_: {
         doCheck = false;
       });
+      expression = pyfinal.buildPythonPackage {
+        pname = "expression";
+        version = "5.6.0";
+        format = "wheel";
+        src = prev.fetchurl {
+          url = "https://files.pythonhosted.org/packages/6b/a2/656b8bebe495117342a8676ccabf52b3885ce11a856c8dfe1fbbdc250d2d/expression-5.6.0-py3-none-any.whl";
+          hash = "sha256-9cYuOBhskofgiN7pzzk5sLveIctMWVcYchVKU9M918A=";
+        };
+        dependencies = [ pyfinal.typing-extensions ];
+        doCheck = false;
+      };
       litellm = pyprev.litellm.overridePythonAttrs (
         old:
         let
@@ -47,17 +58,7 @@ inputs: final: prev: {
           nativeBuildInputs = [ ];
           buildInputs = [ prev.stdenv.cc.cc.lib ];
           dontCheckRuntimeDeps = true;
-          expression = pyfinal.buildPythonPackage {
-            pname = "expression";
-            version = "5.6.0";
-            format = "wheel";
-            src = prev.fetchurl {
-              url = "https://files.pythonhosted.org/packages/6b/a2/656b8bebe495117342a8676ccabf52b3885ce11a856c8dfe1fbbdc250d2d/expression-5.6.0-py3-none-any.whl";
-              hash = "sha256-9cYuOBhskofgiN7pzzk5sLveIctMWVcYchVKU9M918A=";
-            };
-            dependencies = [ pyfinal.typing-extensions ];
-            doCheck = false;
-          };
+          env.LITELLM_LOCAL_MODEL_COST_MAP = "True";
           dependencies =
             (old.dependencies or [ ])
             ++ (with pyfinal; [
