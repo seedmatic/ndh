@@ -72,13 +72,14 @@ let
     AIKEY_MODELS = aikeyModels;
   };
 
-  # opencodeSessionHookDir = pkgs.writeTextDir "opencode_session_hook.py" (
-  #   builtins.readFile ../.common.d/llm-gateway/opencode_session_hook.py
-  # );
+  opencodeSessionHookDir = pkgs.writeTextDir "opencode_session_hook.py" (
+    builtins.readFile ./llm-gateway.d/opencode_session_hook.py
+  );
 
   litellmLauncher = pkgs.writeShellScript "litellm-launcher" ''
     set -euo pipefail
     export PATH="${pkgs.python3}/bin:${pkgs.litellm}/bin:$PATH"
+    export PYTHONPATH="${opencodeSessionHookDir}''${PYTHONPATH:+:$PYTHONPATH}"
     if [ -r "${swapSecretPath}" ]; then
       export LLAMA_SWAP_API_KEY="$(tr -d '[:space:]' < "${swapSecretPath}")"
     fi
