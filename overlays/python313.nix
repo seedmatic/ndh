@@ -31,11 +31,90 @@ inputs: final: prev: {
           dependencies = [ pyfinal.typing-extensions ];
           doCheck = false;
         };
+        mcp-types = pyfinal.buildPythonPackage {
+          pname = "mcp-types";
+          version = "2.3.0";
+          format = "wheel";
+          src = prev.fetchurl {
+            url = "https://files.pythonhosted.org/packages/ce/48/32583066b155bb5d4507e7887dc88ee23118cc4de8e2a12870c49719e2a8/mcp_types-2.3.0-py3-none-any.whl";
+            hash = "sha256-lo79va7fqwatrkDTeKNDlfEJDFkh1L48nN4oOq922R0=";
+          };
+          dependencies = with pyfinal; [
+            pydantic
+            typing-extensions
+          ];
+          doCheck = false;
+        };
+        # Replace an existing source-built package by its pure-python wheel.
+        asWheel =
+          pkg: attrs:
+          pkg.overridePythonAttrs (
+            old:
+            {
+              format = "wheel";
+              pyproject = null;
+              build-system = [ ];
+              postPatch = "";
+              patches = [ ];
+              nativeBuildInputs = [ ];
+              nativeCheckInputs = [ ];
+              doCheck = false;
+              dontCheckRuntimeDeps = true;
+              pythonImportsCheck = [ ];
+            }
+            // attrs
+          );
       in
       {
         a2a-sdk = pyprev.a2a-sdk.overridePythonAttrs (_: {
           doCheck = false;
         });
+        httpcore2 = asWheel pyprev.httpcore2 {
+          version = "2.16.2";
+          src = prev.fetchurl {
+            url = "https://files.pythonhosted.org/packages/2a/e8/009c347feac27f8960605aa98d55ed263b5870dd4fd80b82fd1d00d5716c/httpcore2-2.16.2-py3-none-any.whl";
+            hash = "sha256-FgUa4qQvd2AHVD8y3pNJoxeyPSy7ThRWtLrA6IuHQZo=";
+          };
+          dependencies = with pyfinal; [
+            h11
+            truststore
+          ];
+        };
+        httpx2 = asWheel pyprev.httpx2 {
+          version = "2.16.2";
+          src = prev.fetchurl {
+            url = "https://files.pythonhosted.org/packages/77/de/8c4306a3d6aa2495111986addf33a9e561eff4c47552e4c4b9251160d0ad/httpx2-2.16.2-py3-none-any.whl";
+            hash = "sha256-8FwTqt5MRdvxyQYGR6EFjwrK1iOY+tludBJp7bM9RvU=";
+          };
+          dependencies = with pyfinal; [
+            anyio
+            httpcore2
+            idna
+            truststore
+          ];
+        };
+        mcp = asWheel pyprev.mcp {
+          version = "2.3.0";
+          src = prev.fetchurl {
+            url = "https://files.pythonhosted.org/packages/20/d7/4a2878f128df729db3ca04e71bfce26405cc2e0c9ebe19c592feeb4c61b9/mcp-2.3.0-py3-none-any.whl";
+            hash = "sha256-3QxEwInRZFPorjGjh3oAVNeiMUyqqB9eBUG5sXNLI3c=";
+          };
+          dependencies = with pyfinal; [
+            anyio
+            httpx2
+            jsonschema
+            mcp-types
+            opentelemetry-api
+            pydantic
+            pyjwt
+            python-multipart
+            sse-starlette
+            starlette
+            typing-extensions
+            typing-inspection
+            uvicorn
+          ];
+        };
         litellm = pyprev.litellm.overridePythonAttrs (
           old:
           let
