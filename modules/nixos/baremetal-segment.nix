@@ -322,7 +322,7 @@ in
           map (h: "${qualify h.name},${h.ip}") namedHosts
           ++ (
             if (bm.vzHostKind or "") == "foreign" then
-              [ "darwin.${bm.domain},172.16.25.2" ]
+              [ "darwin.${bm.domain},${bm.vmGuestAddress}" ]
             else
               [ "darwin.${bm.domain},${bm.vzHostAddress}" ]
           );

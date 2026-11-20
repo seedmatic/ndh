@@ -85,13 +85,21 @@
           else
             (hostProfile.hostName or "");
         bm = (netplan.baremetal or { }).${effectiveHostName} or null;
-        fabricCidr = if bm != null then (bm.advertiseCidr or null) else null;
+        # For a foreign vz-host, the darwin guest is reached by nixos over its own VM link
+        # (bare+9), not over the whole fabric slice: use that CIDR to authorize the mount.
+        clientCidr =
+          if bm != null && ((bm.vzHostKind or "") == "foreign") then
+            (bm.vmLinkCidr or null)
+          else if bm != null then
+            (bm.advertiseCidr or null)
+          else
+            null;
       in
       (
-        if fabricCidr != null then
+        if clientCidr != null then
           [
             {
-              clients = fabricCidr;
+              clients = clientCidr;
               options = "";
             }
           ]

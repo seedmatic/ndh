@@ -16,7 +16,7 @@ let
       records = nixosConfigurations."${domain}-nixos".config.services.dnsmasq.settings.host-record;
       wanted =
         if (catalog.netplan.baremetal.${domain}.vzHostKind or "") == "foreign" then
-          "darwin.${domain},172.16.25.2"
+          "darwin.${domain},${catalog.netplan.baremetal.${domain}.vmGuestAddress}"
         else
           "darwin.${domain},${catalog.netplan.baremetal.${domain}.vzHostAddress}";
       corporate = lib.filter (h: (lanHosts.${h}.ownership or "") != "personal") (lib.attrNames lanHosts);

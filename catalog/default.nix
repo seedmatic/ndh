@@ -148,6 +148,13 @@ rec {
           linkCidr = "${octets link}.0/30"; # static P2P link: vz-host <-> Incus host
           hostAddress = "${octets link}.1"; # <host>-nixos link end on lan-br (subnet router)
           vzHostAddress = "${octets link}.2"; # vz-host alias (dnsmasq host-record vzhost.<host>)
+          # A FOREIGN vz-host's darwin guest (nikopol) runs as a VM on the corp Mac and needs
+          # its OWN fabric address distinct from the corp Mac's link address, reached over a
+          # separate /30 on the home-LAN L2 (bare+9).  On a nix-managed vz-host (bioskop) the
+          # darwin host IS the vz-host, so no separate link exists (null).
+          vmLinkCidr = if vzHostKind == "foreign" then "${octets (bare + 9)}.0/30" else null;
+          vmHostAddress = if vzHostKind == "foreign" then "${octets (bare + 9)}.1" else null;
+          vmGuestAddress = if vzHostKind == "foreign" then "${octets (bare + 9)}.2" else null;
           # The bare-metal's own name on the home LAN — the entry in `lan.hosts` that carries
           # its DHCP reservation. This is the OUT-OF-BAND path to it: `vzhost.<host>` resolves
           # only through the segment's dnsmasq, which is exactly what is missing on a first
@@ -539,6 +546,20 @@ rec {
                     {
                       cidr = bm.linkCidr;
                       name = "${bm.domain}-baremetal-link";
+                      asn = 65000;
+                    }
+                  ]
+                else
+                  [ ]
+              )
+              # A FOREIGN vz-host's darwin guest gets its own /30 link (bare+9) distinct from
+              # the corp Mac's link.  Attribution-only span, like linkCidr above.
+              ++ (
+                if (bm ? vmLinkCidr) && (bm.vmLinkCidr or null) != null then
+                  [
+                    {
+                      cidr = bm.vmLinkCidr;
+                      name = "${bm.domain}-baremetal-vm-link";
                       asn = 65000;
                     }
                   ]
