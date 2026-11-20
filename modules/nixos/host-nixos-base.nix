@@ -120,6 +120,7 @@ in
     services.sshfsMounts = {
       enable = true;
       remoteHost = cfg.sshfsRemoteHost;
+      remoteUser = "nxmatic";
       mounts = [
         {
           remotePath = "/Volumes/git-worktree-store";
