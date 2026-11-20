@@ -109,6 +109,7 @@ in
       push.followTags = false;
       push.autoSetupRemote = true;
       rebase.autoStash = true;
+      commit.gpgSign = true;
       gpg.ssh.allowedSignersFile = allowedSignersFile;
       url = lib.mkIf onBareStoreHost {
         "file:///Volumes/git-bare-store/".insteadOf = "ssh://${bareStoreHost}/Volumes/git-bare-store/";
