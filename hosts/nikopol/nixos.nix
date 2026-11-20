@@ -9,120 +9,22 @@ let
   bm = ndh.context.catalog.netplan.baremetal.nikopol;
 in
 {
-  imports = [ ../../modules/nixos/mcp-browser-forward.nix ];
+  imports = [
+    ../../modules/nixos/mcp-browser-forward.nix
+    ../../modules/nixos/host-nixos-base.nix
+  ];
+
   config = {
-    profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
+    ndh.hostNixosBase = {
+      enable = true;
+      enableStoreFreeze = true;
+    };
 
     # Fabric link for the darwin.nikopol VM: a /30 on the home-LAN L2 so the VM
     # gets its OWN fabric address (172.16.25.2), distinct from vzhost.nikopol
     # (172.16.24.2).  This host owns the .1 end on lan-br; the VM aliases .2 on
     # its en0 and routes fabric/tailnet via .1 (see hosts/nikopol/darwin.nix).
-    systemd.network.networks."40-lan-br".address = lib.mkAfter [ "${bm.vmHostAddress}/30" ];
-
-    # ★ This guest decrypts with an age identity the operator places at its keyFile, from their
-    # keyring; nothing on the guest generates one, and only the public half is a recipient
-    # (.sops.yaml). It imports nothing from the vz host: that host is the corporate-managed
-    # Mac, and what this guest used to fetch from it — over ssh or the /srv/host/sops.d share
-    # — was the OPERATOR identity, which opens every sops file in ndh.
-    #
-    # ⛔ No sshKeyPaths: the age identity is the one placed above, apart from the host key, so a host-key
-    # rotation forces no re-key.
-    ndh.sopsAgeKeyBootstrap = {
-      defaultAgeKeyFile = "/var/lib/sops-nix/nikopol-nixos.age";
-      nixosHostKeyImport.enable = false;
-    };
-    sops.age.sshKeyPaths = [ ];
-
-    # The store freeze is tried here first: bioskop carries the toolchain we work from, so a
-    # failure on nikopol breaks nothing we depend on (docs/store-freeze-spec.adoc, the rollout).
-    ndh.storeFreeze.enable = true;
-
-    # This metalspace's private cache (docs/private-binary-cache-spec.adoc, per-metalspace): at a switch, its dataset
-    # under its quota and its container (attic-<metalspace>), delivered by the guest's converge.
-    ndh.atticCache = {
-      enable = true;
-      metalspace = "nikopol";
-      target = "nikopol";
-    };
-
-    # omo (AI coding assistant) on NixOS
-    environment.systemPackages = [ pkgs.omo-ai ];
-    home-manager.users.${config.profile.user.name}.imports = [
-      ./modules/home-manager/omo.nix
-      ./modules/home-manager/ssh-lan-override.nix
-    ];
-
-    # LLM gateway (LiteLLM proxy) on NixOS VM — points to darwin host's llama-swap (GPU).
-    # LiteLLM itself runs on NixOS (no GPU needed), proxying to darwin host's llama-swap.
-    services.llmGateway = {
-      enable = true;
-      sopsEncryptedFile = ../../.secrets;
-      remoteSwapUrl = "http://darwin.nikopol:8000";
-    };
-
-    # Vector observability agent forwards build events to Darwin aggregator
-    bringupObserve = {
-      # Forward to Darwin host Vector aggregator via VM network gateway
-      # VM NAT makes the macOS host accessible at 192.168.5.2
-      upstreamEndpoint = "http://192.168.5.2:9001";
-    };
-
-    # NFS mounts of the Darwin-side git stores (systemd automounts).
-    services.rpcbind.enable = true;
-    fileSystems."/srv/darwin/git-worktree-store" = {
-      device = "darwin.nikopol:/Volumes/git-worktree-store";
-      fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
-      ];
-    };
-    fileSystems."/srv/darwin/git-bare-store" = {
-      device = "darwin.nikopol:/Volumes/git-bare-store";
-      fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
-      ];
-    };
-
-    # sshfs fallback mounts of the Darwin-side git stores (single-ssh-channel transport),
-    # kept alongside NFS on a separate /srv path.
-    services.sshfsMounts = {
-      enable = true;
-      remoteHost = "nikopol.local";
-      remoteUser = "nxmatic";
-      mounts = [
-        {
-          remotePath = "/Volumes/git-worktree-store";
-          localPath = "/srv/darwin/.sshfs/git-worktree-store";
-        }
-        {
-          remotePath = "/Volumes/git-bare-store";
-          localPath = "/srv/darwin/.sshfs/git-bare-store";
-        }
-      ];
-    };
+    systemd.network.networks."40-lan-br".address = lib.mkAfter [ "172.16.25.1/30" ];
 
     # The vz host serves its LLM gateway agent on its loopback :4001 only; this guest publishes it on the fabric
     # gateway address for the two operator seats, which both arrive over the tailnet (measured 2026-10-21).
@@ -145,13 +47,6 @@ in
       ];
     };
 
-    # The vzhost.nikopol baremetal segment — fabric-br /25 (Incus dnsmasq + `.nikopol`
-    # zone + the vzhost.nikopol host-record), the static /30 link to the corp Mac,
-    # ip_forward and the forwarded-MSS clamp — is now provided uniformly by the
-    # shared modules/nixos/baremetal-segment.nix, keyed off
-    # catalog.netplan.baremetal.nikopol (bioskop gets the same, minus the /30).
-    # Nothing baremetal-specific remains here.
-
     # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
     # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
     ndh.mcpBrowserForward = {
@@ -168,8 +63,10 @@ in
       };
     };
 
-    # (Clone service removed: bare repos and worktrees are accessed via sshfs mounts
-    #  at /Volumes/... on the guest, matching the darwin host paths.)
-
+    # omo (AI coding assistant) on NixOS
+    home-manager.users.${config.profile.user.name}.imports = [
+      ./modules/home-manager/omo.nix
+      ./modules/home-manager/ssh-lan-override.nix
+    ];
   };
 }

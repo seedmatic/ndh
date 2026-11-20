@@ -1,117 +1,16 @@
 { config, pkgs, ... }:
 {
-  imports = [ ../../modules/nixos/mcp-browser-forward.nix ];
+  imports = [
+    ../../modules/nixos/mcp-browser-forward.nix
+    ../../modules/nixos/host-nixos-base.nix
+  ];
+
   config = {
+    ndh.hostNixosBase.enable = true;
+
     # Cache signing (private deploy + trusted-public-keys + /etc/nix/*.pub)
     # is wired fleet-wide in modules/.common.d/nix-signing.nix — nothing
     # host-specific here.
-
-    # ★ This guest decrypts with an age identity the operator places at its keyFile, from their
-    # secret manager. It imports nothing from its host: the /srv/host/sops.d share is bioskop's
-    # ~/.config/sops, which holds the OPERATOR identity, and the import refreshed it at every boot.
-    # A missing identity fails the age bootstrap unit and then sops-install-secrets (phase enforce);
-    # nothing generates one.
-    #
-    # ⛔ No sshKeyPaths: the age identity is the one placed above, apart from the host key, so a host-key
-    # rotation forces no re-key.
-    ndh.sopsAgeKeyBootstrap = {
-      defaultAgeKeyFile = "/var/lib/sops-nix/bioskop-nixos.age";
-      nixosHostKeyImport.enable = false;
-    };
-    sops.age.sshKeyPaths = [ ];
-
-    # This metalspace's private cache (docs/private-binary-cache-spec.adoc, per-metalspace): at a switch, its dataset
-    # under its quota and its container (attic-<metalspace>), delivered by the guest's converge.
-    ndh.atticCache = {
-      enable = true;
-      metalspace = "bioskop";
-      target = "bioskop";
-    };
-
-    # omo (AI coding assistant) on NixOS
-    environment.systemPackages = [ pkgs.omo-ai ];
-    home-manager.users.${config.profile.user.name}.imports = [
-      ./modules/home-manager/omo.nix
-    ];
-
-    # LLM gateway (LiteLLM proxy) on NixOS VM — points to darwin host's llama-swap (GPU).
-    # LiteLLM itself runs on NixOS (no GPU needed), proxying to darwin host's llama-swap.
-    services.llmGateway = {
-      enable = true;
-      sopsEncryptedFile = ../../.secrets;
-      remoteSwapUrl = "http://darwin.bioskop:8000";
-    };
-
-    # Vector observability agent forwards build events to Darwin aggregator
-    bringupObserve = {
-      # Forward to Darwin host Vector aggregator via VM network gateway
-      # VM NAT makes the macOS host accessible at 192.168.5.2
-      upstreamEndpoint = "http://192.168.5.2:9001";
-    };
-
-    # sshfs mounts of the Darwin-side git store (replaces the old NFS /net automount).
-    # Root executes the mount, read-write, as nxmatic — the operator who owns the trees — with the
-    # guest's own host key, which the seat authorizes for read-write sftp only; remote files map back to uid/gid 501:30001.
-    # bioskop now names the split the way nikopol does — object stores on one volume, coexisting
-    # checkouts on the other — so this block is its twin, and the layout divergence is gone. The
-    # old single /private/var/lib/git export is NOT kept: it carried 44 other orgs beside the
-    # seedmatic closure, and nothing on the NixOS side ever consumed it.
-    # NFS mounts of the Darwin-side git stores (systemd automounts).
-    services.rpcbind.enable = true;
-    fileSystems."/srv/darwin/git-worktree-store" = {
-      device = "darwin.bioskop:/Volumes/git-worktree-store";
-      fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
-      ];
-    };
-    fileSystems."/srv/darwin/git-bare-store" = {
-      device = "darwin.bioskop:/Volumes/git-bare-store";
-      fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
-      ];
-    };
-
-    # sshfs fallback mounts of the Darwin-side git stores (single-ssh-channel transport),
-    # kept alongside NFS on a separate /srv path.
-    services.sshfsMounts = {
-      enable = true;
-      remoteHost = "bioskop.local";
-      remoteUser = "nxmatic";
-      mounts = [
-        {
-          remotePath = "/Volumes/git-worktree-store";
-          localPath = "/srv/darwin/.sshfs/git-worktree-store";
-        }
-        {
-          remotePath = "/Volumes/git-bare-store";
-          localPath = "/srv/darwin/.sshfs/git-bare-store";
-        }
-      ];
-    };
 
     # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
     # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
@@ -128,5 +27,10 @@
         listenPort = 9020;
       };
     };
+
+    # omo (AI coding assistant) on NixOS
+    home-manager.users.${config.profile.user.name}.imports = [
+      ./modules/home-manager/omo.nix
+    ];
   };
 }
