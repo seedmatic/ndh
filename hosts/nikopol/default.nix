@@ -18,13 +18,11 @@ let
   profileModule = import ./profile.nix { inherit hostProfile darwinProfile; };
   darwinModule = import ./darwin.nix { inherit hardware; };
   nixosModule = import ./nixos.nix;
-  developerToolsModule = import ./modules/darwin/developer-tools.nix;
 in
 {
   inherit hostProfile profileModule;
   darwinExtraModules = [
     darwinModule
-    developerToolsModule
   ];
   nixosExtraModules = [
     nixosModule

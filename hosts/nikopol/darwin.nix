@@ -6,6 +6,12 @@
 }:
 {
   config = {
+    # Developer tools (BrowserOS neo + omo) for this host.
+    hm.imports = [
+      ../../modules/home-manager/developer-tools.nix
+      ./modules/home-manager/omo.nix
+    ];
+
     # Fabric link for darwin.nikopol itself: alias the VM's en0 with its OWN fabric
     # address (172.16.25.2), distinct from vzhost.nikopol (172.16.24.2), and route
     # the fabric segment + tailnet through the NixOS host's .1 end (172.16.25.1).

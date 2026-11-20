@@ -5,6 +5,12 @@
 }:
 {
   config = {
+    # Developer tools (BrowserOS neo + omo) for this host.
+    hm.imports = [
+      ../../modules/home-manager/developer-tools.nix
+      ./modules/home-manager/omo.nix
+    ];
+
     # Headscale bootstrap daemon RETIRED.  The whole fleet now registers
     # against Tailscale SaaS (ndh.tailnetClient.controller = "saas"
     # everywhere — nikopol, bioskop, and both NixOS VMs), so bioskop no
