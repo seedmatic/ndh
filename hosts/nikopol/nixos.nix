@@ -64,7 +64,7 @@ in
     # NFS mounts of the Darwin-side git stores (systemd automounts).
     services.rpcbind.enable = true;
     fileSystems."/srv/darwin/git-worktree-store" = {
-      device = "172.16.24.2:/Volumes/git-worktree-store";
+      device = "darwin.nikopol:/Volumes/git-worktree-store";
       fsType = "nfs";
       options = [
         "x-systemd.automount"
@@ -82,7 +82,7 @@ in
       ];
     };
     fileSystems."/srv/darwin/git-bare-store" = {
-      device = "172.16.24.2:/Volumes/git-bare-store";
+      device = "darwin.nikopol:/Volumes/git-bare-store";
       fsType = "nfs";
       options = [
         "x-systemd.automount"
