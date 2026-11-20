@@ -1,5 +1,7 @@
-# Each metalspace's dnsmasq names its darwin host at its fabric address (the vz-host's alias), so every tool
-# resolves `darwin.<domain>`, and names no corporate bare-metal. Read from the evaluated configurations.
+# Each metalspace's dnsmasq names its darwin host at its own fabric address — the vz-host's link
+# address for a nix-managed vz-host (bioskop), a distinct /30 link address for a foreign (corp)
+# vz-host's VM (nikopol: 172.16.25.2) — so every tool resolves `darwin.<domain>`, and names no
+# corporate bare-metal. Read from the evaluated configurations.
 {
   pkgs,
   lib,
@@ -12,7 +14,11 @@ let
     domain:
     let
       records = nixosConfigurations."${domain}-nixos".config.services.dnsmasq.settings.host-record;
-      wanted = "darwin.${domain},${catalog.netplan.baremetal.${domain}.vzHostAddress}";
+      wanted =
+        if (catalog.netplan.baremetal.${domain}.vzHostKind or "") == "foreign" then
+          "darwin.${domain},172.16.25.2"
+        else
+          "darwin.${domain},${catalog.netplan.baremetal.${domain}.vzHostAddress}";
       corporate = lib.filter (h: (lanHosts.${h}.ownership or "") != "personal") (lib.attrNames lanHosts);
       named = lib.filter (r: lib.any (h: lib.hasInfix h r) corporate) records;
     in

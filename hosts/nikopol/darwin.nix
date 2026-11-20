@@ -6,6 +6,20 @@
 }:
 {
   config = {
+    # Fabric link for darwin.nikopol itself: alias the VM's en0 with its OWN fabric
+    # address (172.16.25.2), distinct from vzhost.nikopol (172.16.24.2), and route
+    # the fabric segment + tailnet through the NixOS host's .1 end (172.16.25.1).
+    # Mirrors the baremetal-link mechanism, VM side. Run at activation; the VM's
+    # bridged link is stable so a LaunchDaemon is not strictly required.
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      echo "[fabric-link-vm] applying 172.16.25.2/30 on en0" >&2
+      /sbin/ifconfig en0 inet 172.16.25.2 netmask 255.255.255.252 alias 2>/dev/null || true
+      /sbin/route -n delete -net 172.16.16.0 -netmask 255.255.248.0 2>/dev/null || true
+      /sbin/route -n add -net 172.16.16.0 -netmask 255.255.248.0 172.16.25.1 2>/dev/null || true
+      /sbin/route -n delete -net 100.64.0.0 -netmask 255.192.0.0 2>/dev/null || true
+      /sbin/route -n add -net 100.64.0.0 -netmask 255.192.0.0 172.16.25.1 2>/dev/null || true
+    '';
+
     # Headscale bootstrap RETIRED fleet-wide (SaaS is the live controller;
     # see hosts/bioskop/darwin.nix).  Nikopol was the standby; now "none"
     # like the retired primary.  Re-arm by flipping a host back to "primary".

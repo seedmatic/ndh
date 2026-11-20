@@ -13,6 +13,12 @@ in
   config = {
     profile.user.home = lib.mkForce "/home/${config.profile.user.name}";
 
+    # Fabric link for the darwin.nikopol VM: a /30 on the home-LAN L2 so the VM
+    # gets its OWN fabric address (172.16.25.2), distinct from vzhost.nikopol
+    # (172.16.24.2).  This host owns the .1 end on lan-br; the VM aliases .2 on
+    # its en0 and routes fabric/tailnet via .1 (see hosts/nikopol/darwin.nix).
+    systemd.network.networks."40-lan-br".address = lib.mkAfter [ "172.16.25.1/30" ];
+
     # ★ This guest decrypts with an age identity the operator places at its keyFile, from their
     # keyring; nothing on the guest generates one, and only the public half is a recipient
     # (.sops.yaml). It imports nothing from the vz host: that host is the corporate-managed

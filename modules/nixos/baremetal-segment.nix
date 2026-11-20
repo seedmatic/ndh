@@ -312,14 +312,20 @@ in
         dhcp-authoritative = true;
         dhcp-range = [ dhcpRangeSetting ];
         dhcp-host = map (h: "${h.mac},${qualify h.name},${h.ip}") pinnedHosts;
-        # The metalspace's darwin host, at its fabric address (the vz-host's alias on the
-        # link subnet) rather than its home-LAN reservation: instances of this metalspace
-        # reach the Mac over the fabric, and the LAN address is an out-of-band path that
-        # does not resolve for them.  `vzhost.<domain>` already answers at this address;
-        # `darwin.<domain>` must agree with it.
-        host-record = map (h: "${qualify h.name},${h.ip}") namedHosts ++ [
-          "darwin.${bm.domain},${bm.vzHostAddress}"
-        ];
+        # The metalspace's darwin host, at its OWN fabric address — distinct from
+        # `vzhost.<domain>` (the corp Mac's link address).  For a nix-managed vz-host
+        # (bioskop) the darwin host IS the vz-host, so it answers at the fabric (link)
+        # address.  For a foreign vz-host (nikopol) the darwin host is a VM that gets
+        # its OWN fabric address via a /30 link on the home LAN (172.16.25.2),
+        # separate from the corp Mac's (172.16.24.2).
+        host-record =
+          map (h: "${qualify h.name},${h.ip}") namedHosts
+          ++ (
+            if (bm.vzHostKind or "") == "foreign" then
+              [ "darwin.${bm.domain},172.16.25.2" ]
+            else
+              [ "darwin.${bm.domain},${bm.vzHostAddress}" ]
+          );
       };
     };
 
