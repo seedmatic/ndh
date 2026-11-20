@@ -4,42 +4,21 @@
   ...
 }:
 {
+  imports = [ ../../modules/darwin/host-darwin-base.nix ];
+
   config = {
+    ndh.hostDarwinBase.enable = true;
+
     # Developer tools (BrowserOS neo + omo) for this host.
     hm.imports = [
       ../../modules/home-manager/developer-tools.nix
       ./modules/home-manager/omo.nix
     ];
 
-    # Headscale bootstrap daemon RETIRED.  The whole fleet now registers
-    # against Tailscale SaaS (ndh.tailnetClient.controller = "saas"
-    # everywhere — nikopol, bioskop, and both NixOS VMs), so bioskop no
-    # longer runs the home-Mac bootstrap control-plane (it was a single
-    # point of failure behind residential DDNS, and served no client once
-    # bioskop-nixos migrated to SaaS).  The production headscale target is
-    # rke2-hosted, not this bootstrap (see modules/darwin/headscale-daemon.nix
-    # header).  To re-arm: role = "primary" + tailnet.headscale.api.enable
-    # = true here (+ point the WAN forward at this host).
-    services.headscaleBootstrap.role = "none";
+    # Headscale bootstrap daemon RETIRED (role = "none" is set by the common
+    # host-darwin-base module).  bioskop additionally disables the headscale
+    # API.  The whole fleet now registers against Tailscale SaaS.
     tailnet.headscale.api.enable = false;
-
-    # Materialise the long-lived Tailscale OAuth client on this operator host.
-    # ndh is the single source of trust for the tailnet OAuth client; rke2lab
-    # holds NO tailscale creds — its seed-master reads this file at `pulumi up`
-    # (host-side, from /run/secrets/nix-darwin-home/tailnet.tailscale.client) to
-    # source the mesh k8s-operator's client_id/secret. bioskop is the primary
-    # operator host that runs the cluster grow; nikopol enables it too (roaming
-    # grow). This is the deliberate exception to "client never materialised on a
-    # node" (see modules/.common.d/tailnet.nix) — the operator host is not a
-    # fleet node, and it already holds the client for scripts/manage-tailnet.
-    tailnet.tailscale.client.enable = true;
-    # sops lands the client under /run/secrets (root-traversed tmpfs, unreachable
-    # by the user process / automounted seed container). Mirror it to a persistent
-    # user-owned file rke2lab's seed-master reads at `pulumi up`.
-    ndh.userSecretMirror."tailnet.tailscale.client" = {
-      source = config.sops.secrets."tailnet.tailscale.client".path;
-      target = "${config.profile.user.home}/.local/share/ndh/tailnet.tailscale.client";
-    };
 
     # Bioskop is the authoritative Duck DNS updater for the WAN
     # anchor recorded in catalog.netplan.wan.ddnsHostname.  nikopol
@@ -47,11 +26,6 @@
     services.ddnsClient = {
       enable = true;
       sopsEncryptedTokenFile = ../../.secrets;
-    };
-
-    services.llmGateway = {
-      enable = true;
-      sopsEncryptedFile = ../../.secrets;
     };
 
     # bioskop holds the TLS authority (the operator seat): its activation restores the Incus cluster certificate.
@@ -96,7 +70,6 @@
     # linux-builder and offload aarch64-linux to that sibling. The buildMachine
     # (bioskop-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
-    ndh.hostBuilder = "steady";
 
     # The guests are evaluated here and pushed, so the fleet is switched from this seat only.
     ndh.ndhSwitch.enable = true;

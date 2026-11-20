@@ -5,7 +5,11 @@
   ...
 }:
 {
+  imports = [ ../../modules/darwin/host-darwin-base.nix ];
+
   config = {
+    ndh.hostDarwinBase.enable = true;
+
     # Developer tools (BrowserOS neo + omo) for this host.
     hm.imports = [
       ../../modules/home-manager/developer-tools.nix
@@ -25,24 +29,6 @@
       /sbin/route -n delete -net 100.64.0.0 -netmask 255.192.0.0 2>/dev/null || true
       /sbin/route -n add -net 100.64.0.0 -netmask 255.192.0.0 172.16.25.1 2>/dev/null || true
     '';
-
-    # Headscale bootstrap RETIRED fleet-wide (SaaS is the live controller;
-    # see hosts/bioskop/darwin.nix).  Nikopol was the standby; now "none"
-    # like the retired primary.  Re-arm by flipping a host back to "primary".
-    services.headscaleBootstrap.role = "none";
-
-    # Materialise the long-lived Tailscale OAuth client on this operator host so
-    # rke2lab's seed-master can source the mesh k8s-operator OAuth at `pulumi up`
-    # (single source of trust in ndh; rke2lab holds no tailscale creds). nikopol
-    # runs the cluster grow when roaming — see hosts/bioskop/darwin.nix for the
-    # rationale and the "client never materialised on a node" exception.
-    tailnet.tailscale.client.enable = true;
-    # Mirror the /run/secrets client to a persistent user-owned file (see
-    # hosts/bioskop/darwin.nix); rke2lab's seed-master reads it at `pulumi up`.
-    ndh.userSecretMirror."tailnet.tailscale.client" = {
-      source = config.sops.secrets."tailnet.tailscale.client".path;
-      target = "${config.profile.user.home}/.local/share/ndh/tailnet.tailscale.client";
-    };
 
     # Keep Darwin user home aligned with vm-mounted persistent volume.
     profile.user.home = lib.mkForce (builtins.toPath "/Volumes/user-home");
@@ -70,14 +56,6 @@
     # hosts incus). No bootstrap phase applies here — it is remote from day one.
     # The buildMachine (<host>-nixos) is wired by modules/darwin/host-builder.nix;
     # see docs/host-builder-phases.adoc.
-    ndh.hostBuilder = "steady";
-
-    # Local LLM gateway (llama-swap only): Qwen on :8000.
-    # LiteLLM (the proxy/router) runs on the NixOS peer.
-    services.llmGateway = {
-      enable = true;
-      sopsEncryptedFile = ../../.secrets;
-    };
 
   };
 }
