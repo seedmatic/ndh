@@ -1,4 +1,4 @@
-# Each metalspace's dnsmasq names its darwin host at the catalog's home-LAN reservation, so every tool
+# Each metalspace's dnsmasq names its darwin host at its fabric address (the vz-host's alias), so every tool
 # resolves `darwin.<domain>`, and names no corporate bare-metal. Read from the evaluated configurations.
 {
   pkgs,
@@ -12,7 +12,7 @@ let
     domain:
     let
       records = nixosConfigurations."${domain}-nixos".config.services.dnsmasq.settings.host-record;
-      wanted = "darwin.${domain},${lanHosts.${domain}.ip}";
+      wanted = "darwin.${domain},${catalog.netplan.baremetal.${domain}.vzHostAddress}";
       corporate = lib.filter (h: (lanHosts.${h}.ownership or "") != "personal") (lib.attrNames lanHosts);
       named = lib.filter (r: lib.any (h: lib.hasInfix h r) corporate) records;
     in

@@ -312,7 +312,14 @@ in
         dhcp-authoritative = true;
         dhcp-range = [ dhcpRangeSetting ];
         dhcp-host = map (h: "${h.mac},${qualify h.name},${h.ip}") pinnedHosts;
-        host-record = map (h: "${qualify h.name},${h.ip}") namedHosts;
+        # The metalspace's darwin host, at its fabric address (the vz-host's alias on the
+        # link subnet) rather than its home-LAN reservation: instances of this metalspace
+        # reach the Mac over the fabric, and the LAN address is an out-of-band path that
+        # does not resolve for them.  `vzhost.<domain>` already answers at this address;
+        # `darwin.<domain>` must agree with it.
+        host-record = map (h: "${qualify h.name},${h.ip}") namedHosts ++ [
+          "darwin.${bm.domain},${bm.vzHostAddress}"
+        ];
       };
     };
 

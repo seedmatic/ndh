@@ -503,23 +503,12 @@ rec {
                       name = bm.atticFqdn;
                       ip = bm.atticAddress;
                     }
-                    # The metalspace's darwin host, at its static home-LAN reservation, so every
-                    # tool resolves `darwin.<domain>`, not only ssh. Not its tailnet address: the
-                    # catalog holds none, and they change when a machine re-registers. Answers
-                    # while that Mac sits on the home LAN; the ssh alias keeps the tailnet FQDN.
-                    # rescue.* stays an ssh alias: Tailscale SSH intercepts :2222 on the tailnet
-                    # address only.
-                    {
-                      name = "darwin.${bm.domain}";
-                      ip =
-                        let
-                          h = lan.hosts.${bm.domain};
-                        in
-                        if (h.kind or "") == "darwin-host" then
-                          h.ip
-                        else
-                          throw "catalog: lan.hosts.${bm.domain} is not a darwin-host, so darwin.${bm.domain} has no address";
-                    }
+                    # The metalspace's darwin host is named in the fabric zone by
+                    # baremetal-segment.nix (at its fabric address, see modules/nixos/baremetal-segment.nix),
+                    # not here: its home-LAN reservation is an out-of-band path, and the fabric
+                    # address is the one instances of this metalspace can actually reach.  Keeping it
+                    # out of the segment host list also keeps nnh flow attribution from treating the
+                    # Mac as an instance pin on the managed net.
                   ];
                 }
               ]
