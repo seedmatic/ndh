@@ -255,6 +255,32 @@ let
         );
       };
     };
+    # atticd's GC marks chunks as deleted but never removes their files from disk,
+    # nor cleans up orphaned NARs or zero-holder chunks. This timer does that work.
+    systemd.services.${ndhPrefix.mkNdhUnitName "attic-gc-cleanup"} = {
+      description = "Clean up atticd's orphaned chunks and NARs (GC workaround)";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${
+          pkgs.writeShellApplication {
+            name = "attic-gc-cleanup";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.sqlite
+            ];
+            text = builtins.readFile ./attic-cache.d/gc-cleanup.sh;
+          }
+        }/bin/attic-gc-cleanup";
+      };
+    };
+    systemd.timers.${ndhPrefix.mkNdhUnitName "attic-gc-cleanup"} = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "daily";
+        Persistent = true;
+        RandomizedDelaySec = "1h";
+      };
+    };
   };
 in
 {
