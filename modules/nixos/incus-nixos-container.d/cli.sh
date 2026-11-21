@@ -707,7 +707,13 @@ restore_aside() {
 # is the price of bringing a forward data migration back.
 #
 # In its own process, as deliver_keep's steps: its callers run it under `if` and `||`, errexit off.
-rollback() { "$BASH" "${BASH_SOURCE[0]}" _rollback "$1" "$2"; }
+rollback() { 
+	if ! ${NDH_INCUS_CONTAINER_ROLLBACK:-true}; then
+	    echo "ndh-incus-container: $1 is unhealthy but rollback SKIPPED (NDH_INCUS_CONTAINER_ROLLBACK set); container stays on new system for debugging" >&2
+	    return 0
+	fi
+	"$BASH" "${BASH_SOURCE[0]}" _rollback "$1" "$2";
+}
 
 rollback_steps() {
   local info dir toplevel upper_root rw db aside entry previous state fs
@@ -999,7 +1005,6 @@ converge() {
     else
       echo "$declared" >"$dir/converge.failed"
       rollback "$name" "$snapshot" || echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
-      echo "ndh-incus-container: $name was unhealthy on $toplevel and is back on its previous system" >&2
       failed=1
     fi
   done
