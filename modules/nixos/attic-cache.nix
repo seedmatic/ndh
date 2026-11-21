@@ -29,6 +29,8 @@ let
   fabricIp = lib.head (lib.splitString "/" cfg.address);
   # Container-side paths of the three directories of the dataset.
   stateDir = "/var/lib/private/atticd";
+  chunksDir = "/var/lib/attic-chunks";
+  dbDir = "/var/lib/attic-db";
   secretsDir = "/var/lib/attic-secrets";
   # Shared with the guest: where attic-cache-ensure writes the cache's public for the guest to publish.
   sharedDir = "/var/lib/attic-shared";
@@ -91,6 +93,11 @@ let
       environmentFile = envFile;
       settings = {
         listen = loopback;
+        database.url = "sqlite://${dbDir}/server.db?mode=rwc";
+        storage = {
+          type = "local";
+          path = chunksDir;
+        };
         api-endpoint = "http://${cfg.fqdn}/";
         garbage-collection = {
           interval = "15 minutes";
@@ -105,6 +112,18 @@ let
         };
       };
     };
+
+    systemd.services.atticd.serviceConfig.ReadWritePaths = [
+      chunksDir
+      dbDir
+    ];
+    # DynamicUser (nixpkgs' atticd module) allocates atticd's uid at runtime; the database and the
+    # chunks live on separate, shifted disks, so they must be declared as StateDirectory for
+    # systemd to create and chown them to that dynamic user before the service starts (otherwise
+    # ProtectSystem=strict leaves them root-owned and atticd cannot persist anything).
+    systemd.services.atticd.serviceConfig.StateDirectory = lib.mkForce "atticd attic-chunks attic-db";
+    systemd.services.atticd.serviceConfig.StateDirectoryMode = "0700";
+    systemd.services.atticd.serviceConfig.Environment = "RUST_LOG=info";
 
     systemd.services.${ndhPrefix.mkNdhUnitName "attic-server-secret"} = {
       description = "atticd's server secret, generated once in the cache container";
@@ -328,14 +347,26 @@ in
 
     dataset = lib.mkOption {
       type = lib.types.str;
-      default = "tank/nerd/attic";
+      default = "tank/nerd/attic/chunks";
       description = "ZFS dataset holding the container's state and secrets, and the directory it shares with the guest.";
     };
 
     quota = lib.mkOption {
       type = lib.types.str;
-      default = "16G";
+      default = "8G";
       description = "The dataset's ZFS quota, applied at every boot (operator, 2026-10-15).";
+    };
+
+    dbDataset = lib.mkOption {
+      type = lib.types.str;
+      default = "tank/nerd/attic/database";
+      description = "ZFS dataset holding atticd's SQLite database, separate from the chunk storage.";
+    };
+
+    dbQuota = lib.mkOption {
+      type = lib.types.str;
+      default = "1G";
+      description = "The database dataset's ZFS quota.";
     };
 
     retention = lib.mkOption {
@@ -489,7 +520,10 @@ in
       profiles.${config.ndh.bringupRuntime.profileDir} = config.ndh.bringupRuntime.runtimePackage;
       # The state, secrets and shared directory, all in one dataset: atticd migrates its DB forward on start, so a rollback
       # must bring the data back with the system (🛡️'s condition, the operator's ZFS-snapshot form, 2026-10-22).
-      stateDatasets = [ cfg.dataset ];
+      stateDatasets = [
+        cfg.dataset
+        cfg.dbDataset
+      ];
       # attic-cache-ensure is the one that proves the cache private and its key well named.
       health.units = [
         "atticd.service"
@@ -508,6 +542,19 @@ in
           type = "disk";
           source = "${paths.hostRoot}/state";
           path = stateDir;
+        };
+
+        attic-chunks = {
+          type = "disk";
+          source = "${paths.hostChunksRoot}";
+          path = chunksDir;
+          shift = "true";
+        };
+        attic-db = {
+          type = "disk";
+          source = "${paths.hostDbRoot}";
+          path = dbDir;
+          shift = "true";
         };
         attic-secrets = {
           type = "disk";
@@ -562,13 +609,21 @@ in
       };
       script = ''
         zfs list -H -o name ${lib.escapeShellArg cfg.dataset} >/dev/null 2>&1 \
-          || zfs create -p -o mountpoint=${paths.hostRoot} ${lib.escapeShellArg cfg.dataset}
+          || zfs create -p ${lib.escapeShellArg cfg.dataset}
+        # Force the mountpoint on every activation: a dataset created by an earlier version (or by hand)
+        # may carry a stale mountpoint, which would leave its source path absent and block convergence.
+        zfs set mountpoint=${paths.hostChunksRoot} ${lib.escapeShellArg cfg.dataset}
         zfs set quota=${lib.escapeShellArg cfg.quota} ${lib.escapeShellArg cfg.dataset}
+        zfs list -H -o name ${lib.escapeShellArg cfg.dbDataset} >/dev/null 2>&1 \
+          || zfs create -p ${lib.escapeShellArg cfg.dbDataset}
+        zfs set mountpoint=${paths.hostDbRoot} ${lib.escapeShellArg cfg.dbDataset}
+        zfs set quota=${lib.escapeShellArg cfg.dbQuota} ${lib.escapeShellArg cfg.dbDataset}
         # On disk the cache's database and NARs belong to a uid of the container's range (systemd 260
         # maps atticd's StateDirectory): closed here, nothing of this NixOS guest walks into them.
-        chmod 0700 ${paths.hostRoot}
+        chmod 0700 ${paths.hostRoot} ${paths.hostDbRoot}
         install -d -m 0700 ${paths.hostRoot}/state ${paths.hostRoot}/secrets
         install -d -m 0755 ${paths.hostShared}
+        install -d -m 0700 ${paths.hostDbRoot}
       '';
     };
   };

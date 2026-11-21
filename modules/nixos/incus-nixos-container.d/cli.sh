@@ -948,6 +948,7 @@ converge() {
     fi
     if [ -e "$dir/converge.failed" ] && [ "$(cat "$dir/converge.failed")" = "$declared" ]; then
       echo "ndh-incus-container: $name already failed on $toplevel; it stays on its previous system" >&2
+      echo "ndh-incus-container: to retry, remove $dir/converge.failed and re-run converge" >&2
       # Stays on it RUNNING: converge left it down (a rollback whose start failed too), so it brings it up there.
       if [ -e "$dir/converge.stopped" ] &&
         [ "$(incus query "/1.0/instances/$name/state?project=$PROJECT" | yq -p json -oy -r '.status')" = Stopped ]; then
