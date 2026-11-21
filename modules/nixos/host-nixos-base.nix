@@ -82,13 +82,13 @@ in
     environment.etc."nfsmount.conf.d/99-ndh.conf".text = ''
       [ NFSMount_Global_Options ]
       Vers=3
-      Proto=Tcp
+      Proto=tcp
       Hard=True
-      Timeo=100
-      Retrans=2
-      Actimeo=5
-      Rsize=65536
-      Wsize=65536
+      Timeo=20
+      Retrans=3
+      Actimeo=30
+      Rsize=1048576
+      Wsize=1048576
     '';
 
     fileSystems."/srv/darwin/git-worktree-store" = {
