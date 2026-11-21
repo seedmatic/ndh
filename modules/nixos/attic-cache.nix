@@ -403,7 +403,10 @@ in
       default = [
         "${metalspaceEntry.netGateway}/32"
       ]
-      ++ lib.optional (metalspaceEntry.vzHostKind == "nix-managed") "${metalspaceEntry.vzHostAddress}/32";
+      ++ lib.optional (metalspaceEntry.vzHostKind == "nix-managed") "${metalspaceEntry.vzHostAddress}/32"
+      ++ lib.optional (
+        metalspaceEntry.vzHostKind == "foreign" && (metalspaceEntry.vmGuestAddress or null) != null
+      ) "${metalspaceEntry.vmGuestAddress}/32";
       defaultText = lib.literalExpression "the guest's netGateway, and the vz-host's /30 end when it is nix-managed";
       description = ''
         Sources the cache container accepts on :80: the access point's machines as they arrive,

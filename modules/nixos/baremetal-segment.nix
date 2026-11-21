@@ -184,6 +184,20 @@ let
       )
       ++ lib.optional screensOpen "ip daddr . tcp dport @${offtailnetScreensSet} ct state new";
 
+  # Darwin hosts reach their metalspace's fabric segment (and with it the attic
+  # cache container) over the /30 link.  The vz-host rules above are scoped to
+  # the corp Mac's MAC, which a nix-managed Mac already satisfies; a foreign
+  # vz-host's darwin VM has a different MAC and IP, so it needs its own entry.
+  # Match by source IP only: the /30 is a trusted point-to-point link, and the
+  # guard still drops every other new connection from lan-br.
+  darwinFabricAccessIps =
+    if !hasLink then
+      [ ]
+    else if bm.vzHostKind == "nix-managed" then
+      [ bm.vzHostAddress ]
+    else
+      lib.optional (bm.vmGuestAddress != null) bm.vmGuestAddress;
+
   # The dotted netmask dnsmasq wants in `dhcp-range` (it takes a mask, not a prefix length).
   # Integer division truncates in Nix, which is what makes the octet extraction work.
   intToIpv4 =
@@ -519,6 +533,9 @@ in
           ${lib.concatMapStrings (
             r: ''iifname "lan-br" ether saddr ${vzHostMac} ip saddr ${bm.vzHostAddress} ${r} accept'' + "\n"
           ) vzHostForwardRules}
+          ${lib.concatMapStrings (
+            ip: ''iifname "lan-br" ip saddr ${ip} ip daddr ${bm.netCidr} accept'' + "\n"
+          ) darwinFabricAccessIps}
           iifname "lan-br" ct state invalid drop
           iifname "lan-br" ct state new counter drop
         }
