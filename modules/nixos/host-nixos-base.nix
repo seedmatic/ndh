@@ -79,6 +79,18 @@ in
 
     services.rpcbind.enable = true;
 
+    environment.etc."nfsmount.conf.d/99-ndh.conf".text = ''
+      [ NFSMount_Global_Options ]
+      Vers=3
+      Proto=Tcp
+      Hard=True
+      Timeo=100
+      Retrans=2
+      Actimeo=5
+      Rsize=65536
+      Wsize=65536
+    '';
+
     fileSystems."/srv/darwin/git-worktree-store" = {
       device = "darwin.${hostName}:/Volumes/git-worktree-store";
       fsType = "nfs";
@@ -86,15 +98,7 @@ in
         "x-systemd.automount"
         "noauto"
         "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
+        "x-systemd.mount-timeout=10s"
       ];
     };
 
@@ -105,15 +109,7 @@ in
         "x-systemd.automount"
         "noauto"
         "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=5s"
-        "vers=3"
-        "proto=tcp"
-        "soft"
-        "timeo=5"
-        "retrans=2"
-        "actimeo=5"
-        "rsize=65536"
-        "wsize=65536"
+        "x-systemd.mount-timeout=10s"
       ];
     };
 

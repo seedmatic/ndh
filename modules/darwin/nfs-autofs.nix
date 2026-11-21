@@ -566,6 +566,11 @@ in
         EOF
         ${autoMasterWriteBlock}${autoMasterLinkBlock}${syntheticEnsureBlock}${syntheticReloadBlock}${autofsNetBlock}${nfsConfBlock}${nfsdReloadScript}
       '';
+
+      # NFS server hosts stay awake: disable system sleep so git stores stay reachable.
+      system.activationScripts.postActivation.text = lib.mkAfter ''
+        /usr/bin/pmset -a sleep 0 disksleep 0 displaysleep 0 womp 1 || true
+      '';
     }
   );
 }
