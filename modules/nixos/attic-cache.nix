@@ -308,7 +308,7 @@ in
 
     quota = lib.mkOption {
       type = lib.types.str;
-      default = "8G";
+      default = "16G";
       description = "The dataset's ZFS quota, applied at every boot (operator, 2026-10-15).";
     };
 
