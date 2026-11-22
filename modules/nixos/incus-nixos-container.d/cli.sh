@@ -224,7 +224,7 @@ create() {
   local device src
   while read -r device src; do source[$device]=$src; done < <(store_devices "$dir")
   incus config device add --project "$PROJECT" "$1" nix disk \
-    source="${source[nix]}" path=/nix
+    source="${source[nix]}" path=/nix recursive=true
   # The lower view's store is a mount of its own, and the kernel refuses a recursive read-only bind:
   # its two halves go in as two plain read-only binds.
   incus config device add --project "$PROJECT" "$1" nix-lower-store disk \
