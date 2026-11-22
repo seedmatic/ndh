@@ -382,7 +382,8 @@ deliver_steps() {
   if [ -e "$dir/view/nix/var/nix/db" ]; then mv "$dir/view/nix/var/nix/db" "$aside/view/nix/var/nix/"; fi
   # A copy, WAL included, never the snapshot's own file: nix opens it normally, and SQLite's
   # `immutable` mode would ignore the WAL.
-  cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot" "$dir/view/nix/var/nix/db"
+  mkdir -p "$dir/view/nix/var/nix/db"
+  cp -a "/nix/var/nix/db/.zfs/snapshot/$snapshot/." "$dir/view/nix/var/nix/db"
   mkdir -p "$dir/upper"
   # The store devices' mount points, host side: LXC makes a missing one at start, as the container's
   # root, and an unprivileged container's root cannot write in this root-owned tree (EPERM, measured
@@ -980,9 +981,7 @@ converge() {
       # Stopped past its snapshot, the delivery has moved the previous system aside: put it back.
       for aside in "$dir"/.previous-*; do
         [ -d "$aside" ] || continue
-        if rollback "$name" "${aside##*/.previous-}"; then
-          echo "ndh-incus-container: $name is back on its previous system" >&2
-        else
+        if ! rollback "$name" "${aside##*/.previous-}"; then
           echo "ndh-incus-container: $name's rollback FAILED: it needs a hand" >&2
         fi
       done
