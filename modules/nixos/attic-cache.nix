@@ -512,6 +512,7 @@ in
       renamedFrom = "attic";
       # atticd and nginx face the fabric: a compromise must not be the NixOS guest's root.
       privileged = false;
+      rollback = false;
       modules = [ guest ];
       # The trampoline's bringup profile, so the container's scripts can move onto the trampoline (batch 2): a bare
       # container imports none of ndh's common modules, and the strict trampoline refuses where the profile is

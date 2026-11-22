@@ -708,8 +708,9 @@ restore_aside() {
 # is the price of bringing a forward data migration back.
 #
 # In its own process, as deliver_keep's steps: its callers run it under `if` and `||`, errexit off.
-rollback() { 
-	if ! ${NDH_INCUS_CONTAINER_ROLLBACK:-true}; then
+rollback() {
+	enabled=$(yq -pjson ".${1}.rollback" <<<"${INSTANCES}")
+	if ! ${enabled:-true}; then
 	    echo "ndh-incus-container: $1 is unhealthy but rollback SKIPPED (NDH_INCUS_CONTAINER_ROLLBACK set); container stays on new system for debugging" >&2
 	    return 0
 	fi

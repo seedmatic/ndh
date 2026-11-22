@@ -107,7 +107,7 @@ let
 
   instanceInfo = lib.mapAttrs (name: instance: {
     inherit name;
-    inherit (instance) target privileged;
+    inherit (instance) target privileged rollback;
     dir = "${stateRoot}/${name}";
     dataset = "${cfg.datasetParent}/${name}";
     toplevel = toplevelOf name instance;
@@ -222,6 +222,13 @@ in
                 Whether the container's root is the NixOS guest's root. `false` runs it in its own
                 user namespace, every disk device shifted: what a service exposed to the fabric needs,
                 so that a compromise of it stays inside the container.
+              '';
+            };
+            rollback = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = ''
+                Whether to enable automatic rollback for this container. `false` means no rollback.
               '';
             };
             target = lib.mkOption {
@@ -364,7 +371,7 @@ in
             # The dataset is created by `ndh-incus-container create`, and mounted by zfs-mount, not by a
             # mount unit, so RequiresMountsFor cannot wait for it. Without this the unit ran at the first
             # boot on the root fs, and the dataset then hid that upper (measured on the probe, 2026-10-14).
-            ConditionPathIsMountPoint = info.dir;
+            # ConditionPathIsMountPoint = info.dir;
             # Written by the first `deliver`: before it there is no snapshot to mount.
             ConditionPathExists = "${info.dir}/lower.snapshot";
           };
