@@ -1071,21 +1071,21 @@
         "flake-compat": "flake-compat_5",
         "nixpkgs": [
           "flake-commons",
-          "nixpkgs-unstable"
+          "nixpkgs"
         ],
         "systems": "systems_5"
       },
       "locked": {
-        "lastModified": 1788946341,
-        "narHash": "sha256-vhV0gwMM4GIjuj4faBXDjq/HYktKfs+cH29XP3CeK5I=",
+        "lastModified": 1795343101,
+        "narHash": "sha256-pcHwqBnR8hJEqvKhrjLVmd60yIZOWrNWSdjuBMNRok0=",
         "owner": "nxmatic",
         "repo": "tailscale",
-        "rev": "7b962478b2ad5b437e84911bce2563569e292dc3",
+        "rev": "7156518895d364dca55392188f7fbbf130ce200f",
         "type": "github"
       },
       "original": {
         "owner": "nxmatic",
-        "ref": "nxmatic/integration/1.102",
+        "ref": "nxmatic/integration/1.104",
         "repo": "tailscale",
         "type": "github"
       }

@@ -69,8 +69,8 @@
     # pinned to flake-commons so the fork's binaries share a
     # glibc/openssl/etc with the rest of the closure.
     tailscale-fork = {
-      url = "github:nxmatic/tailscale/nxmatic/integration/1.102";
-      inputs.nixpkgs.follows = "flake-commons/nixpkgs-unstable";
+      url = "github:nxmatic/tailscale/nxmatic/integration/1.104";
+      inputs.nixpkgs.follows = "flake-commons/nixpkgs";
     };
   };
 
