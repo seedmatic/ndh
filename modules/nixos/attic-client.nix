@@ -87,6 +87,25 @@ in
       };
     })
 
+    {
+      # The attic substituters are isolated in a mutable file included from nix.conf (common attic-client.nix),
+      # so an operator can truncate it at runtime to stop nix querying an unstable cache. Write it before the daemon starts.
+      systemd.services.ndh-attic-substituters = {
+        description = "Write the attic substituters include file for the nix daemon";
+        wantedBy = [ "nix-daemon.service" ];
+        before = [ "nix-daemon.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          install -d -m 0755 -o root -g root /run/ndh
+          printf '%s' ${lib.escapeShellArg cfg.substitutersContent} > ${lib.escapeShellArg cfg.substitutersFile}
+          chmod 0644 ${lib.escapeShellArg cfg.substitutersFile}
+        '';
+      };
+    }
+
     (lib.mkIf cfg.watchStore.enable {
       # Started as soon as the delivery writes the token, and at every boot once it is there.
       systemd.paths.${ndhPrefix.mkNdhUnitName "attic-watch-store"} = {

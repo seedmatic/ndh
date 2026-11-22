@@ -88,6 +88,16 @@ in
       };
     }
 
+    {
+      # The attic substituters are isolated in a mutable file included from nix.conf (common attic-client.nix),
+      # so an operator can truncate it at runtime to stop nix querying an unstable cache.
+      system.activationScripts.ndhAtticSubstituters.text = lib.mkAfter ''
+        mkdir -p /run/ndh
+        printf '%s' ${lib.escapeShellArg cfg.substitutersContent} > ${lib.escapeShellArg cfg.substitutersFile}
+        chmod 0644 ${lib.escapeShellArg cfg.substitutersFile}
+      '';
+    }
+
     (lib.mkIf cfg.watchStore.enable {
       launchd.daemons.ndh-attic-watch-store = {
         # attic reads its token from a file named in its config, so neither reaches an argument nor the

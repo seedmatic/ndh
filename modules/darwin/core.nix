@@ -171,6 +171,7 @@ in
     # hold); what it set that we keep is declared in settings below.
     # No accept-flake-config: with it, a trusted user took any flake's nixConfig (substituters, keys) silently.
     extraOptions = ''
+      !include /run/ndh/ndh-attic-substituters.conf
       always-allow-substitutes = true
       min-free = ${toString (10 * 1024 * 1024 * 1024)}  # 10 GB
       max-free = ${toString (20 * 1024 * 1024 * 1024)}  # 20 GB

@@ -96,6 +96,32 @@ in
         default = machine.attic.push or false;
         defaultText = lib.literalExpression "this machine's attic.push in catalog/machines.nix, or false";
       };
+
+    # The attic substituters are NOT put in nix.settings directly: they live in a mutable file included from
+    # nix.conf (see substitutersFile), so an operator can truncate it at runtime to stop nix from querying
+    # an unstable cache without editing the configuration or rebuilding. The file is (re)written at activation.
+    substitutersFile = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default = "/run/ndh/ndh-attic-substituters.conf";
+      description = "Mutable file included from nix.conf holding the attic substituters; truncate it to disable them at runtime.";
+    };
+
+    substitutersContent = lib.mkOption {
+      type = lib.types.str;
+      readOnly = true;
+      default =
+        if cfg.read.enable then
+          "extra-substituters = "
+          + lib.concatStringsSep " " (
+            map (fqdn: "${url fqdn}?priority=${toString (priority fqdn)}") cfg.caches
+          )
+          + "\n"
+        else
+          "";
+      defaultText = lib.literalExpression "extra-substituters = <attic caches> (when read.enable), else empty";
+      description = "The text written to substitutersFile at activation.";
+    };
   };
 
   config = lib.mkIf cfg.read.enable {
@@ -106,7 +132,8 @@ in
       }
     ];
     nix.settings = {
-      extra-substituters = map (fqdn: "${url fqdn}?priority=${toString (priority fqdn)}") cfg.caches;
+      # The attic substituters themselves are isolated in substitutersFile (included from nix.conf) so they can be
+      # truncated at runtime; only their keys and credentials stay here.
       extra-trusted-public-keys = publicKeys;
       # Absent until the delivery: nix then simply holds no credential for the caches.
       netrc-file = cfg.paths.netrc;

@@ -50,6 +50,7 @@ in
   # builders) that no review sees. checks.<system>.nix-conf-no-foreign-include holds it.
   nix.extraOptions = ''
     !include ${kvmConf}
+    !include /run/ndh/ndh-attic-substituters.conf
   '';
 
   systemd.tmpfiles.rules = [ runDirRule ];
