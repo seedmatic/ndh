@@ -47,3 +47,6 @@ f0f58e7e6918bf1f2bf83afe40d60bbe09d61bcfa8cfa639cdf42c4cd9a2c830 source/nixos/te
 f189ddfa3d8014900667f0a3adb2f4bc70e9cf97b1915e25d91ffcfc76297343 source/nixos/tests/ente/acme.test.key.pem
 f445a3b1f2b9c88500c2df2b1bf13a7441c525e206f088031c5ea2bdad864f64 source/nixos/modules/profiles/keys/ssh_host_ed25519_key
 f9a310cb9fd062c61d67e93b8d261a8fa5af135469ce1a2974879a221236ea7d python3.13-pycryptodomex-3.23.0/lib/python3.13/site-packages/Cryptodome/SelfTest/PublicKey/__pycache__/test_import_DSA.cpython-313.pyc
+b228745c7e100b5ac0360fdcb715718552d3886b644bad348a38b05acdad561f gnutls-3.8.13/lib/libgnutls.so.30.42.0
+5955e5c41731e21d3355684110ed23e95377bdff9ffea92a4af43b7cbfffc8f9 age-1.3.2/bin/age-keygen
+0f4cd5595957aa3af63b72f02de90b5edfe981bdbfc145c5068dbc194ba678e0 tpm2-tss-4.2.0/lib/libtss2-fapi.so.1.0.0

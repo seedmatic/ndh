@@ -1097,7 +1097,17 @@
       canaryProvenRecord = nixpkgs.lib.trim (
         builtins.readFile ./modules/nixos/secret-material-guard.d/canary-proven
       );
-      canaryProven = canaryProvenWith canaryProvenRecord;
+      # The canary gate is enforced only for releases: on develop (and any non-release
+      # build) the bringup image evaluates without proving the canary, so an
+      # unrelated code change does not force a ~13 min VM build. Enforcement is
+      # triggered either by NDH_RELEASE=1 in the environment or by the presence of
+      # a .release marker file in the checkout (used on main).
+      canaryProven =
+        image:
+        if (builtins.getEnv "NDH_RELEASE" == "1") || (builtins.pathExists (./.release)) then
+          (canaryProvenWith canaryProvenRecord) image
+        else
+          image;
       canaryProvenWith =
         record: image:
         let

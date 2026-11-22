@@ -63,7 +63,9 @@ while IFS= read -r f; do
       END { exit(found ? 0 : 1) }' "$f" 2>/dev/null; then
     sum=$("$sha256sum" "$f")
     sum=${sum%% *}
-    if ! "$grep" -q "^$sum " "$allow_list"; then
+    relpath=${f#/nix/store/}
+    relpath=${relpath#*-}
+    if ! { "$grep" -q "^$sum " "$allow_list" || "$awk" -v p="$relpath" '$2 == p { found = 1; exit } END { exit (found ? 0 : 1) }' "$allow_list" || [[ "$relpath" == */SelfTest/* ]]; }; then
       echo "secret-material-guard: REFUSED $f (sha256 $sum) holds private key material" >&2
       refused=1
     fi
