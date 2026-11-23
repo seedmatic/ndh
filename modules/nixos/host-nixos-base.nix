@@ -79,14 +79,26 @@ in
 
     services.rpcbind.enable = true;
 
-    # nfsmount.conf lives in /run (tmpfs, runtime-modifiable). A symlink
-    # in /etc points to it so mount.nfs reads it, but the real file can be
-    # edited at runtime without a rebuild.
-    systemd.tmpfiles.rules = [
-      "d /run/nfsmount.conf.d 0755 root root -"
-      "w+ /run/nfsmount.conf.d/99-ndh.conf 0644 root root - [ NFSMount_Global_Options ]\\nVers=3\\nProto=tcp\\nSoft=True\\nTimeo=600\\nRetrans=2\\nActimeo=30\\nRsize=64k\\nWsize=64k\\n"
-      "L+ /etc/nfsmount.conf.d/99-ndh.conf - - - - /run/nfsmount.conf.d/99-ndh.conf"
-    ];
+    # nfsmount.conf lives in /run (tmpfs, runtime-modifiable). An
+    # activation script writes it at boot/switch and a symlink in /etc
+    # points to it so mount.nfs reads it. tmpfiles w+ with multi-line
+    # content does not work reliably, so we use an activation script.
+    system.activationScripts.nfsmount-conf.text = ''
+      mkdir -p /run/nfsmount.conf.d
+      cat > /run/nfsmount.conf.d/99-ndh.conf <<'NFSEOF'
+      [ NFSMount_Global_Options ]
+      Vers=3
+      Proto=tcp
+      Soft=True
+      Timeo=600
+      Retrans=2
+      Actimeo=30
+      Rsize=1048576
+      Wsize=1048576
+      NFSEOF
+      mkdir -p /etc/nfsmount.conf.d
+      ln -sfn /run/nfsmount.conf.d/99-ndh.conf /etc/nfsmount.conf.d/99-ndh.conf
+    '';
 
     # All NFS options live in nfsmount.conf (above). Per-mount options only
     # carry the systemd automount directives.
