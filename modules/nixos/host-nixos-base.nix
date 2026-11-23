@@ -79,21 +79,17 @@ in
 
     services.rpcbind.enable = true;
 
-    environment.etc."nfsmount.conf.d/99-ndh.conf".text = ''
-      [ NFSMount_Global_Options ]
-      Vers=3
-      Proto=tcp
-      # Hard removed: do not force hard mounts globally. NFS hard mounts block
-      # indefinitely on a non-responding server (D-state, automount zombies).
-      # Per-mount options below select soft+intr so I/O fails instead of hanging.
-      Hard=False
-      Timeo=20
-      Retrans=3
-      Actimeo=30
-      Rsize=1048576
-      Wsize=1048576
-    '';
+    # nfsmount.conf lives in /run (tmpfs, runtime-modifiable). A symlink
+    # in /etc points to it so mount.nfs reads it, but the real file can be
+    # edited at runtime without a rebuild.
+    systemd.tmpfiles.rules = [
+      "d /run/nfsmount.conf.d 0755 root root -"
+      "w+ /run/nfsmount.conf.d/99-ndh.conf 0644 root root - [ NFSMount_Global_Options ]\\nVers=3\\nProto=tcp\\nSoft=True\\nTimeo=600\\nRetrans=2\\nActimeo=30\\nRsize=64k\\nWsize=64k\\n"
+      "L+ /etc/nfsmount.conf.d/99-ndh.conf - - - - /run/nfsmount.conf.d/99-ndh.conf"
+    ];
 
+    # All NFS options live in nfsmount.conf (above). Per-mount options only
+    # carry the systemd automount directives.
     fileSystems."/srv/darwin/git-worktree-store" = {
       device = "darwin.${hostName}:/Volumes/git-worktree-store";
       fsType = "nfs";
@@ -102,10 +98,6 @@ in
         "noauto"
         "x-systemd.idle-timeout=60"
         "x-systemd.mount-timeout=30s"
-        "soft"
-        "intr"
-        "timeo=600"
-        "retrans=2"
       ];
     };
 
@@ -117,10 +109,6 @@ in
         "noauto"
         "x-systemd.idle-timeout=60"
         "x-systemd.mount-timeout=30s"
-        "soft"
-        "intr"
-        "timeo=600"
-        "retrans=2"
       ];
     };
 
