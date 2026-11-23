@@ -83,7 +83,10 @@ in
       [ NFSMount_Global_Options ]
       Vers=3
       Proto=tcp
-      Hard=True
+      # Hard removed: do not force hard mounts globally. NFS hard mounts block
+      # indefinitely on a non-responding server (D-state, automount zombies).
+      # Per-mount options below select soft+intr so I/O fails instead of hanging.
+      Hard=False
       Timeo=20
       Retrans=3
       Actimeo=30
@@ -98,7 +101,11 @@ in
         "x-systemd.automount"
         "noauto"
         "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=10s"
+        "x-systemd.mount-timeout=30s"
+        "soft"
+        "intr"
+        "timeo=600"
+        "retrans=2"
       ];
     };
 
@@ -109,7 +116,11 @@ in
         "x-systemd.automount"
         "noauto"
         "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=10s"
+        "x-systemd.mount-timeout=30s"
+        "soft"
+        "intr"
+        "timeo=600"
+        "retrans=2"
       ];
     };
 
