@@ -3447,11 +3447,6 @@
               "ceremony VM: the guest has a disk, a share or a network";
             assert lib.assertMsg (!(guestSealed shared.config)) "ceremony VM: a guest with a 9p share passed";
             pkgs.runCommand "ceremony-vm-sealed" { } "touch $out";
-          # What the operator seat serves a guest's sshfs key, internal-sftp, allows read-write access.
-          sshfs-read-only-sftp-bats = import ./modules/nixos/sshfs-mounts.d/tests/package.nix {
-            pkgs = pkgsForLinux;
-            inherit (self.darwinConfigurations.bioskop.config.ndh.sshfs) authorizedOptions;
-          };
           # jq is replaced by yq-go in every script ndh runs, but for the initrd's one reviewed exception; a mutant
           # (a jq added) is refused at every build.
           no-jq = import ./modules/.common.d/no-jq.d/package.nix {
@@ -3659,7 +3654,7 @@
             ]
         )
         # Root's client on a NixOS guest resolves the fleet's revocation list for every host, as the
-        # operator seats' does (roles × keys S3a K3): nix-daemon's remote builds and the sshfs mounts run
+        # operator seats' does (roles × keys S3a K3): nix-daemon's remote builds run
         # ssh as root. The fleet's names and the aliases to them are strict there too; elsewhere ssh's own
         # default (`ask`) stands, which a non-interactive root cannot answer.
         // nixpkgs.lib.listToAttrs (
@@ -4072,22 +4067,6 @@
               lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
             );
             seats = lib.filter (host: self.darwinConfigurations ? ${host}) hosts;
-          }
-        )
-        # The guests' sshfs mounts of their operator seats' git stores, and what each seat authorizes for them
-        # (each guest's own host key, roles × keys S3b).
-        // (
-          let
-            lib = nixpkgs.lib;
-            hosts = lib.filter (
-              host: self.nixosConfigurations ? "${host}-nixos" && self.darwinConfigurations ? ${host}
-            ) (lib.attrNames inventoryData.hosts);
-          in
-          import ./modules/nixos/sshfs-mounts.d/tests/checks.nix {
-            inherit pkgs lib;
-            inherit (self) nixosConfigurations darwinConfigurations;
-            seatOf = lib.listToAttrs (map (host: lib.nameValuePair "${host}-nixos" host) hosts);
-            hostNames = fleetHostCertificates.names;
           }
         )
         // import ./modules/nixos/baremetal-segment.d/tests/checks.nix {

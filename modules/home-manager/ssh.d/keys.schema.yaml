@@ -35,7 +35,7 @@ properties:
       `linux-builder`). Each entry references a top-level authority by name
       instead of inlining the authority block.
     # Retired on 2026-10-29 with every slot revoked (keys-reconcile retire-key): the shared rdp-host and the guests'
-    # sshfs keys, whose roles each machine's own host key holds now. Never again a name here.
+    # retired sshfs keys, whose roles each machine's own host key holds now. Never again a name here.
     propertyNames:
       not:
         pattern: "^(rdp-host|sshfs-.*)$"

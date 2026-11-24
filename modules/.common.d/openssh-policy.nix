@@ -299,7 +299,7 @@ in
       cert // baseSettings;
     # Host verification by the AUTHORITY, system-wide — /etc/ssh/ssh_known_hosts,
     # read by every user including root. KnownHostsCommand (home-manager) only
-    # covers the operator, so root's connections — the sshfs mounts, nix-daemon to
+    # covers the operator, so root's connections — nix-daemon to
     # its builders, the guest sops bootstrap — verified hosts by raw keys pinned
     # on first use, and a host-key renewal breaks a pin: `accept-new` accepts an
     # UNKNOWN host, never a CHANGED one. Measured on a throwaway sshd: with the
@@ -333,7 +333,7 @@ in
       )
     );
     # Revocation on the CLIENT side, from the list sshd's RevokedKeys already reads: every client, root
-    # included (nix-daemon's remote builds, the sshfs mounts, the vzhost deploy), refuses a host key in
+    # included (nix-daemon's remote builds, the vzhost deploy), refuses a host key in
     # keys.yaml `revoked`, a certificate whose signing authority is there, and a certificate
     # `revoked_certificates` names by its key id. Host certificates are valid forever by decision (a
     # missed calendar renewal would break every strict connection), so this is what cuts a leaked host

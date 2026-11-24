@@ -4,7 +4,6 @@
   pkgs,
   lib,
   ndh,
-  catalog,
   ...
 }:
 let
@@ -28,10 +27,6 @@ let
   groupKeysScriptStore = "${opensshAuthzTools}/bin/openssh-group-authorized-keys";
   inherit (lib) mkIf optionalString concatStringsSep;
 
-  # The NixOS guest that mounts this operator seat's git stores (roles × keys S3b), by the inventory.
-  sshfsGuest = (catalog.netplan.baremetal.${config.networking.hostName} or { }).nixosHostname or null;
-  # The guest mounts this seat with its own host key, named after it (roles × keys: no sshfs key of its own).
-  sshfsKeyName = sshfsGuest;
   ndhSshdConfigText =
     let
       boolToYesNo = v: if v then "yes" else "no";
@@ -72,39 +67,9 @@ in
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
-  # Read-write sftp and nothing else: `restrict` drops pty, port/agent/X11 forwarding and ~/.ssh/rc, and
-  # the forced command replaces whatever the client asks for, a shell or the sftp subsystem alike. sshd
-  # runs a forced `internal-sftp` in process, so the operator's login shell, its rc files and BASH_ENV never
-  # run. An option so the real-sshd check runs this very string.
-  options.ndh.sshfs.authorizedOptions = lib.mkOption {
-    type = lib.types.str;
-    readOnly = true;
-    default = ''restrict,command="internal-sftp"'';
-    description = "The authorized_keys options of the guest's host key on its operator seat, for its sshfs mounts.";
-  };
 
-  # Not read-only only so the eval checks can give a test configuration a public that keys.yaml does not hold.
-  options.ndh.sshfs.guestKeyLines = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    internal = true;
-    default = lib.optionals (sshfsGuest != null && config.ndh.keysYaml.keys ? ${sshfsKeyName}) (
-      config.ndh.keysYaml.authorizedLinesFor [ sshfsKeyName ]
-    );
-    description = ''
-      The authorized_keys lines of this seat's NixOS guest's host key, from its publics recorded in keys.yaml
-      (`<guest>`), one per slot, so a rotation's both generations mount. Authorized for the operator with
-      read-write sftp only: the key that is the guest's sshd identity opens nothing else here.
-    '';
-  };
 
   config = {
-    # The guest's host key, for its sshfs mounts: an authorized_keys line, not a certificate, because it must hold on THIS seat
-    # only, with its forced command; a certificate principal is honored by every sshd trusting the
-    # authority. nix-darwin writes the lines to /etc/ssh/nix_authorized_keys.d/<user>, which the group-keys
-    # AuthorizedKeysCommand reads: a command, because sshd does not read that store symlink as a file.
-    users.users.${userName}.openssh.authorizedKeys.keys = map (
-      line: "${config.ndh.sshfs.authorizedOptions} ${line}"
-    ) config.ndh.sshfs.guestKeyLines;
 
     # Server policy wiring
     opensshPolicy = {
@@ -127,7 +92,7 @@ in
       # Force IPv4 only for SSH server; expose the SFTP subsystem explicitly.
       # Our canonical /etc/ssh/sshd_config is a bare `Include …` (baseSshdConfigText),
       # which drops macOS's default `Subsystem sftp` line — without re-adding it here
-      # sshd answers exec but resets every SFTP channel, so sshfs (SFTP-based) fails.
+      # sshd answers exec but resets every SFTP channel.
       # No PAM (the operator's decision, 2026-10-18): authentication is by key or certificate only, and
       # AllowUsers is the list of who logs in; nix-darwin manages no sshd PAM stack, and with PAM macOS's
       # Remote Login limit refused nix-store on one seat while the other ran without it.

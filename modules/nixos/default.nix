@@ -149,7 +149,6 @@ let
     ./avahi.nix
     ./chrony-vz-clock.nix
     ./code-server.nix
-    ./sshfs-mounts.nix
     ./incus.nix
     ./baremetal-segment.nix
     ./incus-cluster.nix
