@@ -430,6 +430,10 @@ in
           # Force IPv4 only for NFS server (disable IPv6)
           nfs.server.nfsv4.tcp6 = 0
           nfs.server.nfsv3.tcp6 = 0
+          # Allow clients using non-reserved ports (noresvport) to avoid
+          # FIN-WAIT-2 port exhaustion on the NFS client side.
+          nfs.server.require_resv_port = 0
+          nfs.server.mount.require_resv_port = 0
         '';
         description = "Extra nfs.conf lines to append verbatim.";
       };

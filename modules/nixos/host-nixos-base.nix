@@ -1,6 +1,6 @@
 # Common NixOS host base: the mechanical, host-name-parameterised blocks shared
 # by the NixOS guests of bioskop and nikopol (sops age bootstrap, attic cache,
-# LLM gateway, NFS/sshfs mounts, bringup observe, omo package, ...).
+# LLM gateway, NFS mounts, bringup observe, omo package, ...).
 #
 # Host-specific concerns (mcp browser forward / on-demand tunnels, loopback
 # forward, ssh-lan override, store freeze toggle, dns-authoritative) stay in
@@ -16,6 +16,14 @@ with lib;
 let
   cfg = config.ndh.hostNixosBase;
   hostName = cfg.hostName;
+  nfsOptions = [
+    "noauto"
+    "noresvport"
+    "nconnect=4"
+    "x-systemd.automount"
+    "x-systemd.idle-timeout=60"
+    "x-systemd.mount-timeout=30s"
+  ];
 in
 {
   options.ndh.hostNixosBase = {
@@ -37,12 +45,6 @@ in
       type = types.nullOr types.str;
       default = "http://darwin.${hostName}:8000";
       description = "URL of the Darwin peer's llama-swap instance.";
-    };
-
-    sshfsRemoteHost = mkOption {
-      type = types.str;
-      default = "${hostName}.local";
-      description = "SSH host name used by sshfs mounts.";
     };
 
     enableStoreFreeze = mkOption {
@@ -105,39 +107,13 @@ in
     fileSystems."/srv/darwin/git-worktree-store" = {
       device = "darwin.${hostName}:/Volumes/git-worktree-store";
       fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=30s"
-      ];
+      options = nfsOptions;
     };
 
     fileSystems."/srv/darwin/git-bare-store" = {
       device = "darwin.${hostName}:/Volumes/git-bare-store";
       fsType = "nfs";
-      options = [
-        "x-systemd.automount"
-        "noauto"
-        "x-systemd.idle-timeout=60"
-        "x-systemd.mount-timeout=30s"
-      ];
-    };
-
-    services.sshfsMounts = {
-      enable = true;
-      remoteHost = cfg.sshfsRemoteHost;
-      remoteUser = "nxmatic";
-      mounts = [
-        {
-          remotePath = "/Volumes/git-worktree-store";
-          localPath = "/srv/darwin/.sshfs/git-worktree-store";
-        }
-        {
-          remotePath = "/Volumes/git-bare-store";
-          localPath = "/srv/darwin/.sshfs/git-bare-store";
-        }
-      ];
+      options = nfsOptions;
     };
 
     ndh.storeFreeze.enable = cfg.enableStoreFreeze;
