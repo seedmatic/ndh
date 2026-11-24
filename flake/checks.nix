@@ -1,0 +1,3018 @@
+{
+  self,
+  pkgsFor,
+  pkgsForDarwin,
+  pkgsForLinux,
+  ceremonyVm,
+  catalogData,
+  inventoryData,
+  hostCatalog,
+  inputs,
+  mkNdhNixBashTrampoline,
+  mkNdhStoreApiFor,
+  nixpkgs,
+  atticEnabledGuests,
+  ndhNixBashTrampolineDarwin,
+  ndhNixBashTrampolineLinux,
+  onDemandChecks,
+  canaryProvenWith,
+}:
+system:
+let
+  lib = nixpkgs.lib;
+  pkgs = pkgsFor { inherit system; };
+  # Names no fleet machine answers to (roles × keys S3a): the corporate bare-metal, a home-LAN
+  # device, the bring-up guest, a stranger. The host authority must not vouch for them.
+  outsideFleet = [
+    "vzhost.nikopol"
+    "router.lan"
+    "nerd-nixos"
+    "example.com"
+  ];
+  # What each client resolves StrictHostKeyChecking to: the fleet's names and the aliases to them
+  # strict, the wildcards that were strict before S3a still strict, every other name as before.
+  strictness =
+    value:
+    map (target: {
+      inherit target value;
+      option = "stricthostkeychecking";
+    });
+  # The fleet's names are trusted through the authority only: no raw key pinned, none learned.
+  certsOnly = nixpkgs.lib.concatMap (target: [
+    {
+      inherit target;
+      option = "userknownhostsfile";
+      value = "/dev/null";
+    }
+    {
+      inherit target;
+      option = "updatehostkeys";
+      value = "false";
+    }
+  ]);
+  nixStoreAliases = {
+    bioskop = [ "nix-store.nikopol" ];
+    nikopol = [ "nix-store.bioskop" ];
+    # The guests only receive: no nix-store alias of their own.
+    bioskop-nixos = [ ];
+    nikopol-nixos = [ ];
+  };
+in
+{
+  ssh-keys-bats = import ../modules/.common.d/ssh-keys.d/tests/package.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  ssh-keys-renew-bats = import ../modules/.common.d/ssh-keys-renew.d/tests/package.nix {
+    inherit pkgs;
+  };
+  ssh-keys-certify-bats = import ../modules/.common.d/ssh-keys-certify.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # .sops.yaml's recipients = keys.yaml's recorded recipients + the operator + the interim ones still needed.
+  sops-recipients = import ../modules/.common.d/keys-yaml.d/tests/sops-recipients.nix {
+    inherit pkgs;
+    sopsYaml = ../.sops.yaml;
+    keysJson = ../modules/home-manager/ssh.d/keys.json;
+  };
+  keys-yaml-hidden-slots = import ../modules/.common.d/keys-yaml.d/tests/hidden-slots.nix {
+    inherit pkgs;
+    inherit (nixpkgs) lib;
+    keysYamlModule = ../modules/.common.d/keys-yaml.nix;
+    splitExp = ../modules/home-manager/ssh-key.d/ssh-extract-keys.split-exp.yq;
+    enrich = ../modules/.common.d/ssh-keys.d/ssh-enrich-keys-yaml.sh;
+    krl = ../modules/.common.d/keys-yaml.d/krl.sh;
+    certify = ../modules/.common.d/ssh-keys-certify.d/ssh-keys-certify.sh;
+    renew = ../modules/.common.d/ssh-keys-renew.d/ssh-keys-renew.sh;
+  };
+  # rdp-host retired (2026-10-29): every catalog machine serves its own host key, and a configuration that is no
+  # catalog machine (the generic runtime layer, the bringup alias) serves only the key NixOS generates at its first
+  # boot, so no configuration bakes a private host key or still names rdp-host.
+  hosts-serve-their-own-key =
+    let
+      lib = nixpkgs.lib;
+      catalog = map (m: m.name) (import ../catalog/machines.nix);
+      configOf =
+        name:
+        if self.nixosConfigurations ? ${name} then
+          self.nixosConfigurations.${name}.config
+        else
+          self.darwinConfigurations.${name}.config;
+      notOwn = lib.filter (name: !(configOf name).ndh.hostKey.own) catalog;
+      generic = [
+        "nerd-runtime"
+        "nerd-nixos"
+      ];
+      baked =
+        name:
+        lib.filter (k: !(lib.hasPrefix "/etc/ssh/ssh_host_" k)) (
+          self.nixosConfigurations.${name}.config.opensshPolicy.hostKeys
+          ++ map (k: k.path) self.nixosConfigurations.${name}.config.services.openssh.hostKeys
+        );
+      namesRdpHost =
+        name:
+        lib.any (k: lib.hasInfix "rdp-host" k) (
+          self.nixosConfigurations.${name}.config.opensshPolicy.hostKeys
+          ++ [ (toString self.nixosConfigurations.${name}.config.services.openssh.settings.HostKey or "") ]
+        );
+    in
+    assert lib.assertMsg (
+      notOwn == [ ]
+    ) "hosts-serve-their-own-key: catalog machines not on their own host key: ${toString notOwn}";
+    assert lib.assertMsg (lib.all (n: baked n == [ ] && !(namesRdpHost n)) generic)
+      "hosts-serve-their-own-key: a generic configuration bakes a host key: ${builtins.toJSON (map baked generic)}";
+    pkgs.runCommand "hosts-serve-their-own-key" { } "touch $out";
+  # The schema names the machines whose host keys carry the frame's slot fields: exactly the catalog's.
+  keys-schema-machines =
+    let
+      lib = nixpkgs.lib;
+      schema = builtins.readFile ../modules/home-manager/ssh.d/keys.schema.yaml;
+      machines = lib.sort lib.lessThan (map (m: m.name) (import ../catalog/machines.nix));
+      pattern = "\"^(${lib.concatStringsSep "|" machines})$\":";
+    in
+    assert lib.assertMsg (lib.hasInfix pattern schema)
+      "keys-schema-machines: keys.schema.yaml's machine-key pattern is not the catalog's machines (${lib.concatStringsSep " " machines})";
+    pkgs.runCommand "keys-schema-machines" { } "touch $out";
+  keys-yaml-schema = import ../modules/.common.d/keys-yaml.d/tests/keys-yaml-schema.nix {
+    inherit pkgs;
+    keysYaml = ../modules/home-manager/ssh.d/keys.yaml;
+    keysSchema = ../modules/home-manager/ssh.d/keys.schema.yaml;
+  };
+  keys-json-fresh = import ../modules/.common.d/keys-yaml.d/tests/keys-json-fresh.nix {
+    inherit pkgs;
+    keysYaml = ../modules/home-manager/ssh.d/keys.yaml;
+    keysJson = ../modules/home-manager/ssh.d/keys.json;
+  };
+  krl-reproducible = import ../modules/.common.d/keys-yaml.d/tests/krl-reproducible.nix {
+    inherit pkgs;
+    keysJson = ../modules/home-manager/ssh.d/keys.json;
+  };
+  keys-slot-age = import ../modules/.common.d/keys-yaml.d/tests/keys-slot-age.nix {
+    inherit pkgs;
+    keysJson = ../modules/home-manager/ssh.d/keys.json;
+    sopsYaml = ../.sops.yaml;
+  };
+  ssh-keys-certify-host-names = import ../modules/.common.d/ssh-keys-certify.d/tests/host-names.nix {
+    inherit pkgs;
+  };
+  # The fleet's own entries too: a machine reads them only once its read side is on.
+  private-caches-schema = builtins.deepSeq catalogData.privateCaches.entries (
+    import ../catalog/private-caches.d/tests/checks.nix { inherit pkgs; }
+  );
+  # Each recorded private cache key is the one keys-reconcile verified: a hand edit of private-caches.json
+  # has no statement its guest's recorded host key signed. A forged entry must be caught.
+  private-caches-recorded =
+    let
+      lib = nixpkgs.lib;
+      keys = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys;
+      roles = import ../modules/.common.d/host-key.d/slots.nix { inherit lib; };
+      signers = lib.listToAttrs (
+        lib.concatMap
+          (
+            c:
+            let
+              a = c.config.ndh.atticCache;
+              machine = c.config.networking.hostName;
+              key = keys.${machine} or { };
+            in
+            lib.optional a.enable {
+              name = a.metalspace;
+              value = {
+                inherit machine;
+                public = "${key.type or "ssh-ed25519"} ${(roles key).current.public or ""}";
+              };
+            }
+          )
+          (
+            map (m: self.nixosConfigurations.${m.name}) (lib.filter (m: m.kind == "nixos") catalogData.machines)
+          )
+      );
+    in
+    import ../catalog/private-caches.d/tests/recorded.nix {
+      inherit pkgs signers;
+      entries = catalogData.privateCaches.entries;
+      # A hand-added entry, with no statement any guest signed.
+      forged = catalogData.privateCaches.entries // {
+        bioskop = {
+          publicKey = "seedmatic-bioskop-attic-1:${lib.strings.replicate 43 "A"}=";
+        };
+      };
+      statements = ../catalog/private-caches.d/statements;
+    };
+  # An attic token is sealed only to its machine's OWN SERVING public (slots.nix `current`), never to a pending
+  # slot's, which keys-reconcile has not verified yet (🛡️, 2026-10-25), nor to its seat's (2026-10-30: a guest
+  # sealed to its seat's key could never open its tokens). A mutant taking the newest slot must be caught.
+  attic-token-targets-serving-slot =
+    let
+      lib = nixpkgs.lib;
+      netplan.baremetal.m1 = {
+        atticFqdn = "attic.m1";
+        nixosHostname = "m1-nixos";
+      };
+      slotsOf = serving: {
+        type = "ssh-ed25519";
+        slots = {
+          "26-10-17" = {
+            state = "serving";
+            public = serving;
+          };
+          "99-01-01" = {
+            state = "pending";
+            public = "AAAAPENDING";
+          };
+        };
+      };
+      keys = {
+        m1 = slotsOf "AAAASEAT";
+        m1-nixos = slotsOf "AAAAGUEST";
+      };
+      targets = import ../modules/.common.d/attic-tokens.d/targets.nix { inherit lib keys netplan; };
+      # The mutant: the newest slot, as tokenTargets once took it.
+      newest = map (t: t // { publicKey = "ssh-ed25519 AAAAPENDING"; }) targets;
+      own = {
+        m1 = "ssh-ed25519 AAAASEAT";
+        m1-nixos = "ssh-ed25519 AAAAGUEST";
+      };
+      servedOnly = ts: lib.all (t: t.publicKey == own.${t.machine}) ts;
+    in
+    assert lib.assertMsg (
+      map (t: t.machine) targets == [
+        "m1"
+        "m1-nixos"
+      ]
+    ) "attic-token-targets-serving-slot: not the seat's two machines";
+    assert lib.assertMsg (servedOnly targets)
+      "attic-token-targets-serving-slot: a token sealed to another key than its machine's own serving one";
+    assert lib.assertMsg (
+      !(servedOnly newest)
+    ) "attic-token-targets-serving-slot: the newest-slot mutant was not caught";
+    assert lib.assertMsg (lib.all (
+      t: builtins.match "[0-9a-f]{64}" t.dir != null
+    ) targets) "attic-token-targets-serving-slot: a served directory is not a sha256";
+    pkgs.runCommand "attic-token-targets-serving-slot" { } "touch $out";
+  # The NixOS guests share one Incus cluster, where an instance name is unique in its project: two guests
+  # declaring the same container name would make one guest's converge stop the other's (attic, 2026-10-24).
+  # So no instance name is declared by two guests; the attic containers are named per metalspace. A mutant
+  # naming both `attic` must be caught.
+  # Every declared endpoint states its exposure, and its scheme follows: an endpoint the lab alone consumes is
+  # plain unless TLS is its protocol (`inherentTls`); one the internet reaches is encrypted (docs/security-handling-c4.adoc,
+  # _Operational guidance_). The mutants: an internal endpoint on https, and a public forward in clear.
+  endpoint-exposure =
+    let
+      lib = nixpkgs.lib;
+      plain = [
+        "http"
+        "tcp"
+        "vnc"
+      ];
+      encrypted = [
+        "https"
+        "ssh"
+      ];
+      # name → { exposure, inherentTls, scheme }
+      endpoints =
+        np: tn:
+        lib.mapAttrs' (n: svc: {
+          name = "tailnet.services.${n}";
+          value = {
+            exposure = svc.exposure or null;
+            inherentTls = svc.inherentTls or false;
+            scheme = if svc.inherentTls or false then "https" else "tcp";
+          };
+        }) (np.tailnet.services or { })
+        // lib.mapAttrs' (port: f: {
+          name = "wan.portForwards.${port}";
+          value = {
+            exposure = "public";
+            inherentTls = false;
+            scheme = f.scheme or null;
+          };
+        }) (np.wan.portForwards or { })
+        // lib.mapAttrs' (ms: bm: {
+          name = "baremetal.${ms}.atticEndpoint";
+          value = bm.atticEndpoint // {
+            inherentTls = false;
+          };
+        }) np.baremetal
+        // {
+          "tailnet.headscale" = {
+            inherit (tn.headscale) exposure;
+            inherentTls = tn.headscale.inherentTls or false;
+            scheme = lib.head (lib.splitString ":" tn.headscale.aliasUrl);
+          };
+        };
+      wrong =
+        eps:
+        lib.attrNames (
+          lib.filterAttrs (
+            _: e:
+            !(lib.elem e.exposure [
+              "internal"
+              "public"
+            ])
+            || (e.exposure == "internal" && !e.inherentTls && !(lib.elem e.scheme plain))
+            || (e.exposure == "public" && !(lib.elem e.scheme encrypted))
+          ) eps
+        );
+      np = catalogData.netplan;
+      tn = import ../catalog/tailnet;
+      today = endpoints np tn;
+      internalOnTls = endpoints (
+        np
+        // {
+          baremetal = lib.mapAttrs (
+            _: bm:
+            bm
+            // {
+              atticEndpoint = bm.atticEndpoint // {
+                scheme = "https";
+              };
+            }
+          ) np.baremetal;
+        }
+      ) tn;
+      publicInClear = endpoints (
+        np
+        // {
+          wan = np.wan // {
+            portForwards = np.wan.portForwards // {
+              "8080" = {
+                hostName = "bioskop";
+                internalPort = 8080;
+                protocol = "tcp";
+                scheme = "http";
+              };
+            };
+          };
+        }
+      ) tn;
+    in
+    assert lib.assertMsg (wrong today == [ ])
+      "endpoint-exposure: an endpoint whose scheme does not follow its exposure, or with none: ${toString (wrong today)}";
+    assert lib.assertMsg (
+      wrong internalOnTls != [ ]
+    ) "endpoint-exposure: the mutant serving an internal attic on https was not caught";
+    assert lib.assertMsg (
+      wrong publicInClear == [ "wan.portForwards.8080" ]
+    ) "endpoint-exposure: the mutant forwarding a public port in clear was not caught";
+    pkgs.runCommand "endpoint-exposure" { } "touch $out";
+  incus-instance-names-cluster-unique =
+    let
+      lib = nixpkgs.lib;
+      guests = map (m: self.nixosConfigurations.${m.name}) (
+        lib.filter (m: m.kind == "nixos") catalogData.machines
+      );
+      # Each guest's declared instance names: one list per guest.
+      declared = map (c: lib.attrNames c.config.ndh.incusNixosContainers.instances) guests;
+      twice =
+        lists:
+        let
+          all = lib.concatLists lists;
+        in
+        lib.unique (lib.filter (n: lib.count (x: x == n) all > 1) all);
+      # The mutant: every guest names its cache container `attic`, as before the fix.
+      mutant = map (map (n: if lib.hasPrefix "attic-" n then "attic" else n)) declared;
+    in
+    assert lib.assertMsg (twice declared == [ ])
+      "incus-instance-names-cluster-unique: declared by two guests of the cluster: ${toString (twice declared)}";
+    assert lib.assertMsg (
+      twice mutant == [ "attic" ]
+    ) "incus-instance-names-cluster-unique: a name declared on both guests was not caught";
+    assert lib.assertMsg (lib.all
+      (c: c.config.ndh.atticCache.instanceName == "attic-${c.config.ndh.atticCache.metalspace}")
+      (lib.filter (c: c.config.ndh.atticCache.enable) guests)
+    ) "incus-instance-names-cluster-unique: an attic container is not named after its metalspace";
+    pkgs.runCommand "incus-instance-names-cluster-unique" { } "touch $out";
+  # A store unit that leaves the configuration (an instance renamed or removed) would be stopped by the switch
+  # (switch-to-configuration-ng's X-StopOnRemoval, default true), its ExecStop unmounting the store of a
+  # container still running. On every guest, every instance's store unit says it is not to be.
+  incus-container-store-survives-removal =
+    let
+      lib = nixpkgs.lib;
+      guests = lib.filterAttrs (
+        _: c: (c.config.ndh.incusNixosContainers.instances or { }) != { }
+      ) self.nixosConfigurations;
+      stopped =
+        configs:
+        lib.concatLists (
+          lib.mapAttrsToList (
+            host: c:
+            map (n: "${host}/${n}") (
+              lib.filter (
+                n:
+                (c.config.systemd.services."ndh-incus-container-store-${n}".unitConfig."X-StopOnRemoval" or true)
+                != false
+              ) (lib.attrNames c.config.ndh.incusNixosContainers.instances)
+            )
+          ) configs
+        );
+      mutant = lib.mapAttrs (
+        _: c:
+        c.extendModules {
+          modules = [
+            (
+              { lib, config, ... }:
+              {
+                systemd.services = lib.mapAttrs' (
+                  n: _:
+                  lib.nameValuePair "ndh-incus-container-store-${n}" {
+                    unitConfig."X-StopOnRemoval" = lib.mkForce true;
+                  }
+                ) config.ndh.incusNixosContainers.instances;
+              }
+            )
+          ];
+        }
+      ) guests;
+    in
+    assert lib.assertMsg (
+      guests != { }
+    ) "incus-container-store-survives-removal: no guest declares a container";
+    assert lib.assertMsg (stopped guests == [ ])
+      "incus-container-store-survives-removal: stopped by the switch on removal: ${toString (stopped guests)}";
+    assert lib.assertMsg (
+      stopped mutant != [ ]
+    ) "incus-container-store-survives-removal: the mutant stopped on removal was not caught";
+    pkgs.runCommand "incus-container-store-survives-removal" { } "touch $out";
+  # The cache container's nginx.conf passes `nginx -t`. nixpkgs' build-time validation (gixy) does not parse it
+  # as nginx does, and nginx never starts before a leaf is recorded, so an unquoted `{64}` in a location regex
+  # stayed hidden until the first leaf (2026-10-29: `unknown directive "64}/…"`, :443 closed on both caches).
+  # On aarch64-linux the real nginx parses the real file; where the guests' files cannot be built, the
+  # declaration: a location regex holding `{` must be quoted.
+  attic-nginx-config-parses =
+    let
+      lib = nixpkgs.lib;
+      guests = atticEnabledGuests;
+      nginxOf =
+        c:
+        (import (c.pkgs.path + "/nixos/lib/eval-config.nix") {
+          system = null;
+          modules = [
+            {
+              nixpkgs.pkgs = c.pkgs;
+              boot.isContainer = true;
+              system.stateVersion = c.config.system.stateVersion;
+            }
+          ]
+          ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
+        }).config;
+      unquotedRegex =
+        c:
+        lib.filter
+          (l: lib.hasPrefix "~" l && lib.hasInfix "{" l && builtins.match "~\\*? *\".*\"" l == null)
+          (
+            lib.concatMap (v: lib.attrNames v.locations) (
+              lib.attrValues (nginxOf c).services.nginx.virtualHosts
+            )
+          );
+      bad = lib.filterAttrs (_: c: unquotedRegex c != [ ]) guests;
+      line =
+        name: c:
+        let
+          # builtins.match drops the string context: the file is put back as an input by the ExecStart it came from.
+          exec = (nginxOf c).systemd.services.nginx.serviceConfig.ExecStart;
+          conf = lib.head (builtins.match ".*-c '([^']+)'.*" exec);
+        in
+        builtins.appendContext "${name} ${conf}" (builtins.getContext exec);
+    in
+    assert lib.assertMsg (guests != { }) "attic-nginx-config-parses: no guest runs the attic container";
+    assert lib.assertMsg (bad == { })
+      "attic-nginx-config-parses: an unquoted location regex holding `{` (nginx reads it as a block) on: ${toString (lib.attrNames bad)}";
+    if system != "aarch64-linux" then
+      pkgs.runCommand "attic-nginx-config-parses" { } "touch $out"
+    else
+      pkgs.runCommand "attic-nginx-config-parses"
+        {
+          nativeBuildInputs = [ pkgs.nginx ];
+          passAsFile = [ "confs" ];
+          confs = lib.concatLines (lib.mapAttrsToList line guests);
+        }
+        ''
+          rc=0
+          while read -r name conf; do
+            # Runtime paths the sandbox has not: the pid, the logs and the temp dirs, and the user nginx drops to.
+            sed -e "s|/run/nginx/|$PWD/|g" -e "s|/var/log/nginx/|$PWD/|g" -e "s|/var/cache/nginx/|$PWD/|g" \
+              -e '/^\s*user /d' -e "s|^http {|http { access_log $PWD/access.log;|" \
+              -e 's/^\(\s*listen \)[0-9.]*:[0-9]*/\1127.0.0.1:18080/' "$conf" >"$name.conf"
+            # -e and access_log: nginx opens its compiled-in logs (under /var/log/nginx) when no path is set. The
+            # listen moves to loopback: `nginx -t` binds, and the fabric address is not the sandbox's.
+            if ! nginx -t -q -p "$PWD" -e "$PWD/error.log" -c "$PWD/$name.conf"; then
+              echo "$name: the cache container's nginx.conf does not parse" >&2
+              rc=1
+            fi
+          done <"$confsPath"
+          [ "$rc" = 0 ] && touch $out
+          exit "$rc"
+        '';
+  # A guest's token pull waits for the names it asks for: its own dnsmasq serves the attic zones, and the pull
+  # retries a cache not yet answering. 2026-10-30: at boot it ran before DNS (« Could not resolve host:
+  # attic.bioskop »), failed, and waited for the next day's timer.
+  attic-tokens-after-dns =
+    let
+      lib = nixpkgs.lib;
+      guests = lib.filterAttrs (_: c: c.config.ndh.atticClient.metalspace != null) (atticEnabledGuests);
+      gaps =
+        c:
+        let
+          u = c.config.systemd.services.io-seedmatic-ndh-attic-tokens;
+        in
+        lib.filter (x: x != null) [
+          (if lib.elem "nss-lookup.target" u.after then null else "after nss-lookup.target")
+          (if lib.elem "dnsmasq.service" u.after then null else "after dnsmasq.service")
+          (if (u.serviceConfig.Restart or "no") == "on-failure" then null else "Restart=on-failure")
+        ];
+      bad = lib.filterAttrs (_: c: gaps c != [ ]) guests;
+    in
+    assert lib.assertMsg (guests != { }) "attic-tokens-after-dns: no guest pulls tokens";
+    assert lib.assertMsg (bad == { })
+      "attic-tokens-after-dns: ${
+        lib.concatStringsSep "; " (lib.mapAttrsToList (n: c: "${n} lacks ${toString (gaps c)}") bad)
+      }";
+    pkgs.runCommand "attic-tokens-after-dns" { } "touch $out";
+  # The mint reads one target per line, and the unit it really runs hands it exactly one line per target.
+  # 2026-10-30: TARGETS was joined with a literal `\n` in Environment=, which systemd keeps as two characters,
+  # so the mint got one line, read the next machine's name as a key, and refused every target.
+  attic-token-targets-one-per-line =
+    let
+      lib = nixpkgs.lib;
+      guests = atticEnabledGuests;
+      mint =
+        c:
+        (import (c.pkgs.path + "/nixos/lib/eval-config.nix") {
+          system = null;
+          modules = [
+            {
+              nixpkgs.pkgs = c.pkgs;
+              boot.isContainer = true;
+              system.stateVersion = c.config.system.stateVersion;
+            }
+          ]
+          ++ c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.modules;
+        }).config.systemd.services.io-seedmatic-ndh-attic-token-mint.serviceConfig;
+      # The lines the mint reads: its targets file's when it has one, else TARGETS as Environment= keeps it.
+      lines =
+        c:
+        let
+          env = (mint c).Environment or [ ];
+          file = lib.findFirst (lib.hasPrefix "TARGETS_FILE=") null env;
+          inline = lib.findFirst (lib.hasPrefix "TARGETS=") "" env;
+          text =
+            if file != null then
+              builtins.readFile (lib.removePrefix "TARGETS_FILE=" file)
+            else
+              lib.removePrefix "TARGETS=" inline;
+        in
+        lib.filter (l: l != "") (lib.splitString "\n" text);
+      wrong = lib.filterAttrs (
+        _: c: builtins.length (lines c) != builtins.length c.config.ndh.atticCache.tokenTargets
+      ) guests;
+    in
+    assert lib.assertMsg (
+      guests != { }
+    ) "attic-token-targets-one-per-line: no guest runs the attic container";
+    assert lib.assertMsg (wrong == { })
+      "attic-token-targets-one-per-line: the mint does not get one line per target on: ${toString (lib.attrNames wrong)}";
+    pkgs.runCommand "attic-token-targets-one-per-line" { } "touch $out";
+  # Each cache container names its generated key as privateCaches accepts it, on its own metalspace: else
+  # the operator's acceptance of the printed key would be refused (attic would name it after the cache).
+  attic-cache-key-name =
+    let
+      lib = nixpkgs.lib;
+      guests = atticEnabledGuests;
+      named =
+        _: c:
+        let
+          a = c.config.ndh.atticCache;
+        in
+        a.metalspace != null
+        && builtins.match (catalogData.privateCaches.keyNamePattern a.metalspace) a.keyName != null;
+      wrong = lib.attrNames (lib.filterAttrs (n: c: !named n c) guests);
+    in
+    assert lib.assertMsg (
+      guests != { }
+    ) "attic-cache-key-name: no configuration enables a cache container";
+    assert lib.assertMsg (wrong == [ ])
+      "attic-cache-key-name: a cache key not named seedmatic-<metalspace>-attic-<n> on: ${toString wrong}";
+    pkgs.runCommand "attic-cache-key-name" { } "touch $out";
+  # The attic container carries the trampoline's bringup profile (batch 2, precondition A): a bare
+  # container has none, and the strict trampoline refuses there. On every host that runs it, the instance
+  # declares the host's runtime package at the profile dir, which `deliver` sets host side (the container's
+  # own activation cannot: unprivileged, its root cannot write in the host-owned /nix bind, so a link made
+  # there was a silent no-op). The link is to a HOST store path, so that path must be in the NixOS
+  # guest's own closure, or it dangles. That deliver sets every declared profile is proven by
+  # incus-nixos-container-bats; the mutant drops the declaration and must fail.
+  # ndh-incus-container runs under the trampoline, which puts the bringup profile FIRST on PATH (measured): the
+  # incus it calls is the profile's, and it must be the daemon's own, never a client built apart that could
+  # drift from it (❄️, 2026-10-22). On every host with an Incus container, the profile's incus is the
+  # system's file. The guests are aarch64-linux; on darwin the check is the host list alone.
+  incus-container-cli-incus-is-the-systems =
+    let
+      lib = nixpkgs.lib;
+      hosts = lib.filterAttrs (
+        _: c: (c.config.ndh.incusNixosContainers.instances or { }) != { }
+      ) self.nixosConfigurations;
+      line =
+        name: c:
+        "${name} ${c.config.ndh.bringupRuntime.runtimePackage} ${c.config.virtualisation.incus.package}";
+    in
+    assert lib.assertMsg (
+      hosts != { }
+    ) "incus-container-cli-incus-is-the-systems: no host declares an Incus container";
+    if system != "aarch64-linux" then
+      pkgs.runCommand "incus-container-cli-incus-is-the-systems" { } "touch $out"
+    else
+      pkgs.runCommand "incus-container-cli-incus-is-the-systems"
+        {
+          passAsFile = [ "hosts" ];
+          hosts = lib.concatLines (lib.mapAttrsToList line hosts);
+        }
+        ''
+          rc=0
+          while read -r name profile incus; do
+            if [ "$(readlink -f "$profile/bin/incus")" != "$(readlink -f "$incus/bin/incus")" ]; then
+              echo "$name: the bringup profile's incus $(readlink -f "$profile/bin/incus") is not the system's $(readlink -f "$incus/bin/incus")" >&2
+              rc=1
+              continue
+            fi
+            echo "$name: ndh-incus-container's incus is the system's"
+          done <"$hostsPath"
+          [ "$rc" = 0 ] && touch $out
+          exit "$rc"
+        '';
+  attic-container-bringup-profile =
+    let
+      lib = nixpkgs.lib;
+      hosts = atticEnabledGuests;
+      verdict =
+        configs:
+        let
+          declares =
+            _: c:
+            let
+              r = c.config.ndh.bringupRuntime;
+              profiles =
+                c.config.ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.profiles;
+            in
+            (profiles.${r.profileDir} or null) == r.runtimePackage;
+        in
+        lib.attrNames (lib.filterAttrs (n: c: !declares n c) configs);
+      mutant = lib.mapAttrs (
+        _: c:
+        c.extendModules {
+          modules = [
+            {
+              ndh.incusNixosContainers.instances.${c.config.ndh.atticCache.instanceName}.profiles =
+                lib.mkForce
+                  { };
+            }
+          ];
+        }
+      ) hosts;
+      missing = verdict hosts;
+      line = name: c: "${name} ${c.config.ndh.bringupRuntime.runtimePackage}";
+    in
+    assert lib.assertMsg (
+      hosts != { }
+    ) "attic-container-bringup-profile: no host runs the attic container";
+    assert lib.assertMsg (missing == [ ])
+      "attic-container-bringup-profile: the attic instance does not declare the bringup runtime at its profile dir on: ${toString missing}";
+    assert lib.assertMsg (
+      verdict mutant == lib.attrNames hosts
+    ) "attic-container-bringup-profile: the mutant without the declared profile passed";
+    # The closure half runs where the guests are built: on darwin the sandbox profile lists every input path, and
+    # one NixOS closure already exceeds its limit ("data object length 122741 exceeds maximum (65535)",
+    # measured), so there the check is the declaration and its mutant only.
+    if system != "aarch64-linux" then
+      pkgs.runCommand "attic-container-bringup-profile" { } "touch $out"
+    else
+      pkgs.runCommand "attic-container-bringup-profile"
+        {
+          passAsFile = [ "hosts" ];
+          hosts = lib.concatLines (lib.mapAttrsToList line hosts);
+          # Each host guest's own system closure, so the check can read it in the sandbox.
+          exportReferencesGraph = lib.concatLists (
+            lib.imap0 (i: c: [
+              "closure-${toString i}"
+              c.config.system.build.toplevel
+            ]) (lib.attrValues hosts)
+          );
+        }
+        ''
+          rc=0
+          while read -r name runtime; do
+            # grep reads the graphs itself: `cat … | grep -q` fails under pipefail, cat killed by SIGPIPE
+            # once grep has found the line.
+            if ! grep -qxF -- "$runtime" closure-*; then
+              echo "$name: the guest's closure lacks the bringup runtime $runtime the attic profile links to" >&2
+              rc=1
+              continue
+            fi
+            echo "$name: the attic instance declares the bringup profile, and the guest's closure holds it"
+          done <"$hostsPath"
+          [ "$rc" = 0 ] && touch $out
+          exit "$rc"
+        '';
+  ssh-known-hosts-command-bats = import ../modules/home-manager/ssh-keys.d/tests/package.nix {
+    inherit pkgs;
+  };
+  cache-signing-key-rotate-bats =
+    import ../modules/.common.d/cache-signing-key-rotate.d/tests/package.nix
+      {
+        inherit pkgs;
+      };
+  restart-on-secret-change-bats =
+    import ../modules/darwin/restart-on-secret-change.d/tests/package.nix
+      {
+        inherit pkgs;
+      };
+  corp-egress-anchor-bats = import ../modules/darwin/corp-egress-guard.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # The seat's v4 anchor toward the corporate bare-metal against the corpus, and each mutant refused.
+  corp-egress-corpus = import ../modules/darwin/corp-egress-guard.d/tests/corpus.nix {
+    inherit pkgs;
+    inherit (catalogData) netplan;
+  };
+  # The packaged program, built for this check's system: a darwin configuration's copy cannot run on linux.
+  flox-config-bats = import ../modules/home-manager/flox-config.d/tests/package.nix {
+    inherit pkgs;
+    floxConfig = import ../modules/home-manager/flox-config.d/package.nix { inherit pkgs; };
+  };
+  # No nix file here reads a derivation's output at evaluation (import-from-derivation).
+  no-ifd-readfile = import ../nix/no-ifd-readfile.nix {
+    inherit pkgs;
+    src = ../.;
+  };
+  # No nixConfig in this flake: no machine of ours takes one (nix-flake-commons' shared check).
+  no-nix-config = inputs.flake-commons.lib.noNixConfig pkgs ../flake.nix;
+  sops-age-bootstrap-bats = import ../modules/.common.d/sops.d/tests/package.nix { inherit pkgs; };
+  nix-signing-place-bats = import ../modules/.common.d/nix-signing.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # keys.schema.yaml keeps a nix signing public on host keys: the same slot passes on an ssh-host key and is
+  # refused on an ssh-user one (the mutant a mistaken record would write).
+  ssh-keys-schema-nix-signing =
+    pkgs.runCommand "ssh-keys-schema-nix-signing"
+      {
+        nativeBuildInputs = [
+          pkgs.check-jsonschema
+          pkgs.openssh
+          pkgs.yq-go
+        ];
+      }
+      ''
+        ssh-keygen -q -t ed25519 -N "" -C k -f k
+        doc() { # <usage>
+          B="$(cut -d' ' -f2 k.pub)" U="$1" N="seedmatic-x-1:$(printf 'A%.0s' $(seq 43))=" yq -n '
+            .authorities = {} | .keys.k.type = "ssh-ed25519" | .keys.k.usage = [strenv(U)] |
+            .keys.k.profiles = [] | .keys.k.slots."26-01-01".public = strenv(B) |
+            .keys.k.slots."26-01-01".nixSigning = strenv(N)' >"$1.yaml"
+        }
+        doc ssh-host
+        doc ssh-user
+        check-jsonschema --schemafile ${../modules/home-manager/ssh.d/keys.schema.yaml} ssh-host.yaml
+        if check-jsonschema --schemafile ${../modules/home-manager/ssh.d/keys.schema.yaml} ssh-user.yaml; then
+          echo "FAIL: a nixSigning on an ssh-user key passed the schema" >&2
+          exit 1
+        fi
+        touch $out
+      '';
+  # The fleet trusts every current slot's nixSigning and nothing else: a host key's two slots, never a slot
+  # without one or a non-host key, and a retired slot (deleted from keys.yaml) leaves the list with it. And
+  # every key a machine signs with is in every machine's trust.
+  # The signing path, which no real configuration takes before a public is recorded: a NixOS guest and an
+  # operator seat given one, as keys.yaml would. secret-key-files names exactly the placed file; NixOS's unit
+  # is wanted by and ordered before nix-daemon, never required by it (the mutant proves the predicate bites);
+  # darwin's step cannot abort the activation; both place scripts build, shellcheck included.
+  nix-signing-signs-path =
+    let
+      lib = nixpkgs.lib;
+      given = name: {
+        ndh.nixSigning.recorded = "${name}:${lib.concatStrings (lib.replicate 43 "A")}=";
+      };
+      nixos = self.nixosConfigurations.bioskop-nixos.extendModules {
+        modules = [ (given "seedmatic-bioskop-nixos-1") ];
+      };
+      darwin = self.darwinConfigurations.bioskop.extendModules {
+        modules = [ (given "seedmatic-bioskop-1") ];
+      };
+      mutant = nixos.extendModules {
+        modules = [
+          { systemd.services.io-seedmatic-ndh-nix-signing-key.requiredBy = [ "nix-daemon.service" ]; }
+        ];
+      };
+      placedOnly =
+        c: name:
+        c.ndh.nixSigning.signs
+        &&
+          lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files == [
+            "${c.ndh.nixSigning.dir}/${name}.sec"
+          ];
+      wantedNotRequired =
+        c:
+        let
+          unit = c.systemd.services.io-seedmatic-ndh-nix-signing-key;
+        in
+        lib.elem "nix-daemon.service" unit.wantedBy
+        && lib.elem "nix-daemon.service" unit.before
+        && !(lib.elem "nix-daemon.service" unit.requiredBy)
+        && !(lib.elem "io-seedmatic-ndh-nix-signing-key.service" (
+          c.systemd.services.nix-daemon.requires or [ ]
+        ));
+    in
+    assert lib.assertMsg (placedOnly nixos.config "seedmatic-bioskop-nixos-1")
+      "nix-signing: the guest's secret-key-files";
+    assert lib.assertMsg (placedOnly darwin.config "seedmatic-bioskop-1")
+      "nix-signing: the seat's secret-key-files";
+    assert lib.assertMsg (wantedNotRequired nixos.config)
+      "nix-signing: the unit must be wanted by and before nix-daemon, never required";
+    assert lib.assertMsg (
+      !(wantedNotRequired mutant.config)
+    ) "nix-signing: the requiredBy mutant passed the predicate";
+    assert lib.assertMsg
+      (lib.hasInfix (builtins.unsafeDiscardStringContext "if ! ${darwin.config.ndh.nixSigning.placeScript}/bin/ndh-nix-signing-key; then") (
+        builtins.unsafeDiscardStringContext darwin.config.system.activationScripts.postActivation.text
+      ))
+      "nix-signing: darwin's step must not abort the activation";
+    pkgs.runCommand "nix-signing-signs-path" {
+      scripts = [
+        nixos.config.ndh.nixSigning.placeScript
+        darwin.config.ndh.nixSigning.placeScript
+      ];
+    } "touch $out";
+  # ndh.hostKey.own is read from keys.yaml's slot state (roles × keys K5), never set: each fleet machine's value
+  # is exactly "its current host-key slot is serving", and a configuration that tries to set it fails.
+  host-key-own-is-serving =
+    let
+      lib = nixpkgs.lib;
+      roles = import ../modules/.common.d/host-key.d/slots.nix { inherit lib; };
+      machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
+      agrees =
+        c:
+        c.config.ndh.hostKey.own == ((roles c.config.ndh.hostKey.entry).current.state or "" == "serving");
+      forced =
+        builtins.tryEval
+          (self.darwinConfigurations.nikopol.extendModules {
+            modules = [ { ndh.hostKey.own = true; } ];
+          }).config.ndh.hostKey.own;
+    in
+    assert lib.assertMsg (lib.all agrees machines)
+      "host-key-own-is-serving: a machine's own differs from its slot state";
+    assert lib.assertMsg (
+      !forced.success
+    ) "host-key-own-is-serving: a configuration could set ndh.hostKey.own";
+    pkgs.runCommand "host-key-own-is-serving" { } "touch $out";
+  # A machine signs with exactly ONE key, never none: its own once it signs with it (ndh.nixSigning.signs), the
+  # shared fleet key before, whose private it then holds and no longer after. The fleet public stays trusted on
+  # every machine. A mutant giving a machine that signs both keys must be caught.
+  # A guest that serves its own born key decrypts with it (sops.age.sshKeyPaths), and has no age file: its
+  # sops-install-secrets must not require the age-file bootstrap, which can only fail there (bioskop-nixos,
+  # 2026-10-26: no secret deployed, the linux builder down). Every guest whose current slot is serving/host,
+  # and one still on its placed identity, which keeps the bootstrap. The served key stays required: sops-nix
+  # reads it before decrypting, and a decryption with no identity fails the unit (main.go:1406-1446).
+  sops-own-key-no-bootstrap-unit =
+    let
+      lib = nixpkgs.lib;
+      withSlot =
+        slot:
+        (self.nixosConfigurations.bioskop-nixos.extendModules {
+          modules = [ { ndh.hostKey.entry = lib.mkForce { slots."26-10-22" = slot; }; } ];
+        }).config;
+      own = withSlot {
+        state = "serving";
+        origin = "host";
+        public = "AAAAown";
+      };
+      placed = withSlot {
+        state = "serving";
+        origin = "keyring";
+        public = "AAAAplaced";
+      };
+      unit = c: "${c.ndh.sopsAgeKeyBootstrap.systemdUnitName}.service";
+      has = c: c.systemd.services ? ${c.ndh.sopsAgeKeyBootstrap.systemdUnitName};
+      install = c: c.systemd.services.sops-install-secrets;
+    in
+    assert lib.assertMsg (
+      own.sops.age.keyFile == null
+    ) "sops-own-key-no-bootstrap-unit: an own key still has an age file";
+    assert lib.assertMsg (
+      !(has own)
+    ) "sops-own-key-no-bootstrap-unit: an own key still gets the age-file bootstrap unit";
+    assert lib.assertMsg (
+      !(lib.elem (unit own) ((install own).requires ++ (install own).after))
+    ) "sops-own-key-no-bootstrap-unit: sops-install-secrets still requires the bootstrap on an own key";
+    assert lib.assertMsg (
+      own.sops.age.sshKeyPaths == [ own.ndh.hostKey.servedKeyFile ]
+    ) "sops-own-key-no-bootstrap-unit: an own key does not decrypt with the served key";
+    assert lib.assertMsg (
+      !(lib.any (r: lib.hasInfix "sops" r && lib.hasPrefix "d " r) own.systemd.tmpfiles.rules)
+    ) "sops-own-key-no-bootstrap-unit: an own key still creates the age file's directory";
+    assert lib.assertMsg (
+      has placed && lib.elem (unit placed) (install placed).requires
+    ) "sops-own-key-no-bootstrap-unit: a placed identity lost its bootstrap unit";
+    pkgs.runCommand "sops-own-key-no-bootstrap-unit" { } "touch $out";
+  nix-signing-one-key =
+    let
+      lib = nixpkgs.lib;
+      fleet = "seedmatic-fleet-1";
+      machines =
+        lib.mapAttrs (_: c: c.config) self.nixosConfigurations
+        // lib.mapAttrs (_: c: c.config) self.darwinConfigurations;
+      signsWith = c: c.nix.settings.secret-key-files;
+      holdsFleet = c: c.sops.secrets ? "${fleet}.key.bare";
+      ownKey = c: (c.ndh.nixSigning or { }).signs or false;
+      # On a machine signing with its own key, the compose step REMOVES the fleet private an earlier
+      # activation wrote: read in the script as built, not in an intention.
+      removesFleet =
+        c:
+        lib.elem fleet c.ndh.cacheTrust.retiredNames
+        && lib.hasInfix "rm -f /etc/nix/${fleet}.key" (
+          builtins.readFile "${c.ndh.cacheTrust.composeScript}/bin/cache-trust-compose"
+        );
+      trustsFleet = c: lib.any (lib.hasPrefix "${fleet}:") c.nix.settings.extra-trusted-public-keys;
+      wrong =
+        c:
+        lib.length (signsWith c) != 1
+        || (ownKey c && (holdsFleet c || lib.any (lib.hasInfix fleet) (signsWith c) || !(removesFleet c)))
+        || (!(ownKey c) && !(holdsFleet c))
+        || !(trustsFleet c);
+      offending = lib.attrNames (lib.filterAttrs (_: wrong) machines);
+      mutant =
+        (self.darwinConfigurations.bioskop.extendModules {
+          modules = [ { nix.settings.secret-key-files = [ "/etc/nix/${fleet}.key" ]; } ];
+        }).config;
+    in
+    assert lib.assertMsg (offending == [ ])
+      "nix-signing-one-key: not exactly one signing key, the fleet private held or left where unused, or the fleet public untrusted, on: ${lib.concatStringsSep ", " offending}";
+    assert lib.assertMsg (wrong mutant) "nix-signing-one-key: a machine signing with two keys passed";
+    pkgs.runCommand "nix-signing-one-key" { } "touch $out";
+  # A partial batch (the operator's order, 2026-10-22: the guests first): with two machines pending and two
+  # serving their current key, keys-reconcile's batch is exactly the two pending, in fleet-switch's order, each
+  # with its own recorded old public; the serving ones are in no batch and keep their key.
+  keys-reconcile-partial-batch =
+    let
+      lib = nixpkgs.lib;
+      slot = state: origin: public: { inherit state origin public; };
+      keys = {
+        g1.slots = {
+          "26-10-17" = slot "serving" "keyring" "AAAAg1old";
+          "26-11-01" = {
+            state = "pending";
+            origin = "host";
+          };
+        };
+        g2.slots = {
+          "26-10-17" = slot "serving" "keyring" "AAAAg2old";
+          "26-11-01" = {
+            state = "pending";
+            origin = "host";
+          };
+        };
+        mac.slots."26-10-18" = slot "recorded" "keyring" "AAAAmac";
+        seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+      };
+      catalog.machines = [
+        {
+          name = "seat";
+          kind = "darwin";
+          seat = true;
+        }
+        {
+          name = "g2";
+          kind = "nixos";
+        }
+        {
+          name = "mac";
+          kind = "darwin";
+        }
+        {
+          name = "g1";
+          kind = "nixos";
+        }
+      ];
+      batch =
+        (import ../modules/.common.d/keys-reconcile.d/package.nix {
+          pkgs = pkgsForDarwin;
+          ndh = {
+            store.installBinScript = _: x: x;
+            context.nixBashTrampoline = "/dev/null";
+          };
+          inherit catalog keys;
+          revision = "";
+          machines = "/dev/null";
+          publishDir = "/var/lib/ndh/host-key/published";
+          hostNames = lib.genAttrs [ "g1" "g2" "mac" "seat" ] (m: [ m ]);
+          # Host keys only: no guest declares a cache here.
+          atticCaches = [ ];
+          keysJsonTool = "/dev/null";
+          delegation = "/dev/null";
+          inUseKeys = [ ];
+        }).passthru.batch;
+    in
+    assert lib.assertMsg
+      (
+        map (e: e.machine) batch == [
+          "g2"
+          "g1"
+        ]
+      )
+      "keys-reconcile-partial-batch: ${
+        builtins.toJSON (map (e: e.machine) batch)
+      }, expected the two pending guests in fleet-switch's order";
+    assert lib.assertMsg (
+      map (e: e.oldPublic) batch == [
+        "ssh-ed25519 AAAAg2old"
+        "ssh-ed25519 AAAAg1old"
+      ]
+    ) "keys-reconcile-partial-batch: an entry's old public is not its own recorded serving one";
+    pkgs.runCommand "keys-reconcile-partial-batch" { } "touch $out";
+  # A slot's `bootstrap` past pending is a record (the schema keeps it, 2026-10-26), never a binding: both its
+  # readers take it from the PENDING slot alone. g serves a slot recorded with `bootstrap: console` and has a
+  # pending successor without one, so both must give "" (F1 required). The mutant, the batch reading the newest
+  # bootstrap any slot carries, must give "console": what this guards.
+  bootstrap-read-from-pending-only =
+    let
+      lib = nixpkgs.lib;
+      entry = {
+        type = "ssh-ed25519";
+        slots = {
+          "26-10-25" = {
+            state = "serving";
+            origin = "host";
+            bootstrap = "console";
+            public = "AAAAgserving";
+          };
+          "26-11-20" = {
+            state = "pending";
+            origin = "host";
+          };
+        };
+      };
+      keys.g = entry;
+      catalog.machines = [
+        {
+          name = "g";
+          kind = "nixos";
+        }
+        {
+          name = "seat";
+          kind = "darwin";
+          seat = true;
+        }
+      ];
+      batchOf =
+        file:
+        (import file {
+          pkgs = pkgsForDarwin;
+          ndh = {
+            store.installBinScript = _: x: x;
+            context.nixBashTrampoline = "/dev/null";
+          };
+          inherit catalog keys;
+          revision = "";
+          machines = "/dev/null";
+          publishDir = "/var/lib/ndh/host-key/published";
+          hostNames = {
+            g = [ "g" ];
+            seat = [ "seat" ];
+          };
+          atticCaches = [ ];
+          keysJsonTool = "/dev/null";
+          delegation = "/dev/null";
+          inUseKeys = [ ];
+        }).passthru.batch;
+      batch = batchOf ../modules/.common.d/keys-reconcile.d/package.nix;
+      mutantText =
+        builtins.replaceStrings
+          [ "bootstrap = entry.slots.\${r.pendingName}.bootstrap or \"\";" ]
+          [
+            "bootstrap = lib.last ([ \"\" ] ++ lib.filter (b: b != \"\") (lib.mapAttrsToList (_: s: s.bootstrap or \"\") entry.slots));"
+          ]
+          (builtins.readFile ../modules/.common.d/keys-reconcile.d/package.nix);
+      mutantDir = pkgs.runCommand "keys-reconcile-bootstrap-mutant" { } ''
+        mkdir -p $out/keys-reconcile.d && cp -r ${../modules/.common.d}/. $out/ && chmod -R u+w $out
+        cp ${pkgs.writeText "package.nix" mutantText} $out/keys-reconcile.d/package.nix
+      '';
+      mutant = batchOf "${mutantDir}/keys-reconcile.d/package.nix";
+      # The activation's generate, on a real guest given this entry, as host-key.d/tests/checks.nix does.
+      hostKey =
+        (self.nixosConfigurations.bioskop-nixos.extendModules {
+          modules = [ { ndh.hostKey.entry = lib.mkForce entry; } ];
+        }).config.ndh.hostKey.generateVars;
+    in
+    assert lib.assertMsg (map (e: e.bootstrap) batch == [ "" ])
+      "bootstrap-read-from-pending-only: the batch took a served slot's bootstrap: ${builtins.toJSON batch}";
+    assert lib.assertMsg (
+      mutantText != builtins.readFile ../modules/.common.d/keys-reconcile.d/package.nix
+    ) "bootstrap-read-from-pending-only: the mutant changed nothing";
+    assert lib.assertMsg (map (e: e.bootstrap) mutant == [ "console" ])
+      "bootstrap-read-from-pending-only: the mutant (any slot's bootstrap) still gives \"\": the case proves nothing";
+    assert lib.assertMsg (hostKey.bootstrap == "''")
+      "bootstrap-read-from-pending-only: the activation's generate took a served slot's bootstrap: ${hostKey.bootstrap}";
+    pkgs.runCommand "bootstrap-read-from-pending-only" { } "touch $out";
+  # A class entry waits for its guest's host key (window 1 → switch → window 2, the operator's order, 2026-10-26):
+  # attic material enters the batch only when its guest serves a host key and none is pending, predicted from
+  # keys.yaml. g1 serves with none pending: its cache key enters. g2 serves with a pending next key, g3
+  # serves none: theirs wait, and their host keys are the batch.
+  keys-reconcile-batch-waits-for-host-keys =
+    let
+      lib = nixpkgs.lib;
+      slot = state: origin: public: { inherit state origin public; };
+      keys = {
+        g1.slots."26-10-17" = slot "serving" "keyring" "AAAAg1";
+        g2.slots = {
+          "26-10-17" = slot "serving" "keyring" "AAAAg2old";
+          "26-11-01" = {
+            state = "pending";
+            origin = "host";
+          };
+        };
+        g3.slots."26-11-01" = {
+          state = "pending";
+          origin = "host";
+          bootstrap = "tailnet";
+        };
+        seat.slots."26-10-17" = slot "serving" "keyring" "AAAAseat";
+      };
+      catalog = {
+        machines =
+          map
+            (name: {
+              inherit name;
+              kind = "nixos";
+            })
+            [
+              "g1"
+              "g2"
+              "g3"
+            ]
+          ++ [
+            {
+              name = "seat";
+              kind = "darwin";
+              seat = true;
+            }
+          ];
+        privateCaches = {
+          entries = { };
+          keyNamePattern = ms: "^seedmatic-${ms}-attic-[0-9]+$";
+        };
+      };
+      batch =
+        (import ../modules/.common.d/keys-reconcile.d/package.nix {
+          pkgs = pkgsForDarwin;
+          ndh = {
+            store.installBinScript = _: x: x;
+            context.nixBashTrampoline = "/dev/null";
+          };
+          inherit catalog keys;
+          revision = "";
+          machines = "/dev/null";
+          publishDir = "/var/lib/ndh/host-key/published";
+          hostNames = lib.genAttrs [ "g1" "g2" "g3" "seat" ] (m: [ m ]);
+          atticCaches =
+            map
+              (m: {
+                machine = m;
+                metalspace = m;
+                fqdn = "attic.${m}";
+                dir = "/var/lib/attic";
+              })
+              [
+                "g1"
+                "g2"
+                "g3"
+              ];
+          keysJsonTool = "/dev/null";
+          delegation = "/dev/null";
+          inUseKeys = [ ];
+        }).passthru.batch;
+      seen = map (e: "${e.class}:${e.machine}") batch;
+    in
+    assert lib.assertMsg (
+      lib.sort lib.lessThan seen == [
+        "attic-cache-key:g1"
+        "host-key:g2"
+        "host-key:g3"
+      ]
+    ) "keys-reconcile-batch-waits-for-host-keys: ${builtins.toJSON seen}";
+    pkgs.runCommand "keys-reconcile-batch-waits-for-host-keys" { } "touch $out";
+  # tart:vm:recreate refuses when a data disk holds ZFS or cannot be read: the rm -rf takes them with it.
+  tart-recreate-guard-bats = import ../modules/darwin/tart-config.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # retire-key's refusal list, read from the seat's own keys-reconcile: the operator key is in use, and a key
+  # becomes in use the moment a configuration authorizes it (the control: bioskop's root authorizes nix-store).
+  keys-reconcile-in-use =
+    let
+      lib = nixpkgs.lib;
+      inUse = c: c.config.ndh.ndhSwitch.keysReconcile.passthru.inUseKeys;
+      seat = self.darwinConfigurations.bioskop;
+      authorizing = seat.extendModules {
+        modules = [
+          (
+            { config, ... }:
+            {
+              users.users.root.openssh.authorizedKeys.keys = config.ndh.keysYaml.authorizedLinesFor [
+                "nix-store"
+              ];
+            }
+          )
+        ];
+      };
+    in
+    assert lib.assertMsg (lib.elem "operator" (
+      inUse seat
+    )) "keys-reconcile-in-use: operator is not in use: ${toString (inUse seat)}";
+    assert lib.assertMsg (
+      !(lib.elem "nix-store" (inUse seat))
+    ) "keys-reconcile-in-use: nix-store is in use before the control";
+    assert lib.assertMsg (lib.elem "nix-store" (
+      inUse authorizing
+    )) "keys-reconcile-in-use: a key bioskop authorizes is not in use: ${toString (inUse authorizing)}";
+    pkgs.runCommand "keys-reconcile-in-use" { } "touch $out";
+  # The operator's age identity is read from the keyring, never from disk: on the seat, shells and GUI apps get
+  # the same SOPS_AGE_KEY_CMD, a command that carries its own pass, store and gpg home; the incus renewal at
+  # activation uses it; no NixOS configuration imports from a home directory. Then the pinned sops decrypts by
+  # that variable alone, and fails with no identity (the control).
+  operator-age-key-in-keyring =
+    let
+      lib = nixpkgs.lib;
+      c = self.darwinConfigurations.bioskop.config;
+      hm = c.home-manager.users.${c.profile.user.name};
+      # Compared as text: lib.hasInfix builds a regex, which refuses a store path's context.
+      plain = builtins.unsafeDiscardStringContext;
+      cmd = plain "${c.ndh.keyring.ageKeyCommand}";
+      script = plain (builtins.readFile c.ndh.keyring.ageKeyCommand);
+      importing = lib.filter (
+        n:
+        lib.any (lib.hasPrefix "/home/")
+          self.nixosConfigurations.${n}.config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates
+        ||
+          lib.any (lib.hasInfix "/Users/")
+            self.nixosConfigurations.${n}.config.ndh.sopsAgeKeyBootstrap.nixosHostKeyImport.candidates
+      ) (lib.attrNames self.nixosConfigurations);
+    in
+    assert lib.assertMsg (
+      plain hm.home.sessionVariables.SOPS_AGE_KEY_CMD == cmd
+    ) "operator-age-key: the shells' SOPS_AGE_KEY_CMD is not the keyring command";
+    assert lib.assertMsg (lib.hasSuffix cmd (
+      plain c.launchd.user.agents.sops-age-key-cmd.command
+    )) "operator-age-key: the GUI session's SOPS_AGE_KEY_CMD is not the keyring command";
+    assert lib.assertMsg (
+      lib.hasInfix (plain "${hm.programs.password-store.package}/bin/pass show seedmatic/age-key/operator") script
+      && lib.hasInfix "PASSWORD_STORE_DIR=${hm.programs.password-store.settings.PASSWORD_STORE_DIR}" script
+      && lib.hasInfix "GNUPGHOME=${hm.programs.gpg.homedir}" script
+    ) "operator-age-key: the command does not carry the seat's pass, store and gpg home";
+    assert lib.assertMsg (lib.hasInfix "SOPS_AGE_KEY_CMD=${cmd}" (
+      plain c.system.activationScripts.postActivation.text
+    )) "operator-age-key: the incus renewal at activation does not read the keyring";
+    assert lib.assertMsg (importing == [ ])
+      "operator-age-key: these configurations import an age key from a home directory: ${toString importing}";
+    pkgs.runCommand "operator-age-key-in-keyring"
+      {
+        nativeBuildInputs = [
+          pkgs.age
+          pkgs.sops
+        ];
+      }
+      ''
+        export HOME=$TMPDIR XDG_CONFIG_HOME=$TMPDIR/none
+        age-keygen -o id.txt 2>/dev/null
+        printf '#!${pkgs.runtimeShell}\ncat %s\n' "$PWD/id.txt" >key-cmd && chmod +x key-cmd
+        printf 'a: secret\n' >f.yaml
+        sops encrypt --age "$(age-keygen -y id.txt)" -i f.yaml
+        [ "$(SOPS_AGE_KEY_CMD=$PWD/key-cmd sops decrypt --extract '["a"]' f.yaml)" = secret ]
+        ! sops decrypt f.yaml >/dev/null 2>&1
+        # A failing command leaves the key file answering: between the switch and the keyring import, sops still works.
+        SOPS_AGE_KEY_FILE=$PWD/id.txt SOPS_AGE_KEY_CMD=false sops decrypt f.yaml >/dev/null
+        touch $out
+      '';
+  # Every fleet name and every alias to one, on both seats, presents the operator key alone: a name that falls to
+  # the default identities fails auth, and OpenSSH's PerSourcePenalties then resets the seat's connections.
+  ssh-fleet-aliases-operator-identity =
+    let
+      lib = nixpkgs.lib;
+      seats = [
+        "bioskop"
+        "nikopol"
+      ];
+      configOf =
+        seat:
+        let
+          c = self.darwinConfigurations.${seat}.config;
+        in
+        {
+          text = c.home-manager.users.${c.profile.user.name}.home.file.".ssh/config".text;
+          key = c.sshPaths.privKeyFile;
+        };
+      # The Host blocks of an ssh config: each one's patterns and lines.
+      blocks =
+        text:
+        lib.foldl' (
+          acc: line:
+          let
+            m = builtins.match "[[:space:]]*Host[[:space:]]+(.*)" line;
+          in
+          if m != null then
+            acc
+            ++ [
+              {
+                patterns = lib.filter (p: p != "") (lib.splitString " " (lib.head m));
+                lines = [ ];
+              }
+            ]
+          else if acc == [ ] then
+            acc
+          else
+            lib.init acc ++ [ ((lib.last acc) // { lines = (lib.last acc).lines ++ [ (lib.trim line) ]; }) ]
+        ) [ ] (lib.splitString "\n" text);
+      lacking =
+        seat:
+        let
+          c = configOf seat;
+          bs = blocks c.text;
+          presents =
+            name:
+            lib.any (
+              b:
+              lib.elem name b.patterns
+              && lib.elem "IdentitiesOnly yes" b.lines
+              && lib.elem "IdentityFile ${c.key}" b.lines
+            ) bs;
+          aliases = lib.concatMap (h: [
+            "nixos.${h}"
+            "darwin.${h}"
+          ]) seats;
+        in
+        lib.filter (n: !(presents n)) (self.fleetHostNames ++ aliases);
+      found = lib.filter (s: lacking s != [ ]) seats;
+      # The mutant: bioskop's config with IdentitiesOnly taken out of every block naming nikopol-nixos.
+      mutantLacks =
+        let
+          c = configOf "bioskop";
+          bs = map (
+            b:
+            if lib.elem "nikopol-nixos" b.patterns then
+              b // { lines = lib.remove "IdentitiesOnly yes" b.lines; }
+            else
+              b
+          ) (blocks c.text);
+        in
+        !(lib.any (
+          b:
+          lib.elem "nikopol-nixos" b.patterns
+          && lib.elem "IdentitiesOnly yes" b.lines
+          && lib.elem "IdentityFile ${c.key}" b.lines
+        ) bs);
+    in
+    assert lib.assertMsg (found == [ ])
+      "ssh-fleet-aliases-operator-identity: ${
+        lib.concatMapStringsSep "; " (s: "${s} lacks it for ${toString (lacking s)}") found
+      }";
+    assert lib.assertMsg mutantLacks
+      "ssh-fleet-aliases-operator-identity: the mutant without IdentitiesOnly for nikopol-nixos was not caught";
+    pkgs.runCommand "ssh-fleet-aliases-operator-identity" { } "touch $out";
+  sops-rekey-bats = import ../modules/.common.d/sops.d/rekey.d/tests/package.nix { inherit pkgs; };
+  keys-reconcile-bats = import ../modules/.common.d/keys-reconcile.d/tests/package.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  host-key-generate-bats = import ../modules/.common.d/host-key.d/tests/generate-bats.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  # A key born on its machine (roles × keys K3) is wired only for a PENDING slot: each fleet machine builds and
+  # runs ndh-host-key-generate exactly when keys.yaml declares one for it; given one, a darwin host and a NixOS guest each run it
+  # at activation, for that slot, signing with the key they serve; and the current slot is never the pending
+  # one (a pending slot is newer by construction).
+  host-key-generate-wiring =
+    let
+      lib = nixpkgs.lib;
+      machines = lib.attrValues self.nixosConfigurations ++ lib.attrValues self.darwinConfigurations;
+      pendingOn =
+        system:
+        (system.extendModules {
+          modules = [
+            (
+              { config, ... }:
+              {
+                ndh.hostKey.entry = lib.mkForce (
+                  lib.recursiveUpdate config.ndh.keysYaml.keys.${config.networking.hostName} {
+                    slots."99-01-01".state = "pending";
+                  }
+                );
+              }
+            )
+          ];
+        }).config;
+      darwin = pendingOn self.darwinConfigurations.nikopol;
+      nixos = pendingOn self.nixosConfigurations.nikopol-nixos;
+      plain = c: builtins.unsafeDiscardStringContext c;
+      generateOf = c: plain "/bin/bash ${c.ndh.hostKey.generate}/bin/host-key-generate";
+      vars = c: c.ndh.hostKey.generateVars;
+      roles = import ../modules/.common.d/host-key.d/slots.nix { inherit lib; };
+    in
+    # Each fleet machine generates exactly when keys.yaml declares it a pending host-key slot.
+    assert lib.assertMsg
+      (lib.all (
+        c:
+        (c.config.ndh.hostKey.generate != null) == ((roles c.config.ndh.hostKey.entry).pendingName != null)
+      ) machines)
+      "host-key-generate: a machine generates a host key without a pending slot, or has one and does not";
+    assert lib.assertMsg (lib.hasInfix (generateOf darwin) (
+      plain darwin.system.activationScripts.postActivation.text
+    )) "host-key-generate: darwin's activation does not run it";
+    assert lib.assertMsg (lib.hasInfix (generateOf nixos) (
+      plain nixos.system.activationScripts.ndhHostKeyGenerate.text
+    )) "host-key-generate: the guest's activation does not run it";
+    assert lib.assertMsg (
+      (vars nixos).slot == lib.escapeShellArg "99-01-01"
+    ) "host-key-generate: not the pending slot";
+    assert lib.assertMsg (
+      (vars nixos).keyFile
+      == lib.escapeShellArg "${nixos.ndh.hostKey.slotDir}/99-01-01/ssh_host_ed25519_key"
+    ) "host-key-generate: the new key is not in its own slot directory";
+    assert lib.assertMsg (
+      (vars nixos).oldKey == lib.escapeShellArg nixos.ndh.hostKey.servedKeyFile
+    ) "host-key-generate: the statement is not signed with the key the guest serves";
+    # A pending slot named before the current one is refused: it would be generated and never served.
+    assert lib.assertMsg (
+      let
+        early = self.nixosConfigurations.nikopol-nixos.extendModules {
+          modules = [
+            (
+              { config, ... }:
+              {
+                ndh.hostKey.entry = lib.mkForce (
+                  lib.recursiveUpdate config.ndh.keysYaml.keys.${config.networking.hostName} {
+                    slots."00-01-01".state = "pending";
+                  }
+                );
+              }
+            )
+          ];
+        };
+      in
+      lib.any (
+        a: !a.assertion && lib.hasInfix "does not sort after the current slot" a.message
+      ) early.config.assertions
+    ) "host-key-generate: a pending slot older than the current one passed";
+    # Every reader of the slot a machine serves goes through slots.nix's `current`.
+    assert lib.assertMsg (
+      (roles {
+        slots = {
+          "26-10-17".state = "serving";
+          "99-01-01".state = "pending";
+        };
+      }).currentName == "26-10-17"
+    ) "host-key-generate: a pending slot was taken for the current one";
+    assert lib.assertMsg (
+      (roles {
+        slots = {
+          "26-10-17".state = "retired";
+          "26-11-01".state = "serving";
+        };
+      }).currentName == "26-11-01"
+    ) "host-key-generate: a retired slot was taken for the current one";
+    assert lib.assertMsg (
+      !(builtins.tryEval
+        (roles {
+          slots = {
+            "99-01-01".state = "pending";
+            "99-02-01".state = "pending";
+          };
+        }).pendingName
+      ).success
+    ) "host-key-generate: two pending slots were accepted";
+    # Like every activation script, it runs under ndh's bash trampoline and logger: read from the built
+    # script, at build time.
+    pkgs.runCommand "host-key-generate-wiring" { } ''
+      for script in ${nixos.ndh.hostKey.generate}/bin/host-key-generate ${darwin.ndh.hostKey.generate}/bin/host-key-generate; do
+        trampoline=$(sed -n 's|^source \(/nix/store/[^ ]*/nix-bash-trampoline\.sh\)$|\1|p' "$script")
+        [ -n "$trampoline" ] ||
+          { echo "FAIL $script does not source ndh's bash trampoline"; exit 1; }
+        [ "$(tail -n1 "$script")" = 'ndh::logger:command:run host-key.generate main "$@"' ] ||
+          { echo "FAIL $script is not run under ndh::logger:command:run"; exit 1; }
+        if grep -q '@[a-zA-Z]*@' "$script"; then echo "FAIL $script has an unrendered placeholder"; exit 1; fi
+      done
+      touch $out
+    '';
+  build-users-group-guard =
+    let
+      lib = nixpkgs.lib;
+      nixos = self.nixosConfigurations.bioskop-nixos;
+      darwin = self.darwinConfigurations.bioskop;
+      fired = c: part: lib.any (a: !a.assertion && lib.hasInfix part a.message) c.config.assertions;
+      primary = "is the primary group of";
+      member = "would be build users";
+      nixosPrimary = nixos.extendModules {
+        modules = [
+          {
+            users.users.mutant = {
+              isSystemUser = true;
+              group = "nixbld";
+            };
+          }
+        ];
+      };
+      nixosMember = nixos.extendModules {
+        modules = [
+          {
+            users.users.mutant = {
+              isSystemUser = true;
+              group = "nogroup";
+              extraGroups = [ "nixbld" ];
+            };
+          }
+        ];
+      };
+      darwinPrimary = darwin.extendModules {
+        modules = [
+          (
+            { config, ... }:
+            {
+              users.users.mutant = {
+                uid = 701;
+                gid = config.ids.gids.nixbld;
+              };
+            }
+          )
+        ];
+      };
+      darwinMember = darwin.extendModules {
+        modules = [ { users.groups.nixbld.members = [ "mutant" ]; } ];
+      };
+    in
+    assert lib.assertMsg (
+      !(fired nixos primary || fired nixos member || fired darwin primary || fired darwin member)
+    ) "build-users-group: the real configurations trip the guard";
+    assert lib.assertMsg (fired nixosPrimary primary)
+      "build-users-group: NixOS primary-group mutant passed";
+    assert lib.assertMsg (fired nixosMember member) "build-users-group: NixOS member mutant passed";
+    assert lib.assertMsg (fired darwinPrimary primary)
+      "build-users-group: Darwin primary-group mutant passed";
+    assert lib.assertMsg (fired darwinMember member) "build-users-group: Darwin member mutant passed";
+    pkgs.runCommand "build-users-group-guard" { } "touch $out";
+  # Every machine's nix.conf includes ndh's own runtime files only (in /run/ndh, root's), never a file nothing declares:
+  # an include is a way into the daemon's settings (trusted-users, builders) that no review sees. The Macs
+  # had flox's, the guests the Determinate installer's nix.custom.conf.
+  # No machine takes a flake's nixConfig: accept-flake-config let a trusted user's flake add substituters
+  # and keys silently. The built nix.conf of the 4 machines, and a mutant on each platform.
+  # Every machine configuration still EVALUATES. The bring-up guests broke for a day unseen (2026-10-17,
+  # a module read the catalog's netplan, which a bring-up has not): no toplevel list named them, and the
+  # only check that touched them builds a whole VM. So every configuration, by its name in the flake,
+  # never by a list: its toplevel's drvPath, context discarded, so this evaluates and builds nothing.
+  configurations-evaluate =
+    let
+      drv = c: builtins.unsafeDiscardStringContext c.config.system.build.toplevel.drvPath;
+      line =
+        kind: name: c:
+        "${kind}.${name} ${drv c}";
+    in
+    pkgs.writeText "configurations-evaluate" (
+      nixpkgs.lib.concatLines (
+        nixpkgs.lib.mapAttrsToList (line "nixos") self.nixosConfigurations
+        ++ nixpkgs.lib.mapAttrsToList (line "darwin") self.darwinConfigurations
+      )
+    );
+  # The bringup profile carries its contract: every command ndh.bringupRuntime.requiredCommands names
+  # resolves in its bin/, on each machine built for this system. The trampoline refuses a script whose
+  # profile lacks one; this finds it at build, not at a switch or a hand-run app. A symlinkJoin links
+  # only each package's default output, so a split one (util-linux.bin) or a dependency's command (gpg
+  # under pass) shows here first.
+  bringup-profile-contract =
+    let
+      all = self.nixosConfigurations // self.darwinConfigurations;
+      mine = nixpkgs.lib.filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system == system) all;
+      # The checks run on ${system} only (defaultSystems): a machine of another platform is NOT checked
+      # here, and the check says so by name rather than passing by omission.
+      others = builtins.attrNames (
+        nixpkgs.lib.filterAttrs (_: c: c.pkgs.stdenv.hostPlatform.system != system) all
+      );
+      # The system path a NixOS machine's commands live in; a darwin one keeps its system-bound commands
+      # elsewhere, so it has none to compare ("-").
+      sysPath = c: if c.pkgs.stdenv.hostPlatform.isLinux then "${c.config.system.path}" else "-";
+      line =
+        name: c:
+        let
+          r = c.config.ndh.bringupRuntime;
+        in
+        "${name} ${r.runtimePackage} ${sysPath c} ${nixpkgs.lib.concatStringsSep " " r.requiredCommands}";
+      # The trampoline puts the profile FIRST on PATH: a system-bound command there must be the system's own
+      # file (zfs matched to its kernel module, incus to its daemon, systemctl to its init), never a sibling
+      # build that happens to share a version.
+      systemBound = [
+        "nix"
+        "incus"
+        "zfs"
+        "zpool"
+        "systemctl"
+      ];
+      # The reviewed exceptions stay OUT of the profile, or the list and the profile say two things.
+      exceptions = builtins.attrNames (
+        import ../modules/.common.d/bringup-runtime.d/profile-exceptions.nix
+      );
+    in
+    pkgs.runCommand "bringup-profile-contract"
+      {
+        exceptions = nixpkgs.lib.concatStringsSep " " exceptions;
+        systemBound = nixpkgs.lib.concatStringsSep " " systemBound;
+        passAsFile = [ "machines" ];
+        machines = nixpkgs.lib.concatLines (
+          nixpkgs.lib.mapAttrsToList line (
+            nixpkgs.lib.filterAttrs (_: c: c.config.ndh.bringupRuntime.enable or false) mine
+          )
+        );
+      }
+      ''
+        [ -s "$machinesPath" ] || { echo "no machine of ${system} carries the bringup profile" >&2; exit 1; }
+        rc=0
+        while read -r name profile syspath commands; do
+          # A system-bound command both carry must be the same file, or the profile's shadows the system's.
+          if [ "$syspath" != - ]; then
+            for c in $systemBound; do
+              [ -e "$profile/bin/$c" ] && [ -e "$syspath/bin/$c" ] || continue
+              if [ "$(readlink -f "$profile/bin/$c")" != "$(readlink -f "$syspath/bin/$c")" ]; then
+                echo "$name: the profile's $c is not the system's ($(readlink -f "$profile/bin/$c") vs $(readlink -f "$syspath/bin/$c"))" >&2
+                rc=1
+              fi
+            done
+          fi
+          missing=""
+          for c in $commands; do [ -e "$profile/bin/$c" ] || missing="$missing $c"; done
+          if [ -n "$missing" ]; then echo "$name: its profile lacks:$missing" >&2; rc=1; else echo "$name: $(echo $commands | wc -w) commands"; fi
+          # The exception names its package; its main command is the package's name, or the usual one.
+          for e in $exceptions; do
+            case $e in qemu) cmd=qemu-system-aarch64 ;; mtools) cmd=mcopy ;; check-jsonschema) cmd=check-jsonschema ;; *) cmd=$e ;; esac
+            if [ -e "$profile/bin/$cmd" ]; then echo "$name: $e is a reviewed exception, yet the profile carries $cmd" >&2; rc=1; fi
+          done
+        done <"$machinesPath"
+        echo "not checked here (another platform): ${nixpkgs.lib.concatStringsSep " " others}"
+        [ "$rc" = 0 ] && touch $out
+        exit "$rc"
+      '';
+  # Every app still EVALUATES, by its name in the flake: ndh-ops broke for a day unseen (2026-10-18, an
+  # operator tool added to verbs.json without its delegation list). Its program's path, context discarded,
+  # so this evaluates the app's assertions and builds nothing.
+  apps-evaluate = pkgs.writeText "apps-evaluate" (
+    nixpkgs.lib.concatLines (
+      nixpkgs.lib.mapAttrsToList (
+        name: app: "${name} ${builtins.unsafeDiscardStringContext app.program}"
+      ) (self.apps.${system} or { })
+    )
+  );
+  nix-conf-no-accept-flake-config =
+    let
+      conf = c: c.config.environment.etc."nix/nix.conf".source;
+      machines =
+        map (n: conf self.darwinConfigurations.${n}) [
+          "bioskop"
+          "nikopol"
+        ]
+        ++ map (n: conf self.nixosConfigurations.${n}) [
+          "bioskop-nixos"
+          "nikopol-nixos"
+        ];
+      mutants = [
+        (conf (
+          self.darwinConfigurations.bioskop.extendModules {
+            modules = [ { nix.extraOptions = "accept-flake-config = true"; } ];
+          }
+        ))
+        (conf (
+          self.nixosConfigurations.bioskop-nixos.extendModules {
+            modules = [ { nix.settings.accept-flake-config = true; } ];
+          }
+        ))
+      ];
+    in
+    pkgs.runCommand "nix-conf-no-accept-flake-config" { } ''
+      accepts() { grep -Eq '^[[:space:]]*(extra-)?accept-flake-config[[:space:]]*=' "$1"; }
+      for f in ${nixpkgs.lib.escapeShellArgs machines}; do
+        if accepts "$f"; then echo "a machine's nix.conf accepts flake configs: $f" >&2; exit 1; fi
+      done
+      for f in ${nixpkgs.lib.escapeShellArgs mutants}; do
+        accepts "$f" || { echo "an accept-flake-config mutant passed: $f" >&2; exit 1; }
+      done
+      touch $out
+    '';
+  # A launchd job that runs a store program waits for the store: at boot launchd spawns a RunAtLoad job
+  # before the /nix volume is mounted, and a missing program puts it in the penalty box, never retried
+  # (attic-tokens on nikopol, 2026-10-21). nix-darwin's `command` wraps it in /bin/wait4path; a hand-written
+  # ProgramArguments does not. Every darwin configuration, every daemon and agent; a mutant must be caught.
+  darwin-launchd-waits-for-store =
+    let
+      lib = nixpkgs.lib;
+      unwaited =
+        c:
+        lib.concatMap
+          (
+            set:
+            lib.mapAttrsToList (name: _: name) (
+              lib.filterAttrs (
+                _: j:
+                let
+                  args = j.serviceConfig.ProgramArguments or [ ];
+                  program = j.serviceConfig.Program or "";
+                in
+                (lib.any (lib.hasInfix "/nix/store/") args || lib.hasInfix "/nix/store/" program)
+                && !(
+                  lib.length args >= 3
+                  && lib.elemAt args 0 == "/bin/sh"
+                  && lib.elemAt args 1 == "-c"
+                  && lib.hasPrefix "/bin/wait4path /nix/store && exec " (lib.elemAt args 2)
+                )
+              ) set
+            )
+          )
+          [
+            c.config.launchd.daemons
+            c.config.launchd.agents
+            c.config.launchd.user.agents
+          ];
+      found = lib.filter (l: l.jobs != [ ]) (
+        lib.mapAttrsToList (name: c: {
+          inherit name;
+          jobs = unwaited c;
+        }) self.darwinConfigurations
+      );
+      mutant = unwaited (
+        self.darwinConfigurations.nikopol.extendModules {
+          modules = [
+            {
+              launchd.daemons.ndh-attic-tokens = {
+                command = lib.mkForce "";
+                serviceConfig.ProgramArguments = [ "/nix/store/x-mutant/bin/unseal" ];
+              };
+            }
+          ];
+        }
+      );
+    in
+    assert lib.assertMsg (found == [ ])
+      "launchd jobs run a store program without waiting for /nix/store: ${
+        lib.concatMapStringsSep "; " (l: "${l.name}: ${toString l.jobs}") found
+      }";
+    assert lib.assertMsg (
+      mutant == [ "ndh-attic-tokens" ]
+    ) "the bare-ProgramArguments mutant was not caught (found: ${toString mutant})";
+    pkgs.runCommand "darwin-launchd-waits-for-store" { } "touch $out";
+  # The weekly GC daemon of each Mac says why it fails: its output goes to /var/log/nix-gc.log.
+  darwin-nix-gc-logs =
+    let
+      lib = nixpkgs.lib;
+      unlogged =
+        lib.filter
+          (
+            seat:
+            let
+              sc = self.darwinConfigurations.${seat}.config.launchd.daemons.nix-gc.serviceConfig;
+            in
+            (sc.StandardOutPath or null) != "/var/log/nix-gc.log"
+            || (sc.StandardErrorPath or null) != "/var/log/nix-gc.log"
+          )
+          [
+            "bioskop"
+            "nikopol"
+          ];
+    in
+    assert lib.assertMsg (unlogged == [ ]) "nix-gc logs nowhere on ${toString unlogged}";
+    pkgs.runCommand "darwin-nix-gc-logs" { } "touch $out";
+  # Every launchd daemon's log under /var/log has its weekly rotation line in newsyslog.d/ndh.conf, a new
+  # daemon included, and an emptied file is caught.
+  darwin-var-log-rotation =
+    let
+      lib = nixpkgs.lib;
+      unrotated =
+        c:
+        let
+          conf = c.config.environment.etc."newsyslog.d/ndh.conf".text;
+          logs = lib.unique (
+            lib.concatMap (
+              d:
+              lib.filter (p: p != null && lib.hasPrefix "/var/log/" p) [
+                (d.serviceConfig.StandardOutPath or null)
+                (d.serviceConfig.StandardErrorPath or null)
+              ]
+            ) (lib.attrValues c.config.launchd.daemons)
+          );
+        in
+        lib.filter (p: !(lib.hasInfix "\n${p}\t" ("\n" + conf))) logs;
+      seats = map (n: self.darwinConfigurations.${n}) [
+        "bioskop"
+        "nikopol"
+      ];
+      bioskopWith = m: self.darwinConfigurations.bioskop.extendModules { modules = [ m ]; };
+      withNewDaemon = bioskopWith {
+        launchd.daemons.ndh-rotation-probe = {
+          command = "/usr/bin/true";
+          serviceConfig.StandardErrorPath = "/var/log/ndh-rotation-probe.log";
+        };
+      };
+      emptied = bioskopWith { environment.etc."newsyslog.d/ndh.conf".text = lib.mkForce ""; };
+    in
+    assert lib.assertMsg (lib.all (
+      c: unrotated c == [ ]
+    ) seats) "a /var/log file of a Mac rotates nowhere";
+    assert lib.assertMsg (
+      unrotated withNewDaemon == [ ]
+    ) "a new daemon's /var/log file is not picked up";
+    assert lib.assertMsg (unrotated emptied != [ ]) "an emptied newsyslog file passed";
+    pkgs.runCommand "darwin-var-log-rotation" { } "touch $out";
+  nix-conf-no-foreign-include =
+    let
+      conf = c: c.config.environment.etc."nix/nix.conf".source;
+      machines =
+        map (n: conf self.darwinConfigurations.${n}) [
+          "bioskop"
+          "nikopol"
+        ]
+        ++ map (n: conf self.nixosConfigurations.${n}) [
+          "bioskop-nixos"
+          "nikopol-nixos"
+        ];
+      guestWith = m: self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ m ]; };
+      mutants = [
+        (conf (
+          self.darwinConfigurations.bioskop.extendModules {
+            modules = [ { nix.extraOptions = "include /etc/nix/flox.conf"; } ];
+          }
+        ))
+        (conf (guestWith {
+          nix.extraOptions = "!include /etc/nix/nix.custom.conf";
+        }))
+        # /run/ndh/ssh is the operator's (modules/nixos/systemd/openssh.nix): only root's directory itself counts.
+        (conf (guestWith {
+          nix.extraOptions = "!include /run/ndh/ssh/x.conf";
+        }))
+      ];
+      # /run/ndh is root's alone (modules/nixos/nix-settings.nix): its assertion is quiet on the guests and
+      # fires on a guest that declares it writable.
+      runDirFires =
+        c:
+        nixpkgs.lib.any (
+          a: !a.assertion && nixpkgs.lib.hasPrefix "/run/ndh:" a.message
+        ) c.config.assertions;
+    in
+    assert nixpkgs.lib.assertMsg (
+      !(runDirFires self.nixosConfigurations.bioskop-nixos)
+      && !(runDirFires self.nixosConfigurations.nikopol-nixos)
+    ) "nix-conf-no-foreign-include: a guest's /run/ndh assertion fires";
+    assert nixpkgs.lib.assertMsg (runDirFires (guestWith {
+      systemd.tmpfiles.rules = [ "d /run/ndh 0777 root root - -" ];
+    })) "nix-conf-no-foreign-include: a writable /run/ndh passed";
+    pkgs.runCommand "nix-conf-no-foreign-include" { } ''
+      # An include line whose path is not a file of /run/ndh itself.
+      foreign() { grep -Ev '^[[:space:]]*!?include[[:space:]]+/run/ndh/[^/[:space:]]+[[:space:]]*$' "$1" | grep -Eq '^[[:space:]]*!?include[[:space:]]'; }
+      for f in ${nixpkgs.lib.escapeShellArgs machines}; do
+        if foreign "$f"; then echo "a nix.conf includes a file outside ndh: $f" >&2; exit 1; fi
+      done
+      for f in ${nixpkgs.lib.escapeShellArgs mutants}; do
+        foreign "$f" || { echo "an include mutant passed: $f" >&2; exit 1; }
+      done
+      touch $out
+    '';
+  ndh-builders-bats = import ../modules/darwin/host-builder.d/tests/package.nix { inherit pkgs; };
+  host-builder-metalspace =
+    let
+      lib = nixpkgs.lib;
+      mac = self.darwinConfigurations.bioskop;
+      c = mac.config;
+      fragment = cfg: cfg.config.environment.etc."ssh/ssh_config.d/75-nix-store.conf".text or "";
+      stanzas = cfg: lib.filter (lib.hasPrefix "nix-store.") (lib.splitString "Host " (fragment cfg));
+      aliasOf = cfg: host: lib.any (b: lib.hasPrefix "nix-store.${host}\n" b) (stanzas cfg);
+      entries = lib.concatLists (lib.attrValues c.ndh.builderSets);
+      selfPeer = mac.extendModules { modules = [ { nixStoreIdentity.extraPeers = [ "bioskop" ]; } ]; };
+      guests = map (n: self.nixosConfigurations.${n}) [
+        "bioskop-nixos"
+        "nikopol-nixos"
+      ];
+      guestOutbound = self.nixosConfigurations.bioskop-nixos.extendModules {
+        modules = [ { nixStoreIdentity.outbound = lib.mkForce true; } ];
+      };
+    in
+    assert lib.assertMsg (
+      c.nix.settings.max-jobs == c.ndh.builderCapacity.darwin.own
+      && c.nix.buildMachines == [ ]
+      && c.nix.settings.builders == "@/var/lib/ndh/builders/active"
+    ) "metalspace: the Mac builds darwin itself and reads the list ndh-builders points at";
+    assert lib.assertMsg (
+      map (m: m.hostName) c.ndh.builderSets.metalspace == [ "nix-store.bioskop-nixos" ]
+      &&
+        c.environment.etc."nix/machines.metalspace".text
+        == "ssh-ng://nix-store.bioskop-nixos aarch64-linux - 6 10 big-parallel,nixos-test,kvm - -\n"
+    ) "metalspace: the own guest only, for Linux";
+    assert lib.assertMsg (
+      !(lib.any (m: m.hostName == "nix-store.bioskop") entries) && !(aliasOf mac "bioskop")
+    ) "a Mac is never an entry of its own lists, nor has an alias to itself";
+    assert lib.assertMsg (
+      !(aliasOf selfPeer "bioskop")
+    ) "a self peer must be dropped: a request to the own store deadlocks on its output locks";
+    assert lib.assertMsg (
+      lib.all (g: stanzas g == [ ]) guests && stanzas guestOutbound != [ ]
+    ) "the guests render no nix-store alias (a received build is never forwarded)";
+    assert lib.assertMsg (lib.all (
+      g:
+      lib.hasInfix ''del(.keys["nix-store"])'' (
+        builtins.unsafeDiscardStringContext g.config.systemd.services.io-seedmatic-ndh-ssh-keys-enrichment.script
+      )
+    ) guests) "the guests extract no nix-store client key";
+    assert lib.assertMsg (
+      self.nixosConfigurations.bioskop-bringup.config.nixStoreIdentity.outbound
+      && stanzas self.nixosConfigurations.bioskop-bringup != [ ]
+    ) "the bring-up system keeps its nix-store alias, for the operator's manual rescue";
+    assert lib.assertMsg (lib.all (b: lib.hasInfix "ConnectTimeout 5\n" b) (
+      stanzas mac
+    )) "every nix-store alias fails fast on a cut route";
+    assert lib.assertMsg (lib.hasInfix "ndh-builders metalspace ||" (
+      builtins.unsafeDiscardStringContext c.system.activationScripts.postActivation.text
+    )) "the activation resets a missing pointer to metalspace, without aborting";
+    assert lib.assertMsg (
+      c.environment.etc."nix/machines.fabric".text == c.environment.etc."nix/machines.metalspace".text
+      + "ssh-ng://nix-store.nikopol aarch64-darwin - 1 1 apple-virt,benchmark,big-parallel,nixos-test - -\n"
+      + "ssh-ng://nix-store.nikopol-nixos aarch64-linux - 2 1 big-parallel,nixos-test - -\n"
+    ) "fabric: metalspace plus the other metalspace's Mac (darwin) and guest (Linux), nothing else";
+    assert lib.assertMsg (
+      lib.hasInfix "HostName nikopol${catalogData.netplan.tailnet.domain}\n" (
+        lib.findFirst (b: lib.hasPrefix "nix-store.nikopol\n" b) "" (stanzas mac)
+      )
+      && lib.hasInfix "HostName nikopol-nixos${catalogData.netplan.tailnet.domain}\n" (
+        lib.findFirst (b: lib.hasPrefix "nix-store.nikopol-nixos\n" b) "" (stanzas mac)
+      )
+    ) "fabric: the other metalspace's builders over the tailnet";
+    assert lib.assertMsg (lib.all
+      (
+        n:
+        lib.hasInfix
+          "--stdio --extra-experimental-features 'daemon-trust-override mounted-ssh-store' --force-untrusted --process-ops --option builders ''"
+          (self.darwinConfigurations.${n}.config.opensshPolicy.restrictedUsers.nix-store.forceCommand)
+      )
+      [
+        "bioskop"
+        "nikopol"
+      ]
+    ) "fabric: a Mac receives untrusted and forwards nothing (the chaining cut)";
+    assert lib.assertMsg (lib.all (
+      g:
+      g.config.opensshPolicy.restrictedUsers.nix-store.forceCommand
+      == "/run/current-system/sw/bin/nix-daemon --stdio"
+    ) guests) "the guests' inbound stays the plain daemon";
+    pkgs.runCommand "host-builder-metalspace" { } "touch $out";
+  # The cluster builder's daemon, both ways test 1 can go: the experimental features only on the
+  # untrusted endpoint, never a trusted cluster-build there, the sandbox with no fallback.
+  cluster-builder-settings =
+    let
+      lib = nixpkgs.lib;
+      builder =
+        trustedClient:
+        (nixpkgs.lib.nixosSystem {
+          system = "aarch64-linux";
+          modules = [
+            self.nixosModules.cluster-builder
+            {
+              ndh.clusterBuilder = {
+                inherit trustedClient;
+                name = "cluster-builder-check";
+                address = "172.16.248.20/21";
+                gateway = "172.16.248.1";
+                nameservers = [ "172.16.248.1" ];
+                allowedSources = [ "172.16.248.1/32" ];
+                userCaKeys = [
+                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl check-ca"
+                ];
+                signingKeyName = "cluster-builder-check-1";
+                resources = {
+                  cpus = 2;
+                  memoryGiB = 2;
+                  diskGiB = 10;
+                };
+              };
+            }
+          ];
+        }).config;
+      untrusted = builder false;
+      trusted = builder true;
+      features = c: c.nix.settings.experimental-features;
+      forced =
+        c:
+        lib.hasInfix "ForceCommand ${builtins.unsafeDiscardStringContext c.nix.package.outPath}/bin/nix-daemon --stdio" (
+          builtins.unsafeDiscardStringContext c.services.openssh.extraConfig
+        );
+    in
+    assert lib.assertMsg (
+      lib.elem "daemon-trust-override" (features untrusted)
+      && lib.elem "mounted-ssh-store" (features untrusted)
+    ) "cluster-builder: the untrusted endpoint lacks its experimental features";
+    assert lib.assertMsg (lib.hasInfix "--force-untrusted --process-ops" (
+      builtins.unsafeDiscardStringContext untrusted.services.openssh.extraConfig
+    )) "cluster-builder: the untrusted endpoint is not --stdio --force-untrusted --process-ops";
+    assert lib.assertMsg (
+      !(lib.elem "cluster-build" untrusted.nix.settings.trusted-users)
+    ) "cluster-builder: cluster-build is trusted on the untrusted endpoint";
+    assert lib.assertMsg (
+      !(lib.elem "daemon-trust-override" (features trusted))
+      && !(lib.hasInfix "--force-untrusted" (
+        builtins.unsafeDiscardStringContext trusted.services.openssh.extraConfig
+      ))
+      && lib.elem "cluster-build" trusted.nix.settings.trusted-users
+    ) "cluster-builder: fallback A carries the untrusted endpoint's pieces";
+    assert lib.assertMsg (lib.all forced [
+      untrusted
+      trusted
+    ]) "cluster-builder: cluster-build is not forced to nix-daemon --stdio";
+    assert lib.assertMsg (lib.all
+      (c: c.nix.settings.sandbox == true && c.nix.settings.sandbox-fallback == false)
+      [
+        untrusted
+        trusted
+      ]
+    ) "cluster-builder: the sandbox can fall back";
+    assert lib.assertMsg (
+      untrusted.users.users.root.hashedPassword == "!"
+      && !untrusted.services.openssh.allowSFTP
+      && untrusted.services.openssh.settings.AuthorizedPrincipalsFile == "/etc/ssh/principals/%u"
+      && lib.hasInfix "DisableForwarding yes" untrusted.services.openssh.extraConfig
+      && untrusted.environment.etc."ssh/principals/cluster-build".mode == "0444"
+      && untrusted.environment.etc."ssh/cluster-build-user-ca.pub".mode == "0444"
+    ) "cluster-builder: root has a password, sftp is offered, or the principals file is not sshd's";
+    assert lib.assertMsg
+      (
+        untrusted.ndh.clusterBuilder.instanceConfig."security.privileged" == "false"
+        && untrusted.ndh.clusterBuilder.instanceConfig."security.nesting" == "true"
+        && untrusted.nix.settings.max-jobs == 2
+      )
+      "cluster-builder: the instance is privileged, without nesting, or its jobs do not follow its CPUs";
+    pkgs.runCommand "cluster-builder-settings" { } "touch $out";
+  trusted-users-named =
+    let
+      lib = nixpkgs.lib;
+      machines =
+        map (n: self.darwinConfigurations.${n}) [
+          "bioskop"
+          "nikopol"
+        ]
+        ++ map (n: self.nixosConfigurations.${n}) [
+          "bioskop-nixos"
+          "nikopol-nixos"
+        ];
+      named =
+        c:
+        lib.sort lib.lessThan (lib.unique c.config.nix.settings.trusted-users) == lib.sort lib.lessThan (
+          [
+            "root"
+            c.config.profile.user.name
+          ]
+          ++ lib.optional c.config.nixStoreIdentity.inboundTrusted c.config.nixStoreIdentity.inboundUserName
+        );
+      # The Macs serve nix-store untrusted (the chaining cut), so it is no trusted user there.
+      untrustedOnMacs =
+        lib.all (n: !self.darwinConfigurations.${n}.config.nixStoreIdentity.inboundTrusted)
+          [
+            "bioskop"
+            "nikopol"
+          ];
+      refused =
+        c:
+        lib.any (a: !a.assertion && lib.hasInfix "trusted-users holds a group" a.message)
+          (c.extendModules { modules = [ { nix.settings.trusted-users = [ "@admin" ]; } ]; })
+          .config.assertions;
+    in
+    assert lib.assertMsg (lib.all named machines)
+      "trusted-users: a machine trusts other than root, its seat user and (on a guest) nix-store";
+    assert lib.assertMsg untrustedOnMacs
+      "trusted-users: a Mac must not trust the nix-store it serves untrusted";
+    assert lib.assertMsg (lib.all refused machines) "trusted-users: a group mutant was not refused";
+    pkgs.runCommand "trusted-users-named" { } "touch $out";
+  attic-watch-store-not-root =
+    let
+      lib = nixpkgs.lib;
+      on = {
+        ndh.atticClient = {
+          watchStore.enable = true;
+          ownCache = "attic.bioskop";
+        };
+      };
+      nixos = (self.nixosConfigurations.bioskop-nixos.extendModules { modules = [ on ]; }).config;
+      darwin = (self.darwinConfigurations.bioskop.extendModules { modules = [ on ]; }).config;
+      service = nixos.systemd.services.io-seedmatic-ndh-attic-watch-store.serviceConfig;
+      daemon = darwin.launchd.daemons.ndh-attic-watch-store.serviceConfig;
+      account = darwin.ndh.atticClient.writeTokenOwner;
+    in
+    assert lib.assertMsg (
+      service.DynamicUser && lib.hasPrefix "write.token:" service.LoadCredential
+    ) "attic watch-store: the NixOS service must be a DynamicUser fed by LoadCredential";
+    assert lib.assertMsg (
+      nixos.ndh.atticClient.writeTokenOwner == "root"
+    ) "attic watch-store: on NixOS the token stays root's";
+    assert lib.assertMsg (
+      account != "root" && daemon.UserName == account && daemon.GroupName == account
+    ) "attic watch-store: the darwin daemon must run as the account the token is given to, never root";
+    assert lib.assertMsg (
+      darwin.users.users.${account}.uid != 0 && lib.elem account darwin.users.knownUsers
+    ) "attic watch-store: the darwin account must be a managed, non-root account";
+    assert lib.assertMsg (
+      darwin.users.users.${account}.shell == "/usr/bin/false"
+      && !(lib.elem account darwin.nix.settings.trusted-users)
+      && !(lib.elem account darwin.opensshPolicy.allowUsers)
+    ) "attic watch-store: the darwin account must have no shell, no daemon trust and no ssh login";
+    pkgs.runCommand "attic-watch-store-not-root" { } "touch $out";
+  nix-signing-trust =
+    let
+      lib = nixpkgs.lib;
+      trust = import ../modules/.common.d/nix-signing.d/trust.nix {
+        inherit lib;
+        machines = [
+          "a"
+          "b"
+        ];
+      };
+      fixture = {
+        a.slots."26-01-01".nixSigning = "seedmatic-a-1:old";
+        a.slots."26-10-01".nixSigning = "seedmatic-a-2:new";
+        b.slots."26-01-01".public = "no-nix-signing";
+        sshfs-c.slots."26-01-01".nixSigning = "seedmatic-c-1:not-a-host";
+      };
+      # The superseded slot deleted, as phase 2 of a renewal leaves keys.yaml.
+      retired = fixture // {
+        a.slots = removeAttrs fixture.a.slots [ "26-01-01" ];
+      };
+      machines =
+        map (n: self.darwinConfigurations.${n}.config) [
+          "bioskop"
+          "nikopol"
+        ]
+        ++ map (n: self.nixosConfigurations.${n}.config) [
+          "bioskop-nixos"
+          "nikopol-nixos"
+        ];
+      signing = lib.concatMap (
+        c:
+        map (f: lib.removeSuffix ".sec" (baseNameOf f)) (
+          lib.filter (lib.hasPrefix c.ndh.nixSigning.dir) c.nix.settings.secret-key-files
+        )
+      ) machines;
+      trusted = c: map (k: lib.head (lib.splitString ":" k)) c.nix.settings.extra-trusted-public-keys;
+    in
+    assert lib.assertMsg (
+      lib.sort lib.lessThan (trust fixture) == [
+        "seedmatic-a-1:old"
+        "seedmatic-a-2:new"
+      ]
+    ) "nix-signing trust: the current host-key slots, and only them";
+    assert lib.assertMsg (
+      trust retired == [ "seedmatic-a-2:new" ]
+    ) "nix-signing trust: a retired slot still trusted";
+    assert lib.assertMsg (lib.all (
+      c: lib.all (n: lib.elem n (trusted c)) signing
+    ) machines) "nix-signing trust: a machine signs with a key another machine does not trust";
+    pkgs.runCommand "nix-signing-trust" { } "touch $out";
+  # nix itself reads the derived secret: its public, as nix computes it, is the one --public prints. On a
+  # throwaway host key generated here; the package's own tests carry the known vector.
+  nix-signing-derive-nix-format =
+    let
+      derive = "${self.packages.${system}.ndh-nix-signing-derive}/bin/ndh-nix-signing-derive";
+      args = "--name seedmatic-check-1 --label seedmatic/nix-signing/1";
+    in
+    pkgs.runCommand "nix-signing-derive-nix-format"
+      {
+        nativeBuildInputs = [
+          pkgs.openssh
+          pkgs.nix
+        ];
+      }
+      ''
+        ssh-keygen -q -t ed25519 -N "" -C throwaway -f host
+        ${derive} ${args} --secret <host >derived.sec
+        ${derive} ${args} --public <host >derived.pub
+        [ "$(nix --extra-experimental-features nix-command key convert-secret-to-public <derived.sec)" = "$(cat derived.pub)" ]
+        touch $out
+      '';
+  git-sops-filters-bats = import ../modules/home-manager/git.d/tests/package.nix { inherit pkgs; };
+  # keys.yaml against its schema, ENCRYPTED as committed: the schema accepts ENC[...]
+  # wherever a private may sit, so the sandbox needs no key and nothing is decrypted.
+  # Each broken fixture must be REFUSED — a schema that accepts them proves nothing.
+  ssh-keys-schema =
+    pkgs.runCommand "ssh-keys-schema" { nativeBuildInputs = [ pkgs.check-jsonschema ]; }
+      ''
+        schema=${../modules/home-manager/ssh.d/keys.schema.yaml}
+        tests=${../modules/home-manager/ssh.d/tests}
+        check-jsonschema --schemafile "$schema" ${../modules/home-manager/ssh.d/keys.yaml}
+        # The plaintext-private fixture's armour is assembled here, never written in the tree.
+        armour() { printf -- '-----%s OPENSSH PRIVATE %s-----' "$1" KEY; }
+        cp "$tests"/broken-*.yaml .
+        sed -e "s|@BEGIN@|$(armour BEGIN)|" -e "s|@END@|$(armour END)|" \
+          "$tests"/plaintext-private.yaml.in >broken-plaintext-private.yaml
+        for broken in ../broken-*.yaml; do
+          if check-jsonschema --schemafile "$schema" "$broken" >/dev/null 2>&1; then
+            echo "the schema ACCEPTED $broken, which it must refuse" >&2
+            exit 1
+          fi
+        done
+        touch $out
+      '';
+  # The logger wrapper every ndh script runs under: a `set -e` script's failure stops it and fails
+  # the wrapper.
+  logger-command-run-bats = import ../modules/.common.d/shell.d/tests/package.nix { inherit pkgs; };
+  # The sshd post-flight checks: an unreadable host key is reported, an sshd not up refuses, the
+  # authorized-keys check never blocks sshd.
+  openssh-checks-bats = import ../modules/nixos/systemd/openssh.d/tests/package.nix { inherit pkgs; };
+  # baremetal-link deploy: nothing unapplied is ever reported done.
+  baremetal-link-deploy-bats = import ../pkgs/baremetal-link.d/tests/package.nix { inherit pkgs; };
+  # incus-cluster-join: a join that did not take is never reported joined.
+  incus-cluster-join-bats = import ../pkgs/incus-cluster-join.d/tests/package.nix { inherit pkgs; };
+  keyring-bats = import ../modules/.common.d/keyring.d/tests/package.nix { inherit pkgs; };
+  root-attest-bats = import ../modules/.common.d/root-attest.d/tests/package.nix { inherit pkgs; };
+  root-ceremony-bats = import ../modules/.common.d/root-ceremony.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # hs: no preauth key and no API key in a trace or an argv.
+  hs-bats = import ../modules/darwin/headscale-tools/tests/package.nix { inherit pkgs; };
+  # The headscale client's `tailscale up` takes the preauth key as a `file:` reference, never inline in argv.
+  headscale-client-bats = import ../modules/darwin/headscale-client.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # No secret VALUE in a trace or an argv, over every .sh of the repo (report mode until batch 1).
+  secret-xtrace-guard = import ../modules/.common.d/secret-xtrace-guard.d/package.nix {
+    inherit pkgs;
+    src = ../.;
+  };
+  secret-xtrace-guard-mutants = import ../modules/.common.d/secret-xtrace-guard.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # The ceremony VM is sealed: the runner's argv gives it no network device, no shared folder and
+  # nothing from the environment; the guest has a RAM root and no network or listening service. A
+  # runner with a NIC and a guest with a 9p share are refused.
+  ceremony-vm-sealed =
+    let
+      lib = nixpkgs.lib;
+      runnerSealed =
+        text:
+        lib.all (s: lib.hasInfix s text) [
+          "-nodefaults"
+          "-nic none"
+          "readonly=on"
+        ]
+        && !(lib.any (s: lib.hasInfix s text) [
+          "-netdev"
+          "-net "
+          "virtfs"
+          "fsdev"
+          "virtiofs"
+          "chardev socket"
+          "QEMU_OPTS"
+          "\"$@\""
+        ]);
+      guestSealed =
+        c:
+        c.fileSystems."/".fsType == "tmpfs"
+        && !(lib.any (
+          fs:
+          lib.elem fs.fsType [
+            "9p"
+            "virtiofs"
+          ]
+        ) (lib.attrValues c.fileSystems))
+        && !c.networking.useDHCP
+        && !c.services.openssh.enable
+        && !c.nix.enable
+        &&
+          c.fileSystems."/ceremony/in".options == [
+            "ro"
+            "nofail"
+          ];
+      runner = builtins.readFile ../modules/darwin/ceremony-vm.d/ndh-ceremony-vm.sh;
+      shared = ceremonyVm.extendModules {
+        modules = [
+          {
+            fileSystems."/host" = {
+              device = "host";
+              fsType = "9p";
+            };
+          }
+        ];
+      };
+    in
+    assert lib.assertMsg (runnerSealed runner)
+      "ceremony VM: the runner may give the VM a network or a share";
+    assert lib.assertMsg (lib.hasInfix "[[ -t 0 ]] || die" runner)
+      "ceremony VM: a ceremony could run without a terminal, from a session that would keep the passphrase";
+    assert lib.assertMsg (
+      ceremonyVm.config.systemd.services.io-seedmatic-ndh-ceremony-smoke.unitConfig.ConditionKernelCommandLine
+      == "ceremony.smoke=1"
+    ) "ceremony VM: the smoke check could run in a real ceremony";
+    assert lib.assertMsg (
+      !(runnerSealed (runner + " -netdev user,id=n0"))
+    ) "ceremony VM: a runner with a NIC passed";
+    assert lib.assertMsg (guestSealed ceremonyVm.config)
+      "ceremony VM: the guest has a disk, a share or a network";
+    assert lib.assertMsg (!(guestSealed shared.config)) "ceremony VM: a guest with a 9p share passed";
+    pkgs.runCommand "ceremony-vm-sealed" { } "touch $out";
+  # jq is replaced by yq-go in every script ndh runs, but for the initrd's one reviewed exception; a mutant
+  # (a jq added) is refused at every build.
+  no-jq = import ../modules/.common.d/no-jq.d/package.nix {
+    inherit pkgs;
+    src = ../.;
+  };
+  # ndh-store's gestures: every refusal before the first change, no unsealed layer left behind.
+  store-freeze-bats = import ../modules/nixos/store-freeze.d/tests/package.nix {
+    pkgs = pkgsForLinux;
+  };
+  # The attic token delivery: the deposit, the receive's checks, the boot-time unseal.
+  attic-tokens-bats = import ../modules/.common.d/attic-tokens.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # The vz-recover key's forced command: five verbs or a refusal, and no shell through a real sshd.
+  vz-recover-bats = import ../pkgs/vz-recover.d/tests/package.nix {
+    pkgs = pkgsForLinux;
+    inherit (self.packages.aarch64-darwin.nikopol-vz-recover) authorizedOptions;
+  };
+  # The vz-recover alias on the operator seat, as a connection resolves it (`ssh -G`, first value wins):
+  # one identity and no agent, publickey only, no forwarding, and the pinned host key alone.
+  vz-recover-ssh-alias =
+    let
+      home = nixpkgs.lib.head (
+        nixpkgs.lib.attrValues self.darwinConfigurations.bioskop.config.home-manager.users
+      );
+      bm = catalogData.netplan.baremetal.nikopol;
+      alias = "vzrecover.${bm.domain}";
+    in
+    # The fleet's KnownHostsCommand applies to every name, and vouches for the fleet's names only.
+    assert nixpkgs.lib.assertMsg (
+      !(builtins.elem alias self.fleetHostNames)
+    ) "${alias} is a fleet name: the host authority would vouch for it";
+    pkgs.runCommand "vz-recover-ssh-alias" { nativeBuildInputs = [ pkgs.openssh ]; } ''
+      # The config as ssh resolves it, config.d included: that Include comes first, and the sandbox has no ~.
+      mkdir ssh && cp -rL ${home.home-files}/.ssh/config.d ssh/config.d
+      sed "s#^Include config.d/#Include $PWD/ssh/config.d/#" ${
+        home.home.file.".ssh/config".source
+      } >ssh/config
+      ssh -G -F ssh/config ${alias} >effective
+      want() { grep -qxF "$1" effective || { echo "FAIL: no '$1' in"; cat effective; exit 1; }; }
+      want "hostname vzhost.${bm.domain}"
+      want "identityfile ~/.ssh/vz-recover"
+      [ "$(grep -c '^identityfile ' effective)" -eq 1 ] || { echo "FAIL: identities:"; grep '^identityfile ' effective; exit 1; }
+      for line in "identitiesonly yes" "identityagent none" "preferredauthentications publickey" \
+        "passwordauthentication no" "kbdinteractiveauthentication no" "batchmode yes" "requesttty false" \
+        "forwardagent no" "clearallforwardings yes" "hostkeyalias ${alias}" "stricthostkeychecking true" \
+        "globalknownhostsfile /dev/null" "updatehostkeys false"; do
+        want "$line"
+      done
+      known="$(awk '$1 == "userknownhostsfile" { print $2 }' effective)"
+      [ "$(cat "$known")" = "${alias} ${bm.vzHostKey}" ] || { echo "FAIL: known hosts: $(cat "$known")"; exit 1; }
+      # No control socket at all, so the alias can never join a master the operator's key opened to the same
+      # host (ControlPath none prints no line; ControlMaster no alone would still join one).
+      want "controlmaster false"
+      ! grep '^controlpath ' effective || { echo "FAIL: a control path, so a master could carry it"; exit 1; }
+      touch $out
+    '';
+  incus-cluster-cert-bats = import ../modules/.common.d/incus-cluster-cert.d/tests/package.nix {
+    inherit pkgs;
+  };
+  ndh-switch-bats = import ../modules/.common.d/ndh-switch.d/tests/package.nix {
+    inherit pkgs;
+    catalog = catalogData;
+  };
+  canary-proven-record-bats =
+    import ../modules/nixos/secret-material-guard.d/canary-proven.d/tests/package.nix
+      {
+        inherit pkgs;
+      };
+  fleet-switch-bats = import ../modules/.common.d/fleet-switch.d/tests/package.nix {
+    inherit pkgs;
+    catalog = catalogData;
+  };
+  ops-queue = import ../modules/.common.d/ops-queue.d/tests/package.nix {
+    inherit pkgs;
+    catalog = catalogData;
+    ndh = {
+      store = mkNdhStoreApiFor pkgs;
+      context.nixBashTrampoline =
+        if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
+    };
+  };
+  ndh-ops-bats = import ../modules/.common.d/ndh-ops.d/tests/package.nix { inherit pkgs; };
+  viewer-kubeconfig-bats = import ../modules/.common.d/viewer-kubeconfig.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # No bats test of the repository carries a line that checks nothing mid-test.
+  bats-weak-lines = import ../modules/.common.d/bats-lint.d/package.nix {
+    inherit pkgs;
+    src = self;
+  };
+  attic-cache-bats = import ../modules/nixos/attic-cache.d/tests/package.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  # ndh-incus-container: no incus call waits on an open stdin, as over `ssh host sudo …`.
+  incus-nixos-container-bats = import ../modules/nixos/incus-nixos-container.d/tests/package.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  content-guard-bats = import ../modules/.common.d/content-guard.d/tests/package.nix {
+    inherit pkgs;
+  };
+  # Built here so its shellcheck runs.
+  content-guard-package = import ../modules/.common.d/content-guard.d/package.nix { inherit pkgs; };
+  tls-authority-keychain-bats = import ../modules/darwin/tls-authority-keychain.d/tests/package.nix {
+    inherit pkgs;
+    trampoline = mkNdhNixBashTrampoline { pkgsForSystem = pkgs; };
+  };
+  # A two-slot authority whose old slot is compromised: ONE trusted slot, ONE to remove.
+  ssh-keys-trust =
+    let
+      trust = import ../modules/.common.d/keys-yaml.d/trust.nix { inherit (pkgs) lib; };
+      authorities.tls.slots = {
+        "26-05-29" = {
+          ca_crt = "OLD";
+          compromised = "published";
+        };
+        "26-10-04".ca_crt = "NEW";
+      };
+    in
+    assert pkgs.lib.assertMsg (
+      pkgs.lib.attrNames (trust.trustedSlots authorities).tls == [ "26-10-04" ]
+    ) "a compromised slot is still trusted";
+    assert pkgs.lib.assertMsg (
+      pkgs.lib.attrNames (trust.compromisedSlots authorities).tls == [ "26-05-29" ]
+    ) "a compromised slot is not listed for removal";
+    # The phase-2 gate: an ordinary retirement needs the slot that now signs to be trusted.
+    assert pkgs.lib.assertMsg (
+      trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } { "tls@26-05-29".reason = "retired"; }
+      == [ "tls@26-05-29" ]
+    ) "an ordinary retirement passed the gate without `trusted`";
+    assert pkgs.lib.assertMsg (
+      trust.phase2Gaps {
+        tls.slots."26-10-04" = {
+          ca_crt = "NEW";
+          trusted = "26-10-12";
+        };
+      } { "tls@26-05-29".reason = "retired"; } == [ ]
+    ) "a retirement whose successor is trusted was refused";
+    assert pkgs.lib.assertMsg (
+      trust.phase2Gaps { tls.slots."26-10-04".ca_crt = "NEW"; } {
+        "tls@26-05-29" = {
+          reason = "published";
+          compromised = true;
+        };
+      } == [ ]
+    ) "a compromised retirement was held by the gate";
+    pkgs.runCommand "ssh-keys-trust" { } "touch $out";
+  # Built for aarch64-linux (the builder runs it): the check runs a real sshd, and on darwin
+  # sshd's preauth child cannot enter its own seatbelt sandbox inside the nix build sandbox
+  # (sandbox_init: Operation not permitted).
+  openssh-revoked-host-keys = import ../modules/.common.d/openssh-policy.d/tests/package.nix {
+    pkgs = pkgsForLinux;
+  };
+}
+// nixpkgs.lib.listToAttrs (
+  map
+    (
+      host:
+      let
+        darwin = self.darwinConfigurations.${host}.config;
+        everywhere = self.fleetHostNames ++ outsideFleet;
+      in
+      nixpkgs.lib.nameValuePair "ssh-client-effective-${host}" (
+        import ../modules/darwin/ssh-client.d/tests/effective.nix {
+          inherit pkgs;
+          inherit (nixpkgs) lib;
+          name = host;
+          etc = darwin.environment.etc;
+          expect =
+            strictness "true" (
+              self.fleetHostNames
+              ++ nixStoreAliases.${host}
+              ++ [
+                "router.lan"
+                "nerd-nixos"
+              ]
+            )
+            ++ strictness "accept-new" [
+              "vzhost.nikopol"
+              "example.com"
+            ]
+            ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${host})
+            ++ map (target: {
+              inherit target;
+              option = "controlmaster";
+              value = "false";
+            }) everywhere
+            ++ map (target: {
+              inherit target;
+              option = "globalknownhostsfile";
+              value = "/etc/ssh/ssh_known_hosts";
+            }) everywhere
+            ++ map (target: {
+              inherit target;
+              option = "revokedhostkeys";
+              value = "${darwin.ndh.keysYaml.krlFile}";
+            }) everywhere;
+        }
+      )
+    )
+    [
+      "bioskop"
+      "nikopol"
+    ]
+)
+# Root's client on a NixOS guest resolves the fleet's revocation list for every host, as the
+# operator seats' does (roles × keys S3a K3): nix-daemon's remote builds run
+# ssh as root. The fleet's names and the aliases to them are strict there too; elsewhere ssh's own
+# default (`ask`) stands, which a non-interactive root cannot answer.
+// nixpkgs.lib.listToAttrs (
+  map
+    (
+      guest:
+      let
+        nixos = self.nixosConfigurations.${guest}.config;
+      in
+      nixpkgs.lib.nameValuePair "ssh-client-effective-${guest}" (
+        import ../modules/darwin/ssh-client.d/tests/effective.nix {
+          inherit pkgs;
+          inherit (nixpkgs) lib;
+          name = guest;
+          etc = nixos.environment.etc;
+          expect =
+            map (target: {
+              inherit target;
+              option = "revokedhostkeys";
+              value = "${nixos.ndh.keysYaml.krlFile}";
+            }) (self.fleetHostNames ++ outsideFleet)
+            ++ strictness "true" (self.fleetHostNames ++ nixStoreAliases.${guest})
+            ++ certsOnly (self.fleetHostNames ++ nixStoreAliases.${guest})
+            ++ strictness "ask" outsideFleet;
+        }
+      )
+    )
+    [
+      "bioskop-nixos"
+      "nikopol-nixos"
+    ]
+)
+# bioskop-nixos's sops files are encrypted to its access point's recipient before the identity is
+# pushed (roles × keys S4, first half): the files are the ones its configuration declares.
+// {
+  # An operator seat's sshd serves its policy's host keys and nothing else: every HostKey line of its
+  # drop-ins is one of opensshPolicy.hostKeyPaths, and each of those is there.
+  darwin-sshd-access = import ../modules/darwin/openssh.d/tests/sshd-access.nix {
+    inherit pkgs;
+    inherit (nixpkgs) lib;
+    seats = nixpkgs.lib.genAttrs [ "bioskop" "nikopol" ] (
+      seat:
+      let
+        c = self.darwinConfigurations.${seat}.config;
+      in
+      {
+        files = nixpkgs.lib.mapAttrs (_: v: v.text) (
+          nixpkgs.lib.filterAttrs (
+            n: v: nixpkgs.lib.hasPrefix "ssh/sshd_config" n && (v.text or null) != null
+          ) c.environment.etc
+        );
+        inherit (c.opensshPolicy) allowUsers;
+        operator = c.profile.user.name;
+        restrictedUsers = nixpkgs.lib.attrNames c.opensshPolicy.restrictedUsers;
+      }
+    );
+  };
+  darwin-sshd-host-keys =
+    let
+      lib = nixpkgs.lib;
+      wrong = lib.filter (x: x != null) (
+        map
+          (
+            seat:
+            let
+              c = self.darwinConfigurations.${seat}.config;
+              texts = lib.mapAttrsToList (_: v: v.text or "") (
+                lib.filterAttrs (n: _: lib.hasPrefix "ssh/sshd_config.d/" n) c.environment.etc
+              );
+              served = lib.unique (
+                map (l: lib.removePrefix "HostKey " l) (
+                  lib.filter (lib.hasPrefix "HostKey ") (lib.concatMap (lib.splitString "\n") texts)
+                )
+              );
+              expected = lib.unique (map toString c.opensshPolicy.hostKeyPaths);
+            in
+            if lib.sort lib.lessThan served == lib.sort lib.lessThan expected then
+              null
+            else
+              "${seat} serves [${toString served}], policy [${toString expected}]"
+          )
+          [
+            "bioskop"
+            "nikopol"
+          ]
+      );
+    in
+    assert lib.assertMsg (wrong == [ ]) "darwin sshd HostKey drift: ${lib.concatStringsSep "; " wrong}";
+    pkgs.runCommand "darwin-sshd-host-keys" { } "touch $out";
+}
+# The restricted users (nix-store, the builders' inbound account) by the real sshd, on every host that
+# declares them: an operator seat from its drop-ins, a guest from its extraConfig, which NixOS appends
+# after the generated settings and which must END with the Match blocks.
+// nixpkgs.lib.listToAttrs (
+  map
+    (
+      seat:
+      let
+        lib = nixpkgs.lib;
+        c = self.darwinConfigurations.${seat}.config;
+        dropIn = "ssh/sshd_config.d/restricted-users.conf";
+        files = lib.mapAttrs (_: v: v.text) (
+          lib.filterAttrs (
+            n: v: lib.hasPrefix "ssh/sshd_config" n && (v.text or null) != null
+          ) c.environment.etc
+        );
+        withoutRestricted = builtins.removeAttrs files [ dropIn ];
+      in
+      lib.nameValuePair "sshd-restricted-users-${seat}" (
+        import ../modules/.common.d/openssh-policy.d/tests/restricted-users.nix {
+          inherit pkgs lib withoutRestricted;
+          name = seat;
+          files =
+            assert lib.assertMsg (files ? ${dropIn}) "${seat}: no ${dropIn}";
+            files;
+          misordered = withoutRestricted // {
+            "ssh/sshd_config" = files.${dropIn} + files."ssh/sshd_config";
+          };
+          inherit (c.opensshPolicy) restrictedUsers;
+          otherUser = c.profile.user.name;
+        }
+      )
+    )
+    [
+      "bioskop"
+      "nikopol"
+    ]
+)
+// nixpkgs.lib.listToAttrs (
+  map
+    (
+      guest:
+      let
+        lib = nixpkgs.lib;
+        c = self.nixosConfigurations.${guest}.config;
+        extra = c.services.openssh.extraConfig;
+        restricted = c.opensshPolicy.restrictedUsersText;
+        withoutText = lib.removeSuffix restricted extra;
+      in
+      assert lib.assertMsg (lib.hasSuffix restricted extra)
+        "${guest}: services.openssh.extraConfig does not end with the restricted users' Match blocks";
+      lib.nameValuePair "sshd-restricted-users-${guest}" (
+        import ../modules/.common.d/openssh-policy.d/tests/restricted-users.nix {
+          inherit pkgs lib;
+          name = guest;
+          files."ssh/sshd_config" = extra;
+          withoutRestricted."ssh/sshd_config" = withoutText;
+          misordered."ssh/sshd_config" = restricted + withoutText;
+          inherit (c.opensshPolicy) restrictedUsers;
+          otherUser = c.profile.user.name;
+        }
+      )
+    )
+    [
+      "bioskop-nixos"
+      "nikopol-nixos"
+    ]
+)
+// {
+  sops-looks-encrypted = import ../modules/.common.d/sops.d/tests/looks-encrypted.nix {
+    inherit pkgs;
+  };
+  sops-access-point-recipients-bioskop-nixos =
+    let
+      c = self.nixosConfigurations.bioskop-nixos.config;
+      seat = self.darwinConfigurations.bioskop.config.ndh.keysYaml.keys.bioskop;
+    in
+    import ../modules/.common.d/sops.d/tests/access-point-recipients.nix {
+      inherit pkgs;
+      name = "bioskop-nixos";
+      files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
+      seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
+    };
+  # A retired recipient opens no sealed file any more (S4b): changing .sops.yaml re-keys nothing, so each file's
+  # own metadata is read. The files are the ones .sops.yaml's rules match, so a new sealed file cannot escape.
+  # A guest with an age identity file has its directory root's alone (0700), and no other tmpfiles rule names
+  # it with another mode; the mutant without the rule proves the predicate bites. The guests decrypt with
+  # their own served host key and have no age file (keyFile null, a4d55f84): the case is the same guest with a
+  # keyring-born serving slot, which keeps the age file, and the guests themselves must name no such directory.
+  sops-key-dir-0700 =
+    let
+      lib = nixpkgs.lib;
+      guests = [
+        "bioskop-nixos"
+        "nikopol-nixos"
+      ];
+      rulesNaming =
+        c: dir:
+        lib.filter (r: builtins.elemAt (lib.splitString " " r) 1 == dir) (
+          lib.filter (r: lib.length (lib.splitString " " r) > 1) c.systemd.tmpfiles.rules
+        );
+      rootOnly =
+        c:
+        let
+          dir = builtins.dirOf c.sops.age.keyFile;
+        in
+        rulesNaming c dir == [ "d ${dir} 0700 root root -" ];
+      withAgeFile = self.nixosConfigurations.bioskop-nixos.extendModules {
+        modules = [
+          {
+            ndh.hostKey.entry = lib.mkForce {
+              type = "ssh-ed25519";
+              slots."26-10-17" = {
+                state = "serving";
+                origin = "keyring";
+                public = "AAAAkeyring";
+              };
+            };
+          }
+        ];
+      };
+      mutant = withAgeFile.extendModules {
+        modules = [ { systemd.tmpfiles.rules = lib.mkForce [ ]; } ];
+      };
+    in
+    assert lib.assertMsg (lib.all (
+      g: self.nixosConfigurations.${g}.config.sops.age.keyFile == null
+    ) guests) "sops-key-dir-0700: a guest has an age file again: check it by its own configuration";
+    assert lib.assertMsg (lib.all (
+      g: rulesNaming self.nixosConfigurations.${g}.config "/var/lib/sops-nix" == [ ]
+    ) guests) "sops-key-dir-0700: a guest without an age file names an age identity directory";
+    assert lib.assertMsg (rootOnly withAgeFile.config)
+      "sops-key-dir-0700: a guest with an age file does not make its directory 0700 root";
+    assert lib.assertMsg (
+      !(rootOnly mutant.config)
+    ) "sops-key-dir-0700: the mutant without the rule passed";
+    pkgs.runCommand "sops-key-dir-0700" { } "touch $out";
+  sops-retired-recipients =
+    let
+      retired = [
+        # bioskop's macOS host key: bioskop decrypts with its own host key (6a)
+        "age1trxpn8efl5jctwakgpxxjd2h6x5h2m40ggugxl909qsj0h99p9yqkk8tej"
+        # .sops.yaml's ⛔ former recipients, removed on 2026-10-10, whose privates were published or exposed
+        "age19fvdjd6gr3mwthv4vuvym24wxlkugvcy4fuvmnngecsg8fpj4y9qm33qu0"
+        "age10ey0lcup4zpjqcknpxw7enpsagn674nm634f2u75trfr5t62uq5qdjuxzv"
+        "age1k0tc4gmaqrk5df3ujja34gkqxstu0cye7fl7fktjeuua3yych3aqxfjlak"
+        "age1stxdeh0t6arhdm7uhyy2jcf2qj9r9vfzkwte4jr4gj6hlpxe740seq8j82"
+        # the interims of step ⑥, removed on 2026-10-29: darwin.nikopol's, then the NixOS guests' shared one
+        "age17q5kw0epcl9ft7ecegr20040vx3g86z0f7vtecn9t8kk27qjspaqp66pp4"
+        "age1fe9gs0mljq82cwxasugyrjd4pqg9h4uym5r3rwfc2084q558hd7qt4845j"
+      ];
+    in
+    pkgs.runCommand "sops-retired-recipients" { nativeBuildInputs = [ pkgs.yq-go ]; } ''
+      cd ${self}
+      mapfile -t tracked < <(find . -type f -not -path '../.git/*' | sed 's#^\../##' | LC_ALL=C sort)
+      files=()
+      while IFS= read -r rule; do
+        mapfile -t matched < <(printf '%s\n' "''${tracked[@]}" | grep -E -- "$rule")
+        [ "''${#matched[@]}" -gt 0 ] || { echo "the .sops.yaml rule $rule matches no file" >&2; exit 1; }
+        files+=("''${matched[@]}")
+      done < <(yq -r '.creation_rules[].path_regex' .sops.yaml)
+      fail=0
+      for f in "''${files[@]}"; do
+        recipients="$(yq -p yaml -oy -r '.sops.age[].recipient' "$f")"
+        for r in ${nixpkgs.lib.escapeShellArgs retired}; do
+          if grep -qxF "$r" <<<"$recipients"; then
+            echo "$f is still sealed to the retired $r: run sops updatekeys on it" >&2
+            fail=1
+          fi
+        done
+      done
+      [ "$fail" = 0 ]
+      touch $out
+    '';
+  # The operator seat decrypts with its own host key (S4b 6a): every file it declares is sealed to it.
+  sops-access-point-recipients-bioskop =
+    let
+      c = self.darwinConfigurations.bioskop.config;
+      seat = c.ndh.keysYaml.keys.bioskop;
+    in
+    import ../modules/.common.d/sops.d/tests/access-point-recipients.nix {
+      inherit pkgs;
+      name = "bioskop";
+      files = nixpkgs.lib.unique (map (x: x.sopsFile) (builtins.attrValues c.sops.secrets));
+      seatPublic = (nixpkgs.lib.last (builtins.attrValues seat.slots)).public;
+    };
+}
+# The operator's own client config carries the same list, on every operator seat and NixOS guest.
+// {
+  ssh-client-operator-revocation =
+    let
+      lib = nixpkgs.lib;
+      configs = {
+        bioskop = self.darwinConfigurations.bioskop.config;
+        nikopol = self.darwinConfigurations.nikopol.config;
+        bioskop-nixos = self.nixosConfigurations.bioskop-nixos.config;
+        nikopol-nixos = self.nixosConfigurations.nikopol-nixos.config;
+      };
+      # Without context on either side: hasInfix builds a regex, which evaluation refuses to
+      # build from a string carrying store paths.
+      plain = builtins.unsafeDiscardStringContext;
+      missing = lib.attrNames (
+        lib.filterAttrs (
+          _: c:
+          !(lib.hasInfix (plain "RevokedHostKeys ${c.ndh.keysYaml.krlFile}\n") (
+            plain c.home-manager.users.${c.profile.user.name}.programs.ssh.extraConfig
+          ))
+        ) configs
+      );
+    in
+    assert lib.assertMsg (
+      missing == [ ]
+    ) "the operator's ssh client config has no RevokedHostKeys on: ${toString missing}";
+    pkgs.runCommand "ssh-client-operator-revocation" { } "touch $out";
+}
+# The operator's ~/.ssh/config and every host's /etc/ssh/ssh_known_hosts, on every operator seat
+# and NixOS guest (roles × keys S3a): the fleet's names are vouched for by the host authority and
+# nothing else is; they, the aliases to them and the guests' wildcard are checked strictly.
+// (
+  let
+    lib = nixpkgs.lib;
+    configs = {
+      bioskop = self.darwinConfigurations.bioskop.config;
+      nikopol = self.darwinConfigurations.nikopol.config;
+      bioskop-nixos = self.nixosConfigurations.bioskop-nixos.config;
+      nikopol-nixos = self.nixosConfigurations.nikopol-nixos.config;
+    };
+  in
+  lib.mapAttrs' (
+    host: c:
+    lib.nameValuePair "ssh-client-operator-effective-${host}" (
+      import ../modules/darwin/ssh-client.d/tests/effective.nix {
+        inherit pkgs lib;
+        name = "operator-${host}";
+        etc."ssh/ssh_config".text =
+          c.home-manager.users.${c.profile.user.name}.home.file.".ssh/config".text;
+        expect =
+          strictness "true" (
+            self.fleetHostNames
+            ++ nixStoreAliases.${host}
+            ++ [
+              "darwin.bioskop"
+              "darwin.nikopol"
+              "bioskop-ts"
+              "nikopol-ts"
+              "nerd-nixos"
+            ]
+          )
+          ++ strictness "accept-new" [
+            "vzhost.nikopol"
+            "router.lan"
+            "example.com"
+          ]
+          ++ certsOnly (
+            self.fleetHostNames
+            ++ nixStoreAliases.${host}
+            ++ [
+              "darwin.bioskop"
+              "darwin.nikopol"
+              "bioskop-ts"
+              "nikopol-ts"
+            ]
+          )
+          # A darwin host's alias names it FULLY qualified: a single label would go through the
+          # search list, and an operator seat may have no MagicDNS search domain.
+          ++
+            map
+              (seat: {
+                target = "darwin.${seat}";
+                option = "hostname";
+                value = "${seat}${catalogData.netplan.tailnet.domain}";
+              })
+              [
+                "bioskop"
+                "nikopol"
+              ];
+      }
+    )
+  ) configs
+  // lib.mapAttrs' (
+    host: c:
+    lib.nameValuePair "ssh-known-hosts-scope-${host}" (
+      import ../modules/.common.d/openssh-policy.d/tests/known-hosts-scope.nix {
+        inherit pkgs lib;
+        name = host;
+        knownHosts = c.environment.etc."ssh/ssh_known_hosts".text;
+        fleet = self.fleetHostNames;
+        outside = outsideFleet ++ [ "github.com" ];
+      }
+    )
+  ) configs
+)
+// nixpkgs.lib.listToAttrs (
+  map
+    (
+      host:
+      nixpkgs.lib.nameValuePair "secrets-read-after-install-${host}" (
+        import ../modules/darwin/activation-order.d/tests/read-after-install.nix {
+          inherit pkgs;
+          name = host;
+          text = self.darwinConfigurations.${host}.config.system.activationScripts.postActivation.text;
+        }
+      )
+    )
+    [
+      "bioskop"
+      "nikopol"
+    ]
+)
+# The host key sshd serves (ndh.hostKey.own, roles × keys S3a), on every guest and operator seat.
+// (
+  let
+    lib = nixpkgs.lib;
+    hosts = lib.attrNames inventoryData.hosts;
+  in
+  import ../modules/.common.d/host-key.d/tests/checks.nix {
+    inherit pkgs pkgsForLinux lib;
+    inherit (self) nixosConfigurations darwinConfigurations;
+    guests = map (host: "${host}-nixos") (
+      lib.filter (host: self.nixosConfigurations ? "${host}-nixos") hosts
+    );
+    seats = lib.filter (host: self.darwinConfigurations ? ${host}) hosts;
+  }
+)
+// import ../modules/nixos/baremetal-segment.d/tests/checks.nix {
+  inherit pkgs;
+  inherit (nixpkgs) lib;
+  inherit (self) nixosConfigurations;
+  catalog = catalogData;
+}
+// {
+  offtailnet-screens-check-bats =
+    import ../modules/nixos/baremetal-segment.d/tests/screens-check.nix
+      {
+        inherit pkgs;
+        ndh = {
+          store = mkNdhStoreApiFor pkgs;
+          context.nixBashTrampoline =
+            if system == "aarch64-darwin" then ndhNixBashTrampolineDarwin else ndhNixBashTrampolineLinux;
+        };
+      };
+}
+# The mask a failed install's log goes through into the build log: key material never passes.
+// {
+  bringup-install-log-mask =
+    (pkgsFor { system = "aarch64-linux"; }).runCommand "bringup-install-log-mask"
+      { nativeBuildInputs = [ (pkgsFor { system = "aarch64-linux"; }).openssh ]; }
+      ''
+        ssh-keygen -q -t ed25519 -N "" -f key
+        { echo before; cat key; printf 'AGE-SECRET-'"KEY-1%s\\n" "$(head -c 400 /dev/urandom | base64 -w0 | tr -dc 'A-Z0-9' | head -c 58)"; echo after; } > log
+        sed -E -f ${../modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} log > masked
+        grep -qx before masked && grep -qx after masked
+        if grep -qE '^[A-Za-z0-9+/=]{40,}$|AGE-SECRET-KEY-1[A-Z0-9]{50,}' masked; then
+          echo "key material passed the mask" >&2
+          exit 1
+        fi
+        [ "$(grep -c '\[MASKED\]' masked)" -ge 2 ]
+        # A window that starts INSIDE a key — its body and footer, no header: no body line survives.
+        tail -n +2 key > midkey
+        sed -E -f ${../modules/nixos/bringup-zfs-disk-image.d/install-log-mask.sed} midkey > midkey.masked
+        if grep -qE '^[A-Za-z0-9+/=]{40,}$' midkey.masked; then
+          echo "a key body with no header passed the mask" >&2
+          exit 1
+        fi
+        [ "$(grep -c '\[MASKED\]' midkey.masked)" -ge 1 ]
+        touch $out
+      '';
+}
+# The in-guest secret-material guard's proof is ON DEMAND (onDemandChecks): it installs the bringup with its
+# erofs store layers attached (3 × ~4.6 G), which the default set no longer builds (operator, 2026-10-24). Here
+# it only EVALUATES: its derivation, context discarded, so a module that breaks it is red at once and nothing
+# is built.
+// {
+  bringup-in-guest-secret-guard-evaluates = pkgs.writeText "bringup-in-guest-secret-guard-evaluates" (
+    builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath
+  );
+  # The image gate holds without building an image: with a record that is not the canary's derivation the
+  # image refuses, with the canary's own it evaluates (its drvPath only). The record in the repo may lag:
+  # that refuses the next image build, never a check.
+  canary-proven-gate =
+    let
+      refused = builtins.tryEval (
+        canaryProvenWith "/nix/store/0000000000000000000000000000000-stale.drv" "image"
+      );
+      accepted = builtins.tryEval (
+        canaryProvenWith (builtins.unsafeDiscardStringContext onDemandChecks.bringup-in-guest-secret-guard.drvPath) "image"
+      );
+    in
+    assert nixpkgs.lib.assertMsg (
+      !refused.success
+    ) "canary-proven-gate: a stale record did not refuse the image";
+    assert nixpkgs.lib.assertMsg (
+      accepted.success && accepted.value == "image"
+    ) "canary-proven-gate: the proven record refused the image";
+    pkgs.writeText "canary-proven-gate" "stale record refused; proven record accepted\n";
+}
+# The bringup images' secret-material guard, proven by canaries — on aarch64-linux, where the
+# store layers it guards are packed, through the remote builder, like the images themselves.
+// {
+  secret-material-guard =
+    let
+      linuxPkgs = pkgsFor { system = "aarch64-linux"; };
+    in
+    import ../modules/nixos/secret-material-guard.d/tests/package.nix {
+      pkgs = linuxPkgs;
+      nixBashTrampoline = "${mkNdhNixBashTrampoline { pkgsForSystem = linuxPkgs; }}";
+    };
+}
