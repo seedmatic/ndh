@@ -18,7 +18,6 @@
     ./disable-spotlight.nix
     ./disable-google-updaters.nix
     ./disable-unwanted-agents.nix
-    ./nfsd-off.nix
     ./nfs-autofs.nix
     ./corp-egress-guard.nix
     ./tailnet-client.nix

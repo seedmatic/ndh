@@ -1866,7 +1866,6 @@
               {
                 inherit pkgs;
               };
-          nfsd-off-bats = import ./modules/darwin/nfsd-off.d/tests/package.nix { inherit pkgs; };
           corp-egress-anchor-bats = import ./modules/darwin/corp-egress-guard.d/tests/package.nix {
             inherit pkgs;
           };
