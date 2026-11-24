@@ -118,7 +118,7 @@ let
       upper = "${stateRoot}/${name}/upper";
     };
     devices = instance.devices;
-    inherit (instance) profiles stateDatasets renamedFrom;
+    inherit (instance) profiles stateDatasets;
     health.units = map (u: if lib.isString u then { unit = u; } else u) instance.health.units;
   }) cfg.instances;
 
@@ -261,18 +261,6 @@ in
                 Nix profiles besides the system's, by their path inside the container, set host side at
                 each delivery. Never from the container's own activation: an unprivileged container's root
                 cannot write in the host-owned /nix bind.
-              '';
-            };
-            renamedFrom = lib.mkOption {
-              # An instance name's shape, as the CLI checks it: it goes into dataset paths, unit names and patterns.
-              type = lib.types.nullOr (lib.types.strMatching "[a-z][a-z0-9-]{0,62}");
-              default = null;
-              example = "attic";
-              description = ''
-                The name this instance had before. Where the instance is absent and that name runs on this member,
-                converge renames it, its dataset, delivery snapshots, devices and store unit with it, rather than create
-                an empty container; the next converge delivers as usual. Undone exactly when the renamed container is
-                not healthy on the same system.
               '';
             };
             stateDatasets = lib.mkOption {
