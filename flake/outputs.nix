@@ -5171,10 +5171,6 @@ rec {
   # Standard nixpkgs overlays with inputs pre-applied — correct type for the flake overlays output.
   overlays = nixpkgs.lib.mapAttrs (_: f: f inputs) overlayFactories;
 
-  homeManagerModules = {
-    primaryUser = import ../modules/.common.d/primary-user.nix;
-    manager = import ../modules/home-manager;
-    profile = import ../profile.nix;
-  };
+  homeManagerModules = import ../flake/home-manager-modules.nix;
 
 }
