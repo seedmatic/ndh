@@ -67,8 +67,6 @@ in
     (worktreePath.of "modules/.common.d/ssh-paths.nix")
   ];
 
-
-
   config = {
 
     # Server policy wiring
