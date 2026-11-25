@@ -64,6 +64,9 @@ main() {
     target_mount="/run/esp-sync/$(basename "$esp_part")"
     mkdir -p "$target_mount"
     mount -t vfat "$esp_part" "$target_mount"
+    # Mirror, not merge: drop stale entries from previous generations so they
+    # do not accumulate and exhaust the (fixed-size) ESP over time.
+    find "$target_mount" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     # vfat holds no owner and no mode: preserving them fails (EPERM). A failed copy still unmounts,
     # so the next run does not find the partition mounted.
     copied=1
