@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 #
 # ndh-incus-container with incus, zfs, systemctl and nix stubbed: run as `ssh host sudo …` runs it, stdin an OPEN
-# pipe, no incus call may wait on stdin (live, 2026-10-18: `incus project main:create` and `incus init` hung
+# pipe, no incus call may wait on stdin (live, 2026-10-18: `incus project create` and `incus init` hung
 # there for a YAML). The incus stub waits for stdin a moment and fails if the wait times out; its `start`
 # fails if a store device's mount point is missing, as an unprivileged LXC does (EPERM, live, same day).
 
@@ -324,7 +324,7 @@ EOF
     [logTag]=ndh.test.incusContainer
   )
   local text k
-  text=$(cat "$BATS_TEST_DIRNAME/../cli.sh")
+  text=$(cat "$BATS_TEST_DIRNAME/../util.sh" "$BATS_TEST_DIRNAME/../incus.sh" "$BATS_TEST_DIRNAME/../overlay.sh" "$BATS_TEST_DIRNAME/../nix.sh" "$BATS_TEST_DIRNAME/../zfs.sh" "$BATS_TEST_DIRNAME/../main.sh")
   text=${text//@nixBashTrampoline@/$NDH_TRAMPOLINE}
   for k in "${!vars[@]}"; do text=${text//@$k@/$(printf '%q' "${vars[$k]}")}; done
   cli=$t/ndh-incus-container
@@ -359,7 +359,7 @@ teardown() { kill "$holder" 2>/dev/null || true; }
   run --separate-stderr "$t/run" "$cli" main:create attic <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr != *"waited on stdin"* ]]
-  grep -q '^incus project main:create ndh$' "$t/calls"
+  grep -q '^incus project create ndh$' "$t/calls"
   grep -q '^incus init --empty --project ndh --storage default attic ' "$t/calls"
 }
 
@@ -400,13 +400,13 @@ teardown() { kill "$holder" 2>/dev/null || true; }
   run --separate-stderr "$t/run" "$cli"
   [ "$status" -eq 2 ]
   [[ $stderr == *"ndh-incus-container main:create"* && $stderr == *"ndh-incus-container deliver"* ]]
-  [[ $stderr == *"ndh-incus-container main:converge"* ]]
+  [[ $stderr == *"ndh-incus-container main:reconcile"* ]]
 }
 
 # A container already delivered once on x-attic-old: a profile, a previous snapshot's stamp, an upper.
 delivered_before() {
   echo none >"$t/inst/attic"
-  # Delivered, so running, its store mounted: a stopped one with no main:converge mark is the operator's, held.
+  # Delivered, so running, its store mounted: a stopped one with no main:reconcile mark is the operator's, held.
   touch "$t/inst/attic.running"
   printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >>"$t/mounts"
   mkdir -p "$t/attic/root/nix/var/nix/profiles" "$t/attic/upper" "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
@@ -416,7 +416,7 @@ delivered_before() {
   echo schema-1 >"$t/zfs/tank/nerd/attic/db"
 }
 
-@test "main:converge on the declared system does nothing" {
+@test "main:reconcile on the declared system does nothing" {
   delivered_before
   # Running on it, its store mounted: nothing to deliver, nothing to start.
   touch "$t/inst/attic.running"
@@ -424,17 +424,17 @@ delivered_before() {
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic holds its declared system and profiles"* ]]
   run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "main:converge delivers a changed system, sets its profiles host side, and keeps it when main:healthy:check" {
+@test "main:reconcile delivers a changed system, sets its profiles host side, and keeps it when main:healthy:check" {
   delivered_before
   echo "nginx.service inactive no" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic ← $t/x-attic, main:healthy:check"* ]]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic" ]
@@ -442,7 +442,7 @@ delivered_before() {
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$t/x-runtime" ]
   # Committed: nothing kept aside, the previous delivery snapshot destroyed.
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
-  [ ! -e "$t/attic/main:converge.failed" ]
+  [ ! -e "$t/attic/main:reconcile.failed" ]
 }
 
 # The declared devices, reconciled at every delivery in overlay:point's one write (2026-10-30: a device renamed in the
@@ -457,7 +457,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   printf '%s\n' "${text/"$from"/"$to"}" >"$cli"
 }
 
-@test "a container whose devices already match is not rewritten: main:converge on its declared system edits nothing" {
+@test "a container whose devices already match is not rewritten: main:reconcile on its declared system edits nothing" {
   delivered_before
   declared_devices '{"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}'
   echo '{"fabric":{"name":"eth0","nictype":"bridged","parent":"fabric-br","type":"nic"}}' >"$t/inst/attic.other.json"
@@ -466,16 +466,16 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   run grep -E '^incus config edit' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "main:converge rolls back an unhealthy system exactly, fails loudly, and does not retry it" {
+@test "main:reconcile rolls back an unhealthy system exactly, fails loudly, and does not retry it" {
   delivered_before
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"atticd.service is failed"* && $stderr == *"back on its previous system"* ]]
   # Back on the previous system, its upper and its stamp.
@@ -483,46 +483,46 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   grep -q '^zfs destroy tank/x@ndh-incus-attic-20261018T000000Z$' "$t/calls"
-  [ "$(sed -n 2p "$t/attic/main:converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
-  # Once per toplevel: the next main:converge does not deliver it again.
+  [ "$(sed -n 2p "$t/attic/main:reconcile.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
+  # Once per toplevel: the next main:reconcile does not deliver it again.
   : >"$t/calls"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"already failed on $t/x-attic"* ]]
   run grep -E '^(zfs snapshot|incus start)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "main:converge creates a declared container this standalone Incus does not have, then delivers it" {
+@test "main:reconcile creates a declared container this standalone Incus does not have, then delivers it" {
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic created on this standalone member"* && $output == *"main:healthy:check"* ]]
   [ "$(cat "$t/inst/attic")" = none ]
   grep -q '^incus init --empty --project ndh --storage default attic ' "$t/calls"
 }
 
-@test "main:converge rolls the state dataset back too: a migration the new system made is undone" {
+@test "main:reconcile rolls the state dataset back too: a migration the new system made is undone" {
   delivered_before
   echo "atticd.service failed" >"$t/units"
   # The NEW system migrates its data on its first start, then turns out unhealthy; the previous system,
   # restarted by the main:rollback, does not migrate.
   printf '#!%s\n[ -e %q ] || { echo schema-2 >%q; touch %q; }\n' "$BASH" "$t/migrated" "$t/zfs/tank/nerd/attic/db" "$t/migrated" >"$t/on-start"
   chmod +x "$t/on-start"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
   grep -q '^zfs snapshot -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
-  grep -q '^zfs main:rollback -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
+  grep -q '^zfs rollback -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
   # No snapshot of the state is left behind.
   [ -z "$(ls -d "$t/zfs/tank/nerd/attic@"* 2>/dev/null)" ]
 }
 
-@test "main:converge keeps the migrated state when main:healthy:check, and destroys its snapshot" {
+@test "main:reconcile keeps the migrated state when main:healthy:check, and destroys its snapshot" {
   delivered_before
   printf '#!%s\necho schema-2 >%q\n' "$BASH" "$t/zfs/tank/nerd/attic/db" >"$t/on-start"
   chmod +x "$t/on-start"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
   grep -q '^zfs destroy -r tank/nerd/attic@ndh-incus-attic-20261018T000000Z$' "$t/calls"
@@ -532,7 +532,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
 @test "the state snapshot is taken with the container stopped, before anything is delivered" {
   delivered_before
   touch "$t/inst/attic.running"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   stop=$(grep -n '^incus stop --project ndh attic$' "$t/calls" | cut -d: -f1)
   snap=$(grep -n '^zfs snapshot -r tank/nerd/attic@' "$t/calls" | cut -d: -f1)
@@ -545,13 +545,13 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
 }
 
 
-@test "main:converge makes a profile's missing parent host side, root's own, and lands the profile" {
+@test "main:reconcile makes a profile's missing parent host side, root's own, and lands the profile" {
   delivered_before
   # The old /nix/var/nix, per-user/root with it, goes aside at delivery: nothing of the parent is left.
   [ ! -e "$t/attic/root/nix/var/nix/profiles/per-user" ]
   # A strict umask in the caller: the mode below is the CLI's doing.
   umask 077
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [ -d "$t/attic/root/nix/var/nix/profiles/per-user/root" ]
   [ "$(stat -c %a "$t/attic/root/nix/var/nix/profiles/per-user")" = 755 ]
@@ -563,7 +563,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   delivered_before
   grep -q '^    (umask 022 && mkdir -p "\$dir/root/\$parent")$' "$cli"
   sed '/^    (umask 022 && mkdir -p "\$dir\/root\/\$parent")$/d' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"cannot read directory"* ]]
   [[ $output != *main:healthy:check* ]]
@@ -573,7 +573,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
 @test "a nix-env failure on a profile fails the delivery, rolls back, and is not retried" {
   delivered_before
   echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"could not be delivered"* && $stderr == *"back on its previous system"* ]]
   [[ $output != *main:healthy:check* ]]
@@ -581,26 +581,26 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   [ "$(cat "$t/attic/upper/marker")" = old-upper ]
   [ "$(cat "$t/attic/lower.snapshot")" = ndh-incus-attic-20261001T000000Z ]
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
-  [ "$(sed -n 2p "$t/attic/main:converge.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
+  [ "$(sed -n 2p "$t/attic/main:reconcile.failed")" = "/nix/var/nix/profiles/system	$t/x-attic" ]
 }
 
 @test "mutant: the delivery steps in the caller's process lose the nix-env failure" {
   delivered_before
   echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  grep -q '"\$BASH" "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"' "$cli"
+  grep -q '"\$BASH" "\${BASH_SOURCE\[0\]}" main:deliver "\$1"' "$cli"
   # The postcondition goes too, so only the process boundary stands between the failure and "main:healthy:check".
-  sed -e 's/"\$BASH" "\${BASH_SOURCE\[0\]}" _deliver-steps "\$1"/_deliver-steps "$1"/' \
+  sed -e 's/"\$BASH" "\${BASH_SOURCE\[0\]}" main:deliver "\$1"/main:deliver "$1"/' \
     -e '/^  nix:profile:check "\$1" >&2 || util:die/d' "$cli" >"$t/mutant"
   run grep -q 'nix:profile:check "\$1" >&2' "$t/mutant"
   [ "$status" -eq 1 ]
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [[ $output == *main:healthy:check* ]]
 }
 
-@test "a yq failure reading the profiles fails main:converge loudly, and delivers nothing" {
+@test "a yq failure reading the profiles fails main:reconcile loudly, and delivers nothing" {
   delivered_before
   touch "$t/yq-profiles-fails"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"declared profiles could not be read"* ]]
   [[ $output != *main:healthy:check* ]]
@@ -615,7 +615,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   grep -q '^  profiles=\$(yq .*<<<"\$1") || return 1$' "$cli"
   sed 's/^\(  profiles=\$(yq .*<<<"\$1")\) || return 1$/\1 || true/' "$cli" >"$t/mutant"
   grep -q '<<<"\$1") || true$' "$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [[ $output == *main:healthy:check* ]]
 }
 
@@ -625,7 +625,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   printf '#!%s\nprintf "nix-env %%s\\n" "$*" >>%q\ncase "$4" in */per-user/*) ln -sfn %q "$4" ;; *) ln -sfn "$6" "$4" ;; esac\n' \
     "$BASH" "$t/calls" "$t/x-attic-old" >"$t/bin/nix-env"
   chmod +x "$t/bin/nix-env"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
   [[ $stderr == *"does not hold its declared profiles after delivery"* ]]
@@ -638,13 +638,13 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   chmod +x "$t/bin/nix-env"
   grep -q '^  nix:profile:check "\$1" >&2 || util:die' "$cli"
   sed '/^  nix:profile:check "\$1" >&2 || util:die/d' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [[ $output == *main:healthy:check* ]]
 }
 
 @test "the health probes call the guest's systemctl by its path" {
   delivered_before
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   grep -q -- '-- /run/current-system/sw/bin/systemctl is-active atticd.service$' "$t/calls"
   run grep -E -- '-- systemctl ' "$t/calls"
@@ -655,7 +655,7 @@ declared_devices() { # <json of the declared devices>: the incus:instance as the
   delivered_before
   echo "atticd.service failed" >"$t/units"
   touch "$t/zfs-rollback-fails"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"zfs rollback: failing"* ]]
   [[ $stderr == *"main:rollback FAILED: it needs a hand"* ]]
@@ -669,13 +669,13 @@ refused_untouched() {
   [ -d "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" ]
 }
 
-@test "_rollback refuses a snapshot that is not a delivery snapshot of this incus:instance, and touches nothing" {
+@test "main:rollback refuses a snapshot that is not a delivery snapshot of this incus:instance, and touches nothing" {
   delivered_before
   mkdir -p "$t/attic/.previous-ndh-incus-attic-20261018T000000Z" "$t/x"
   for snapshot in ../x a@b "" ndh-incus-other-20261018T000000Z ndh-incus-attic-20261018T000000Z/../../x \
     ndh-incus-attic-2026101T000000Z ndh-incus-attic-20261018T000000Z@x; do
     : >"$t/calls"
-    run --separate-stderr "$t/run" "$cli" _rollback attic "$snapshot" <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" main:rollback attic "$snapshot" <"$t/stdin"
     [ "$status" -ne 0 ]
     refused_untouched
   done
@@ -686,19 +686,19 @@ refused_untouched() {
   delivered_before
   mkdir -p "$t/attic/.previous-a@b"
   # The check dropped from rollback_steps alone, its call being the first line of it that names the snapshot.
-  grep -q '^  delivery_snapshot "\$1" "\$2"$' "$cli"
-  awk '/^rollback_steps\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
-  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
-  run --separate-stderr "$t/run" "$t/mutant" _rollback attic a@b <"$t/stdin"
+  grep -q '^  main:delivery:validate "\$1" "\$2"$' "$cli"
+  awk '/^main:rollback\(\) \{/{r=1} r && /^  main:delivery:validate "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  main:delivery:validate "\$1" "\$2"$' "$t/mutant")" = 1 ]
+  run --separate-stderr "$t/run" "$t/mutant" main:rollback attic a@b <"$t/stdin"
   grep -qE '^(zfs (main:rollback|destroy)|incus stop)' "$t/calls"
 }
 
 @test "an incus:instance name outside an Incus name's shape is refused before any use" {
   for name in ../attic 'att.c' 'attic;x' '' ATTIC; do
     : >"$t/calls"
-    run --separate-stderr "$t/run" "$cli" _deliver-steps "$name" <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" main:deliver "$name" <"$t/stdin"
     [ "$status" -ne 0 ]
-    run --separate-stderr "$t/run" "$cli" _rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" main:rollback "$name" ndh-incus-attic-20261018T000000Z <"$t/stdin"
     [ "$status" -ne 0 ]
     [ ! -s "$t/calls" ]
   done
@@ -709,15 +709,15 @@ refused_untouched() {
   # att.c declared as a copy of attic, right after the wrapper's INSTANCES line.
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.["att.c"] = .attic'"'"' <<<"$INSTANCES")' "$cli" >"$t/declared"
   [ "$(grep -c '"att.c"' "$t/declared")" = 1 ]
-  run --separate-stderr "$t/run" "$t/declared" _deliver-steps 'att.c' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/declared" main:deliver 'att.c' <"$t/stdin"
   [ "$status" -ne 0 ]
   [[ $stderr == *"is not an incus:instance name"* ]]
   sed '/is not an incus:instance name/d' "$t/declared" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" _deliver-steps 'att.c' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:deliver 'att.c' <"$t/stdin"
   [[ $stderr != *"is not an incus:instance name"* && $stderr != *"no incus:instance 'att.c' is declared"* ]]
 }
 
-# What main:converge must leave TRUE, whatever it did to get there: every declared profile resolves to its package.
+# What main:reconcile must leave TRUE, whatever it did to get there: every declared profile resolves to its package.
 holds_declared() {
   [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/system")" = "$(readlink -f "$t/x-attic")" ]
   [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$(readlink -f "$t/x-runtime")" ]
@@ -729,19 +729,19 @@ system_current() {
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
 }
 
-@test "the system matches but a declared profile is missing: main:converge delivers, and it then holds" {
+@test "the system matches but a declared profile is missing: main:reconcile delivers, and it then holds" {
   system_current
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr == *"per-user/root/runtime is not $t/x-runtime"* ]]
   holds_declared
 }
 
-@test "the system matches but a declared profile points elsewhere: main:converge delivers, and it then holds" {
+@test "the system matches but a declared profile points elsewhere: main:reconcile delivers, and it then holds" {
   system_current
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-attic-old" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   holds_declared
 }
@@ -751,7 +751,7 @@ system_current() {
   # Its shape before this fix: the system's profile only.
   grep -q 'if wrong=\$(nix:profile:check "\$name"); then' "$cli"
   sed 's|if wrong=\$(nix:profile:check "\$name"); then|if [ "$(readlink -f "$dir/root/nix/var/nix/profiles/system")" = "$(readlink -f "$toplevel")" ]; then|' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   run holds_declared
   [ "$status" -ne 0 ]
 }
@@ -759,18 +759,18 @@ system_current() {
 @test "a profile changed alone, the system the same, is a new attempt after a failed one" {
   system_current
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   # The same declared state: not retried.
   : >"$t/calls"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [[ $stderr == *"already failed"* ]]
   # A new runtime declared, the system unchanged: a new attempt.
   touch "$t/x-runtime-2"
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.profiles[] += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
   [ "$(grep -c 'x-runtime-2\|+= "-2"' "$t/cli-2")" = 1 ]
   : >"$t/units"
-  run --separate-stderr "$t/run" "$t/cli-2" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-2" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [ "$(readlink -f "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime")" = "$(readlink -f "$t/x-runtime-2")" ]
 }
@@ -791,35 +791,35 @@ system_current() {
 @test "a failure on the delivering tool is retried by the tool's next revision, the declared state the same" {
   delivered_before
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   : >"$t/calls"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [[ $stderr == *"already failed"* ]]
   # The same script at another path: a new revision of the tool, the containers' declared state unchanged.
   cp "$cli" "$t/ndh-incus-container-next"
   : >"$t/units"
-  run --separate-stderr "$t/run" "$t/ndh-incus-container-next" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/ndh-incus-container-next" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr != *"already failed"* ]]
   [[ $output == *main:healthy:check* ]]
 }
 
-@test "mutant: main:converge.failed without the tool keeps the next revision from retrying" {
+@test "mutant: main:reconcile.failed without the tool keeps the next revision from retrying" {
   delivered_before
   echo "atticd.service failed" >"$t/units"
   grep -q "declared=\$(printf 'tool" "$cli"
   sed "/declared=\$(printf 'tool/d" "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   cp "$t/mutant" "$t/mutant-next"
   : >"$t/units"
-  run --separate-stderr "$t/run" "$t/mutant-next" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant-next" main:reconcile <"$t/stdin"
   [[ $stderr == *"already failed"* ]]
 }
 
 # The state bioskop-nixos was left in on 2026-10-22: attic delivered and main:healthy:check on 184302Z, its profiles declared,
 # and the main:commit died on a busy snapshot, so the previous delivery's pair (145633Z), the aside and the state snapshot of
-# 184302Z are still there, and so is a main:converge.failed from before.
+# 184302Z are still there, and so is a main:reconcile.failed from before.
 left_by_a_dead_commit() {
   echo none >"$t/inst/attic"
   touch "$t/inst/attic.running"
@@ -831,7 +831,7 @@ left_by_a_dead_commit() {
     mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261022T145633Z" "$t/zfs/$ds@ndh-incus-attic-20261022T184302Z"
   done
   mkdir -p "$t/zfs/tank/nerd/attic@ndh-incus-attic-20261022T184302Z"
-  printf 'tool\t/an/older/cli\n' >"$t/attic/main:converge.failed"
+  printf 'tool\t/an/older/cli\n' >"$t/attic/main:reconcile.failed"
 }
 
 # Every delivery snapshot but the current one, every state snapshot and every aside: what a main:commit leaves none of.
@@ -843,39 +843,39 @@ no_leftovers() {
   [ -z "$(ls -d "$t/attic"/.previous-* 2>/dev/null)" ]
 }
 
-@test "main:converge finishes a main:commit that died, on today's exact main:leftovers:list, with no gesture" {
-  left_by_a_dead_commit
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+@test "main:reconcile finishes a main:commit that died, on today's exact main:leftovers:list, with no gesture" {
+  left_by_a_deadmain:commit
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"previous delivery committed"* ]]
   no_leftovers
-  [ ! -e "$t/attic/main:converge.failed" ]
+  [ ! -e "$t/attic/main:reconcile.failed" ]
   # Nothing redelivered: the container already held its declared state.
   run grep -E '^(zfs snapshot|incus stop|incus start)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
 @test "a snapshot still automounted under .zfs/snapshot is unmounted, then destroyed" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   grep -qxF 'umount /nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z' "$t/calls"
   no_leftovers
 }
 
-@test "mutant: without the umount, the busy snapshot stops the main:commit, and the next main:converge resumes it" {
-  left_by_a_dead_commit
+@test "mutant: without the umount, the busy snapshot stops the main:commit, and the next main:reconcile resumes it" {
+  left_by_a_deadmain:commit
   echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
   grep -q '      umount "\$target" || true' "$cli"
   sed '/      umount "\$target" || true/d' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
-  [[ $stderr == *"dataset is busy"* && $stderr == *"next main:converge resumes it"* ]]
+  [[ $stderr == *"dataset is busy"* && $stderr == *"next main:reconcile resumes it"* ]]
   [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
-  # The automount expires; the next main:converge, even this one, finishes.
+  # The automount expires; the next main:reconcile, even this one, finishes.
   : >"$t/mounts"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   no_leftovers
 }
@@ -886,14 +886,14 @@ no_leftovers() {
   for ds in tank/x tank/db; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-20261001T000000Z"; done
   echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261001T000000Z" >"$t/mounts"
   touch "$t/umount-fails"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $output == *main:healthy:check* ]]
   [[ $stderr == *"main:commit is unfinished"* ]]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic" ]
-  [ ! -e "$t/attic/main:converge.failed" ]
+  [ ! -e "$t/attic/main:reconcile.failed" ]
   rm "$t/umount-fails"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"previous delivery committed"* ]]
   [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-20261001T000000Z" 2>/dev/null)" ]
@@ -901,9 +901,9 @@ no_leftovers() {
 }
 
 @test "main:leftovers:list are kept while the container is unhealthy: its previous delivery is its way back" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"is unhealthy: its previous delivery is kept"* ]]
   [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
@@ -911,10 +911,10 @@ no_leftovers() {
 }
 
 @test "mutant: an up-to-date container with main:leftovers:list left as it is never finishes the main:commit" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   grep -q '      elif \[ -n "\$rest" \]; then' "$cli"
   sed 's/      elif \[ -n "\$rest" \]; then/      elif false; then/' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   run no_leftovers
   [ "$status" -ne 0 ]
 }
@@ -922,7 +922,7 @@ no_leftovers() {
 @test "the health wait waits out a guest without systemctl yet, quietly" {
   delivered_before
   echo 3 >"$t/no-systemctl"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *main:healthy:check* ]]
   [[ $stderr != *"Command not found"* ]]
@@ -935,28 +935,28 @@ no_leftovers() {
   # The probes see no systemctl either while it lasts.
   grep -q 'GUEST_SYSTEMCTL" --version >/dev/null 2>&1; do' "$cli"
   sed 's/until incus exec --project "\$PROJECT" "\$1" -- "\$GUEST_SYSTEMCTL" --version >\/dev\/null 2>&1; do/until true; do/' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [[ $stderr == *"Command not found"* ]]
   [[ $output != *main:healthy:check* ]]
 }
 
 @test "a snapshot mounted again between the umount and the destroy is retried, and goes" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   echo "/nix/.rw-store/.zfs/snapshot/ndh-incus-attic-20261022T145633Z" >"$t/mounts"
   touch "$t/remount-once"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $stderr == *"dataset is busy"* ]]
   no_leftovers
 }
 
 @test "a new declared system over today's leftovers: the old main:commit is finished first, then one delivery" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   # A new toplevel declared (another class of attic, say): a fresh delivery.
   touch "$t/x-attic-2"
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.toplevel += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
-  run --separate-stderr "$t/run" "$t/cli-2" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-2" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"previous delivery committed"* && $output == *"x-attic-2, main:healthy:check"* ]]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-2" ]
@@ -967,24 +967,24 @@ no_leftovers() {
 }
 
 @test "mutant: without finishing the old main:commit first, a failed new delivery rolls the old aside back too" {
-  left_by_a_dead_commit
+  left_by_a_deadmain:commit
   touch "$t/x-attic-2"
   sed '/^INSTANCES=/a INSTANCES=$(yq -p json -o json -I0 '"'"'.attic.toplevel += "-2"'"'"' <<<"$INSTANCES")' "$cli" >"$t/cli-2"
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-20261018T000000Z/upper"
   grep -q '    if \[ -n "\$rest" \]; then' "$t/cli-2"
   sed 's/^    if \[ -n "\$rest" \]; then/    if false; then/' "$t/cli-2" >"$t/mutant"
   echo "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   # The old delivery's aside is rolled back as well: its state snapshot is restored.
-  grep -q '^zfs main:rollback -r tank/nerd/attic@ndh-incus-attic-20261022T184302Z$' "$t/calls"
+  grep -q '^zfs rollback -r tank/nerd/attic@ndh-incus-attic-20261022T184302Z$' "$t/calls"
 }
 
-@test "_commit refuses a snapshot to keep that is not a delivery snapshot of this incus:instance, and destroys nothing" {
-  left_by_a_dead_commit
+@test "main:commit refuses a snapshot to keep that is not a delivery snapshot of this incus:instance, and destroys nothing" {
+  left_by_a_deadmain:commit
   for snapshot in '.*' '' 'ndh-incus-attic-.*' 'ndh-incus-other-20261022T184302Z' '../x' 'a@b' \
     'ndh-incus-attic-20261022T184302Z@x' 'ndh-incus-attic-2026102T184302Z'; do
     : >"$t/calls"
-    run --separate-stderr "$t/run" "$cli" _commit attic "$snapshot" <"$t/stdin"
+    run --separate-stderr "$t/run" "$cli" main:commit attic "$snapshot" <"$t/stdin"
     [ "$status" -ne 0 ]
     run grep -E '^(zfs destroy|umount)' "$t/calls"
     [ "$status" -eq 1 ]
@@ -994,30 +994,30 @@ no_leftovers() {
   [ -d "$t/attic/.previous-ndh-incus-attic-20261022T184302Z" ]
 }
 
-@test "mutant: a _commit without its check, given .*, destroys the snapshot the container runs on" {
-  left_by_a_dead_commit
-  awk '/^_commit\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
-  [ "$(grep -c '^  delivery_snapshot "\$1" "\$2"$' "$t/mutant")" = 1 ]
+@test "mutant: a main:commit without its check, given .*, destroys the snapshot the container runs on" {
+  left_by_a_deadmain:commit
+  awk '/^main:commit\(\) \{/{r=1} r && /^  main:delivery:validate "\$1" "\$2"$/{r=0; next} {print}' "$cli" >"$t/mutant"
+  [ "$(grep -c '^  main:delivery:validate "\$1" "\$2"$' "$t/mutant")" = 1 ]
   # Still matched as a fixed string: `.*` keeps nothing but itself, so every delivery snapshot goes, the current one too.
-  run --separate-stderr "$t/run" "$t/mutant" _commit attic '.*' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:commit attic '.*' <"$t/stdin"
   [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
 }
 
-@test "mutant: 0e46f6a7's _commit (no check, the snapshot to keep as a pattern) keeps the old one and destroys the current" {
-  left_by_a_dead_commit
+@test "mutant: 0e46f6a7's main:commit (no check, the snapshot to keep as a pattern) keeps the old one and destroys the current" {
+  left_by_a_deadmain:commit
   # The check gone, and `grep -v "@$2$"` back in place of the fixed-string match. `.*` there excludes every line, so
   # it keeps all (measured); the danger is a pattern that matches ANOTHER snapshot: it keeps that one instead.
   grep -q 'grep -vxF -e "\$rw@\$2" -e "\$db@\$2"' "$cli"
   sed 's/grep -vxF -e "\$rw@\$2" -e "\$db@\$2"/grep -v "@$2$"/' "$cli" |
-    awk '/^_commit\(\) \{/{r=1} r && /^  delivery_snapshot "\$1" "\$2"$/{r=0; next} {print}' >"$t/mutant"
+    awk '/^main:commit\(\) \{/{r=1} r && /^  main:delivery:validate "\$1" "\$2"$/{r=0; next} {print}' >"$t/mutant"
   [ "$(grep -c 'grep -v "@\$2\$"' "$t/mutant")" = 1 ]
-  run --separate-stderr "$t/run" "$t/mutant" _commit attic 'ndh-incus-attic-2026102.T14....Z' <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:commit attic 'ndh-incus-attic-2026102.T14....Z' <"$t/stdin"
   [ -d "$t/zfs/tank/x@ndh-incus-attic-20261022T145633Z" ]
   [ ! -d "$t/zfs/tank/x@ndh-incus-attic-20261022T184302Z" ]
 }
 
 # A snapshot another tool takes of the state during the failed window (an auto-snapshot, a backup): newer than
-# the delivery's, it holds the rejected system's data. `zfs main:rollback -r` destroys it; without -r the main:rollback refuses.
+# the delivery's, it holds the rejected system's data. `zfs rollback -r` destroys it; without -r the main:rollback refuses.
 foreign_snapshot_on_start() {
   printf '#!%s\n[ -e %q ] || { echo schema-2 >%q; touch %q; %q snapshot tank/nerd/attic@autosnap; }\n' \
     "$BASH" "$t/migrated" "$t/zfs/tank/nerd/attic/db" "$t/migrated" "$t/bin/zfs" >"$t/on-start"
@@ -1028,7 +1028,7 @@ foreign_snapshot_on_start() {
   delivered_before
   echo "atticd.service failed" >"$t/units"
   foreign_snapshot_on_start
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   # It was taken, after the delivery's snapshot.
   grep -qxF tank/nerd/attic@autosnap "$t/zfs/order"
@@ -1040,10 +1040,10 @@ foreign_snapshot_on_start() {
   delivered_before
   echo "atticd.service failed" >"$t/units"
   foreign_snapshot_on_start
-  sed 's/zfs main:rollback -r "\$fs@\$2"/zfs main:rollback "$fs@$2"/' "$cli" >"$t/mutant"
-  run grep -c 'zfs main:rollback "\$fs@\$2"' "$t/mutant"
+  sed 's/zfs rollback -r "\$fs@\$2"/zfs rollback "$fs@$2"/' "$cli" >"$t/mutant"
+  run grep -c 'zfs rollback "\$fs@\$2"' "$t/mutant"
   [ "$output" = 1 ]
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [[ $stderr == *"more recent snapshots exist"* ]]
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-2 ]
 }
@@ -1099,11 +1099,11 @@ as_before() {
   done
 }
 
-@test "main:converge refuses an incus:instance of its name running on another member, and touches nothing" {
+@test "main:reconcile refuses an incus:instance of its name running on another member, and touches nothing" {
   per_metalspace_cli
   echo nikopol >"$t/inst/attic-bioskop"
   touch "$t/inst/attic-bioskop.running"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"attic-bioskop runs on member nikopol, not on its target bioskop"* ]]
   [ -e "$t/inst/attic-bioskop.running" ]
@@ -1111,7 +1111,7 @@ as_before() {
   [ "$status" -eq 1 ]
 }
 
-@test "mutant: without the member check, main:converge stops the other guest's container" {
+@test "mutant: without the member check, main:reconcile stops the other guest's container" {
   per_metalspace_cli
   echo nikopol >"$t/inst/attic-bioskop"
   touch "$t/inst/attic-bioskop.running"
@@ -1121,7 +1121,7 @@ as_before() {
   grep -q '    if \[ "\$where" != absent \] && ! incus:placed:check "\$where" "\$target"; then' "$t/cli-ms"
   sed 's/    if \[ "\$where" != absent \] \&\& ! incus:placed:check "\$where" "\$target"; then/    if false; then/' "$t/cli-ms" |
     sed 's/  incus:placed:check "\$where" "\$target" || util:die "\$1 runs on member/  true || util:die "$1 runs on member/' >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   grep -q '^incus stop --project ndh attic-bioskop$' "$t/calls"
 }
 
@@ -1145,46 +1145,46 @@ as_before() {
   [ "$status" -eq 1 ]
 }
 
-@test "main:converge creates a declared container no member has, on its target, and keeps it main:healthy:check" {
+@test "main:reconcile creates a declared container no member has, on its target, and keeps it main:healthy:check" {
   absent_everywhere
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic-bioskop created on bioskop"* && $output == *"main:healthy:check"* ]]
   [ "$(cat "$t/inst/attic-bioskop")" = bioskop ]
   [ -e "$t/inst/attic-bioskop.running" ]
   [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
-  [ ! -e "$t/attic-bioskop/main:converge.created" ]
+  [ ! -e "$t/attic-bioskop/main:reconcile.created" ]
   grep -q '^incus init --empty --project ndh --storage default --target bioskop attic-bioskop ' "$t/calls"
 }
 
-@test "a container main:converge created and could not deliver main:healthy:check is removed, its state dataset untouched" {
+@test "a container main:reconcile created and could not deliver main:healthy:check is removed, its state dataset untouched" {
   absent_everywhere
   echo schema-1 >"$t/zfs/tank/nerd/attic/db"
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"attic-bioskop was unhealthy on its first system and is removed"* ]]
   [ ! -e "$t/inst/attic-bioskop" ]
   [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
   [ ! -e "$t/attic-bioskop" ]
   [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-"* 2>/dev/null)" ]
-  # The service's data is the module's, never main:converge's to remove.
+  # The service's data is the module's, never main:reconcile's to remove.
   [ "$(cat "$t/zfs/tank/nerd/attic/db")" = schema-1 ]
 }
 
 @test "mutant: a created container left in place when unhealthy" {
   absent_everywhere
   echo "atticd.service failed" >"$t/units"
-  grep -q '    elif \[ -e "\$dir/main:converge.created" \]; then' "$t/cli-ms"
-  sed 's/    elif \[ -e "\$dir\/main:converge.created" \]; then/    elif false; then/' "$t/cli-ms" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  grep -q '    elif \[ -e "\$dir/main:reconcile.created" \]; then' "$t/cli-ms"
+  sed 's/    elif \[ -e "\$dir\/main:reconcile.created" \]; then/    elif false; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ -e "$t/inst/attic-bioskop" ]
 }
 
-@test "a container main:converge created whose delivery fails is removed" {
+@test "a container main:reconcile created whose delivery fails is removed" {
   absent_everywhere
   echo "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"attic-bioskop could not be delivered"* && $stderr == *"attic-bioskop removed"* ]]
   [ ! -e "$t/inst/attic-bioskop" ]
@@ -1194,28 +1194,28 @@ as_before() {
 @test "mutant: a created container whose delivery fails is rolled back to nothing instead of removed" {
   absent_everywhere
   echo "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime" >"$t/nix-env-fails"
-  grep -q '      if \[ -e "\$dir/main:converge.created" \]; then' "$t/cli-ms"
-  sed 's/      if \[ -e "\$dir\/main:converge.created" \]; then/      if false; then/' "$t/cli-ms" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  grep -q '      if \[ -e "\$dir/main:reconcile.created" \]; then' "$t/cli-ms"
+  sed 's/      if \[ -e "\$dir\/main:reconcile.created" \]; then/      if false; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ -e "$t/inst/attic-bioskop" ]
 }
 
-@test "main:converge never creates a container whose name another member runs" {
+@test "main:reconcile never creates a container whose name another member runs" {
   per_metalspace_cli
   echo nikopol >"$t/inst/attic-bioskop"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
-  run grep -E '^(incus init|zfs main:create)' "$t/calls"
+  run grep -E '^(incus init|zfs create)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "_uncreate refuses a container main:converge did not main:create, and removes nothing" {
+@test "main:uncreate refuses a container main:reconcile did not main:create, and removes nothing" {
   running_attic_before_rename
   echo bioskop >"$t/inst/attic-bioskop"
   mkdir -p "$t/attic-bioskop" "$t/zfs/tank/nerd/ndh-containers/attic-bioskop"
-  run --separate-stderr "$t/run" "$t/cli-ms" _uncreate attic-bioskop <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:uncreate attic-bioskop <"$t/stdin"
   [ "$status" -ne 0 ]
-  [[ $stderr == *"was not created by converge: nothing removed"* ]]
+  [[ $stderr == *"was not created by reconcile: nothing removed"* ]]
   [ -e "$t/inst/attic-bioskop" ]
   [ -d "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
 }
@@ -1232,7 +1232,7 @@ dataset_left_from_before() {
 @test "a created container over a dataset left from before is removed alone: the dataset, its file and its old snapshots stay" {
   dataset_left_from_before
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"its dataset tank/nerd/ndh-containers/attic-bioskop, older than it, kept"* ]]
   [ ! -e "$t/inst/attic-bioskop" ]
@@ -1241,15 +1241,15 @@ dataset_left_from_before() {
   [ -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-20260901T000000Z" ]
   # Its own first delivery's snapshot goes, and the marker with it.
   [ -z "$(ls -d "$t/zfs/tank/x@ndh-incus-attic-bioskop-2026101"* 2>/dev/null)" ]
-  [ ! -e "$t/attic-bioskop/main:converge.created" ]
+  [ ! -e "$t/attic-bioskop/main:reconcile.created" ]
 }
 
 @test "mutant: an main:uncreate that destroys the dataset whatever made it takes the file left from before" {
   dataset_left_from_before
   echo "atticd.service failed" >"$t/units"
-  grep -q '  if \[ "\$(cat "\$dir/main:converge.created")" = dataset \]; then' "$t/cli-ms"
-  sed 's/  if \[ "\$(cat "\$dir\/main:converge.created")" = dataset \]; then/  if true; then/' "$t/cli-ms" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  grep -q '  if \[ "\$(cat "\$dir/main:reconcile.created")" = dataset \]; then' "$t/cli-ms"
+  sed 's/  if \[ "\$(cat "\$dir\/main:reconcile.created")" = dataset \]; then/  if true; then/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ ! -e "$t/zfs/tank/nerd/ndh-containers/attic-bioskop" ]
 }
 
@@ -1258,36 +1258,36 @@ dataset_left_from_before() {
   echo "atticd.service failed" >"$t/units"
   # 80e510d4's form: every snapshot named after the incus:instance.
   grep -q '    for snap in "\$rw@\$2" "\$db@\$2"; do' "$t/cli-ms"
-  sed 's/    for snap in "\$rw@\$2" "\$db@\$2"; do/    for snap in $(delivery_snapshots_of "$1" "$rw" "$db" "$info"); do/' "$t/cli-ms" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  sed 's/    for snap in "\$rw@\$2" "\$db@\$2"; do/    for snap in $(main:delivery:snapshot:list "$1" "$rw" "$db" "$info"); do/' "$t/cli-ms" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ ! -e "$t/zfs/tank/x@ndh-incus-attic-bioskop-20260901T000000Z" ]
 }
 
-@test "a hand main:create leaves no main:converge marker" {
+@test "a hand main:create leaves no main:reconcile marker" {
   per_metalspace_cli
   run --separate-stderr "$t/run" "$t/cli-ms" main:create attic-bioskop <"$t/stdin"
   [ "$status" -eq 0 ]
-  [ ! -e "$t/attic-bioskop/main:converge.created" ]
+  [ ! -e "$t/attic-bioskop/main:reconcile.created" ]
   run ls -A "$t/attic-bioskop"
   [[ $output != *create-made* ]]
 }
 
 @test "a container holding its declared profiles but never delivered (no lower.snapshot) is up to date, not an error" {
-  # Its profiles set by other means than deliver: main:converge reads its main:leftovers:list, and none comes from a delivery.
+  # Its profiles set by other means than deliver: main:reconcile reads its main:leftovers:list, and none comes from a delivery.
   echo none >"$t/inst/attic"
   touch "$t/inst/attic.running"
   mkdir -p "$t/attic/root/nix/var/nix/profiles/per-user/root"
   ln -sfn "$t/x-attic" "$t/attic/root/nix/var/nix/profiles/system"
   ln -sfn "$t/x-runtime" "$t/attic/root/nix/var/nix/profiles/per-user/root/runtime"
   [ ! -e "$t/attic/lower.snapshot" ]
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic holds its declared system and profiles"* ]]
   [[ $stderr != *"main:leftovers:list could not be listed"* ]]
 }
 
 
-# A main:converge cut short mid-rename (the guest rebooted, the unit was killed) after the dataset moved and before the
+# A main:reconcile cut short mid-rename (the guest rebooted, the unit was killed) after the dataset moved and before the
 # incus:instance did, on the system that has no attic unit any more: the dataset and its snapshots named attic-bioskop, the
 # incus:instance still attic, stopped.
 cut_after_the_dataset_moved() {
@@ -1302,9 +1302,9 @@ cut_after_the_dataset_moved() {
   : >"$t/calls"
 }
 
-@test "main:converge brings up a container that holds its declared state but is stopped: its store, then itself, main:healthy:check" {
+@test "main:reconcile brings up a container that holds its declared state but is stopped: its store, then itself, main:healthy:check" {
   up_to_date_but_stopped
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"attic was stopped: started on its declared system"* ]]
   [ -e "$t/inst/attic.running" ]
@@ -1321,7 +1321,7 @@ cut_after_the_dataset_moved() {
 @test "a stopped container whose store is still mounted is started alone" {
   up_to_date_but_stopped
   printf '%s\n' "$t/attic/root/nix/store" "$t/attic/view/nix/store" >"$t/mounts"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [ -e "$t/inst/attic.running" ]
   run grep -E '^systemctl start ndh-incus-container-store-attic' "$t/calls"
@@ -1331,26 +1331,26 @@ cut_after_the_dataset_moved() {
 @test "a stopped container that comes up unhealthy fails loudly, and nothing is delivered or rolled back" {
   up_to_date_but_stopped
   echo "atticd.service failed" >"$t/units"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 1 ]
   [[ $stderr == *"atticd.service is failed"* ]]
   run grep -E '^(zfs (snapshot|main:rollback|rename)|incus rename)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "mutant: without the bring-up, a stopped container stays down after main:converge" {
+@test "mutant: without the bring-up, a stopped container stays down after main:reconcile" {
   up_to_date_but_stopped
   grep -q '        if ! main:bringup "\$name"; then' "$cli"
   sed 's/        if ! main:bringup "\$name"; then/        if false; then/' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ ! -e "$t/inst/attic.running" ]
 }
 
 @test "mutant: a bring-up without the store start runs into the pre-start hook's refusal" {
   up_to_date_but_stopped
   grep -q '    systemctl start "ndh-incus-container-store-\$1.service"$' "$cli"
-  awk '/^_bring-up\(\) \{/{r=1} r && /^    systemctl start "ndh-incus-container-store-\$1.service"$/{print "    :"; r=0; next} {print}' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  awk '/^main:bringup\(\) \{/{r=1} r && /^    systemctl start "ndh-incus-container-store-\$1.service"$/{print "    :"; r=0; next} {print}' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   run grep -qxF "$t/attic/root/nix/store" "$t/mounts"
   [ "$status" -eq 1 ]
 }
@@ -1361,7 +1361,7 @@ cut_after_the_dataset_moved() {
   grep -q 'is unhealthy started on its declared system' "$cli"
   awk '/^        if ! main:healthy:check "\$name"; then$/ && !d {getline; getline; getline; getline; d=1; next} {print}' "$cli" >"$t/mutant"
   [ "$(grep -c 'is unhealthy started on its declared system' "$t/mutant")" = 0 ]
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
 }
 
@@ -1374,11 +1374,11 @@ stopped_by_hand() {
   : >"$t/mounts"
 }
 
-@test "a container the operator stopped stays stopped after converge: held, reported, not an error" {
+@test "a container the operator stopped stays stopped after reconcile: held, reported, not an error" {
   stopped_by_hand
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
-  [[ $output == *"attic is stopped, not by converge: held by the operator, left stopped"* ]]
+  [[ $output == *"attic is stopped, not by reconcile: held by the operator, left stopped"* ]]
   [ ! -e "$t/inst/attic.running" ]
   run grep -E '^(incus start|systemctl start ndh-incus-container-store)' "$t/calls"
   [ "$status" -eq 1 ]
@@ -1387,40 +1387,40 @@ stopped_by_hand() {
 @test "a container the operator stopped is not delivered either: a delivery would start it" {
   delivered_before
   rm -f "$t/inst/attic.running"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
-  [[ $output == *"attic is stopped, not by converge: held by the operator, not delivered"* ]]
+  [[ $output == *"attic is stopped, not by reconcile: held by the operator, not delivered"* ]]
   [ ! -e "$t/inst/attic.running" ]
   run grep -E '^(zfs snapshot|incus start)' "$t/calls"
   [ "$status" -eq 1 ]
 }
 
-@test "a container main:converge stopped and left down is brought up by the next converge: its stop was marked" {
+@test "a container main:reconcile stopped and left down is brought up by the next reconcile: its stop was marked" {
   delivered_before
-  # The guest goes down mid-delivery, after main:converge stopped attic and before anything else ran: the delivery's own
+  # The guest goes down mid-delivery, after main:reconcile stopped attic and before anything else ran: the delivery's own
   # steps, alone, cut at their start (no main:rollback runs after a cut).
   touch "$t/no-start"
-  run --separate-stderr "$t/run" "$cli" _deliver-steps attic <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:deliver attic <"$t/stdin"
   [ "$status" -ne 0 ]
   grep -q '^incus stop --project ndh attic$' "$t/calls"
   [ ! -e "$t/inst/attic.running" ]
   # The cut left the delivery half done: the system profile moved, the previous one aside. Put back as a reboot would
-  # find it is main:converge's business; here only the stop matters.
+  # find it is main:reconcile's business; here only the stop matters.
   rm "$t/no-start"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [[ $output != *"held by the operator"* ]]
   [ -e "$t/inst/attic.running" ]
-  [ ! -e "$t/attic/main:converge.stopped" ]
+  [ ! -e "$t/attic/main:reconcile.stopped" ]
 }
 
-@test "a container main:converge stopped and left down after a failed main:rollback is brought up on its previous system" {
+@test "a container main:reconcile stopped and left down after a failed main:rollback is brought up on its previous system" {
   delivered_before
   # A delivery that fails, then its main:rollback's start fails too: down, its declared system already failed.
   touch "$t/no-start"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [ ! -e "$t/inst/attic.running" ]
   rm "$t/no-start"
-  run --separate-stderr "$t/run" "$cli" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$cli" main:reconcile <"$t/stdin"
   [[ $output == *"attic was down: started on its previous system"* ]]
   [ -e "$t/inst/attic.running" ]
   [ "$(readlink "$t/attic/root/nix/var/nix/profiles/system")" = "$t/x-attic-old" ]
@@ -1428,27 +1428,27 @@ stopped_by_hand() {
 
 @test "mutant: a bring-up without the mark check restarts a container the operator stopped" {
   stopped_by_hand
-  grep -q '        if \[ ! -e "\$dir/main:converge.stopped" \]; then' "$cli"
-  sed 's/        if \[ ! -e "\$dir\/main:converge.stopped" \]; then/        if false; then/' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  grep -q '        if \[ ! -e "\$dir/main:reconcile.stopped" \]; then' "$cli"
+  sed 's/        if \[ ! -e "\$dir\/main:reconcile.stopped" \]; then/        if false; then/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ -e "$t/inst/attic.running" ]
 }
 
 @test "mutant: a delivery without the hold starts a container the operator stopped" {
   delivered_before
   rm -f "$t/inst/attic.running"
-  grep -q '    if \[ -e "\$dir/lower.snapshot" \] && \[ ! -e "\$dir/main:converge.stopped" \] &&' "$cli"
-  sed 's/    if \[ -e "\$dir\/lower.snapshot" \] \&\& \[ ! -e "\$dir\/main:converge.stopped" \] \&\&/    if false \&\&/' "$cli" >"$t/mutant"
-  run --separate-stderr "$t/run" "$t/mutant" main:converge <"$t/stdin"
+  grep -q '    if \[ -e "\$dir/lower.snapshot" \] && \[ ! -e "\$dir/main:reconcile.stopped" \] &&' "$cli"
+  sed 's/    if \[ -e "\$dir\/lower.snapshot" \] \&\& \[ ! -e "\$dir\/main:reconcile.stopped" \] \&\&/    if false \&\&/' "$cli" >"$t/mutant"
+  run --separate-stderr "$t/run" "$t/mutant" main:reconcile <"$t/stdin"
   [ -e "$t/inst/attic.running" ]
 }
 
-@test "main:converge's stop mark lies outside every path the container mounts, so the container cannot forge it" {
+@test "main:reconcile's stop mark lies outside every path the container mounts, so the container cannot forge it" {
   # Every source a device of the container binds: the store's four (overlay:devices:list) and the declared ones.
   sed 's/^ndh::logger:command:run .*/overlay:devices:list "$(util:field:get "$(incus:instance attic)" dir)"; yq -p json -oy -r ".attic.devices[] | select(.type == \\"disk\\") | .source" <<<"$INSTANCES"/' "$cli" >"$t/probe"
   run --separate-stderr "$t/run" "$t/probe"
   [ "$status" -eq 0 ]
-  mark="$t/attic/main:converge.stopped"
+  mark="$t/attic/main:reconcile.stopped"
   [ -n "$output" ]
   while read -r line; do
     src=${line##* }
@@ -1461,7 +1461,7 @@ stopped_by_hand() {
 # bioskop-nixos on 2026-10-25 after the switch to c48db1e9, as 🎛️ measured it: the rename moved the dataset, the
 # delivery snapshots and lower.snapshot, renamed the incus:instance, then every config write was refused (Incus re-validates
 # every device, and they still named the moved-away dir). So: attic-bioskop STOPPED on bioskop, no attic incus:instance, the
-# dataset mounted at …/attic-bioskop, an empty leftover …/attic, its 4 store devices and raw.lxc on …/attic, main:converge's
+# dataset mounted at …/attic-bioskop, an empty leftover …/attic, its 4 store devices and raw.lxc on …/attic, main:reconcile's
 # stop mark there, its profiles resolving, its stores unmounted.
 attic_bioskop_cut_after_the_instance_rename() {
   per_metalspace_cli
@@ -1474,7 +1474,7 @@ attic_bioskop_cut_after_the_instance_rename() {
   ln -sfn "$t/x-runtime" "$t/attic-bioskop/root/nix/var/nix/profiles/per-user/root/runtime"
   echo ndh-incus-attic-bioskop-20261024T083946Z >"$t/attic-bioskop/lower.snapshot"
   echo the-cache >"$t/attic-bioskop/upper/marker"
-  touch "$t/attic-bioskop/main:converge.stopped"
+  touch "$t/attic-bioskop/main:reconcile.stopped"
   mkdir -p "$t/zfs/tank/nerd/ndh-containers/attic-bioskop"
   echo "$t/attic-bioskop" >"$t/zfs/tank/nerd/ndh-containers/attic-bioskop.mountpoint"
   for ds in tank/x tank/db; do mkdir -p "$t/zfs/$ds@ndh-incus-attic-bioskop-20261024T083946Z"; done
@@ -1492,7 +1492,7 @@ attic_bioskop_cut_after_the_instance_rename() {
     "nix-lower-db $t/attic-bioskop/view/nix/var/nix 0" "nix-upper $t/attic/upper 0" >"$t/inst/attic-bioskop.dev"
   printf 'lxc.init.cmd = /nix/var/nix/profiles/system/init\nlxc.hook.pre-start = /run/current-system/sw/bin/ndh-incus-container-prestart %s\n' \
     "$t/attic-bioskop" >"$t/inst/attic-bioskop.rawlxc"
-  run --separate-stderr "$t/run" "$t/cli-ms" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-ms" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [ -e "$t/inst/attic-bioskop.running" ]
   grep -qxF "nix-upper $t/attic-bioskop/upper 0" "$t/inst/attic-bioskop.dev"
@@ -1502,14 +1502,14 @@ attic_bioskop_cut_after_the_instance_rename() {
 
 @test "a half-pointed container that also gets a new system is delivered on re-pointed devices, and comes up" {
   attic_bioskop_cut_after_the_instance_rename
-  # A new declared system: main:converge goes straight to delivery, never through bring-up, so the delivery itself must
+  # A new declared system: main:reconcile goes straight to delivery, never through bring-up, so the delivery itself must
   # re-point the store before anything moves (🛡️: the switch may bring attic-bioskop a new toplevel).
   touch "$t/x-attic-2"
   # After cli-ms's own INSTANCES line, which renamed the key attic-bioskop: the new toplevel goes on that key.
   awk '{print} /^INSTANCES=\$\(yq/ && !d {print "INSTANCES=$(yq -p json -o json -I0 '"'"'.[\"attic-bioskop\"].toplevel += \"-2\"'"'"' <<<\"$INSTANCES\")"; d=1}' "$t/cli-ms" >"$t/cli-2"
   [ "$(grep -c 'toplevel += "-2"' "$t/cli-2")" = 1 ]
   mkdir -p "$t/rw/.zfs/snapshot/ndh-incus-attic-bioskop-20261018T000000Z/upper"
-  run --separate-stderr "$t/run" "$t/cli-2" main:converge <"$t/stdin"
+  run --separate-stderr "$t/run" "$t/cli-2" main:reconcile <"$t/stdin"
   [ "$status" -eq 0 ]
   [[ $output == *"x-attic-2, main:healthy:check"* ]]
   [ -e "$t/inst/attic-bioskop.running" ]

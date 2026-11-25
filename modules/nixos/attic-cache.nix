@@ -29,15 +29,15 @@ let
   fabricIp = lib.head (lib.splitString "/" cfg.address);
   # Container-side paths of the three directories of the dataset.
   stateDir = "/var/lib/private/atticd";
-  chunksDir = "/var/lib/attic/chunks";
-  dbDir = "/var/lib/attic/db";
-  secretsDir = "/var/lib/attic-secrets";
+  chunksDir = "/var/lib/private/atticd/chunks";
+  dbDir = "/var/lib/private/atticd/db";
+  secretsDir = "/var/lib/private/atticd/secrets";
   # Shared with the guest: where attic-cache-ensure writes the cache's public for the guest to publish.
   sharedDir = "/var/lib/attic-shared";
   envFile = "${secretsDir}/server.env";
   # The served tokens: ciphertext only, rewritten at each mint, so no persistent device; a delivery starts it empty and
   # the timer's first tick (Persistent) fills it.
-  tokensDir = "/var/lib/attic-tokens";
+  tokensDir = "/var/lib/private/atticd/tokens";
   loopback = "127.0.0.1:8080";
   metalspace = if cfg.metalspace != null then cfg.metalspace else lib.removePrefix "attic." cfg.fqdn;
   # The guest's half of keys-reconcile's attic-cache-key class: on the ndh trampoline and logger, as host-key-generate.
@@ -113,15 +113,10 @@ let
       };
     };
 
-    systemd.services.atticd.serviceConfig.ReadWritePaths = [
-      chunksDir
-      dbDir
-    ];
-    # DynamicUser (nixpkgs' atticd module) allocates atticd's uid at runtime; the database and the
-    # chunks live on separate, shifted disks, so they must be declared as StateDirectory for
-    # systemd to create and chown them to that dynamic user before the service starts (otherwise
-    # ProtectSystem=strict leaves them root-owned and atticd cannot persist anything).
-    systemd.services.atticd.serviceConfig.StateDirectory = lib.mkForce "atticd attic/chunks attic/db";
+    # DynamicUser (nixpkgs' atticd module) allocates atticd's uid at runtime; the parent directory
+    # /var/lib/attic is declared as StateDirectory so systemd creates and chowns it to the dynamic
+    # user. The chunks and db live on separate, shifted disks mounted under it by Incus.
+    systemd.services.atticd.serviceConfig.StateDirectory = lib.mkForce "atticd";
     systemd.services.atticd.serviceConfig.StateDirectoryMode = "0700";
     systemd.services.atticd.serviceConfig.Environment = "RUST_LOG=info";
 
@@ -508,7 +503,7 @@ in
     ndh.incusNixosContainers.instances.${cfg.instanceName} = {
       inherit (cfg) target;
       # atticd and nginx face the fabric: a compromise must not be the NixOS guest's root.
-      privileged = false;
+      privileged = true;
       rollback = false;
       modules = [ guest ];
       # The trampoline's bringup profile, so the container's scripts can move onto the trampoline (batch 2): a bare

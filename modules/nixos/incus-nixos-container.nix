@@ -153,25 +153,34 @@ let
   };
 
   operatorCli = ndh.store.installBinScript "ndh-incus-container" (
-    pkgs.replaceVars ./incus-nixos-container.d/cli.sh {
-      inherit nixBashTrampoline;
-      logTag = "nixos.services.ndh.incusContainer";
-      instances = lib.escapeShellArg (builtins.toJSON instanceInfo);
-      project = lib.escapeShellArg cfg.project;
-      pool = lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name;
-      layerContract = lib.escapeShellArg layerContract;
-      guestLower = lib.escapeShellArg guestLower;
-      guestUpper = lib.escapeShellArg guestUpper;
-      prestartHook = "/run/current-system/sw/bin/${prestartHook.name}";
-      gcroots = "/nix/var/nix/gcroots/ndh-containers";
-      stackDescription = "/run/ndh/store-stack.json";
-      storeDegraded = "/run/ndh/store-degraded";
-      guestSystemctl = "/run/current-system/sw/bin/systemctl";
-      # What every store unit runs: an unrename runs it itself for the old name, whose unit the switch removed.
-      storeScript = "${storeScript}/bin/ndh-incus-container-store";
-      healthTimeout = toString cfg.healthTimeout;
-      nixConfig = lib.escapeShellArg "extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}";
-    }
+    pkgs.replaceVars
+      (pkgs.runCommand "ndh-incus-container-cli.sh" { } ''
+        cat ${./incus-nixos-container.d/util.sh} \
+            ${./incus-nixos-container.d/incus.sh} \
+            ${./incus-nixos-container.d/overlay.sh} \
+            ${./incus-nixos-container.d/nix.sh} \
+            ${./incus-nixos-container.d/zfs.sh} \
+            ${./incus-nixos-container.d/main.sh} > $out
+      '')
+      {
+        inherit nixBashTrampoline;
+        logTag = "nixos.services.ndh.incusContainer";
+        instances = lib.escapeShellArg (builtins.toJSON instanceInfo);
+        project = lib.escapeShellArg cfg.project;
+        pool = lib.escapeShellArg (lib.head config.virtualisation.incus.preseed.storage_pools).name;
+        layerContract = lib.escapeShellArg layerContract;
+        guestLower = lib.escapeShellArg guestLower;
+        guestUpper = lib.escapeShellArg guestUpper;
+        prestartHook = "/run/current-system/sw/bin/${prestartHook.name}";
+        gcroots = "/nix/var/nix/gcroots/ndh-containers";
+        stackDescription = "/run/ndh/store-stack.json";
+        storeDegraded = "/run/ndh/store-degraded";
+        guestSystemctl = "/run/current-system/sw/bin/systemctl";
+        # What every store unit runs: an unrename runs it itself for the old name, whose unit the switch removed.
+        storeScript = "${storeScript}/bin/ndh-incus-container-store";
+        healthTimeout = toString cfg.healthTimeout;
+        nixConfig = lib.escapeShellArg "extra-experimental-features = ${lib.concatStringsSep " " nixFeatures}";
+      }
   );
 in
 {
@@ -382,7 +391,7 @@ in
       ) instanceInfo
       // {
         # The switch alone moves a container to its declared system, and so does a boot.
-        ndh-incus-container-converge = {
+        ndh-incus-container-reconcile = {
           description = "Converge ndh's NixOS containers to their declared systems";
           wantedBy = [ "multi-user.target" ];
           after = [
@@ -394,20 +403,20 @@ in
           restartIfChanged = false;
           serviceConfig = {
             Type = "oneshot";
-            ExecStart = "${pkgs.bash}/bin/bash ${operatorCli}/bin/ndh-incus-container converge";
+            ExecStart = "${pkgs.bash}/bin/bash ${operatorCli}/bin/ndh-incus-container main:reconcile";
           };
         };
         # What the switch restarts instead: changed whenever a declared system changes (the CLI carries them), and
         # restarted AFTER the switch's daemon-reload, so it queues the converge on the NEW definitions. An activation
         # script would run before that reload and queue the old ones. It only queues, so the switch never waits.
-        ndh-incus-container-converge-trigger = {
+        ndh-incus-container-reconcile-trigger = {
           description = "Queue the convergence of ndh's NixOS containers after a switch";
           wantedBy = [ "multi-user.target" ];
           restartTriggers = [ operatorCli ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            ExecStart = "${config.systemd.package}/bin/systemctl --no-block start ndh-incus-container-converge.service";
+            ExecStart = "${config.systemd.package}/bin/systemctl --no-block start ndh-incus-container-reconcile.service";
           };
         };
       };
