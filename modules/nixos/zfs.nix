@@ -829,19 +829,20 @@ in
       # host's loss; macOS already caches the same disk blocks (caching=cached).
       # The bringup image sets its own cap (zfs.d/bringup-zfs-disk-images-install.sh).
       extraModprobeConfig = lib.mkIf (config.zfsOverlays.enable && !bringupMode) ''
-        options zfs zfs_arc_max=4294967296
+        options zfs zfs_arc_max=2147483648
         options zfs zfs_arc_min=536870912
       '';
 
-      # Durable ZFS ARC limits + VFS cache pressure (mirrors the runtime reconfig
-      # so the values survive a reboot instead of being applied by hand).
+      # Durable ZFS ARC limits (mirrors the runtime reconfig so the values
+      # survive a reboot instead of being applied by hand).  Keep the cap at
+      # 2 GiB: the guest's disks are already cached by the host (caching=cached),
+      # so a larger ARC only duplicates blocks and drives arc_prune under the
+      # resulting memory pressure.  Do NOT raise vm.vfs_cache_pressure here: the
+      # aggressive reclaim it triggers is what makes arc_prune spin on ZFS.
       kernelParams = lib.mkIf (config.zfsOverlays.enable && !bringupMode) [
-        "zfs.zfs_arc_max=4294967296"
+        "zfs.zfs_arc_max=2147483648"
         "zfs.zfs_arc_min=536870912"
       ];
-      kernel.sysctl = lib.mkIf (config.zfsOverlays.enable && !bringupMode) {
-        "vm.vfs_cache_pressure" = 150;
-      };
 
       loader.systemd-boot.extraInstallCommands =
         lib.mkIf (config.boot.loader.systemd-boot.enable && !bringupMode)
