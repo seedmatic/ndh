@@ -1414,9 +1414,10 @@ quota of **8G**, well above the upper bound (1.15 GiB + 0.52 U), U being the unm
 closures. The quota is raised with `zfs set quota` if the 75 % alarm below fires.
 
 `ndh-attic-dataset` creates it on the guest if it is missing and applies the quota at every boot; it is split into
-three directories that reach the container as three disk devices: `state` (`/var/lib/private/atticd`, the chunks and
-the database, owned through atticd's `StateDirectory`), `secrets` (`/var/lib/attic-secrets`, the server secret) and
-`shared` (`/var/lib/attic-shared`, where the container writes its cache's public for the guest to publish). It is
+directories that reach the container as disk devices: `state` (`/var/lib/private/atticd`, owned through atticd's
+`StateDirectory`), `chunks` (`/var/lib/attic/chunks`) and `db` (`/var/lib/attic/db`, both owned through atticd's
+`StateDirectory`), `secrets` (`/var/lib/attic-secrets`, the server secret) and `shared` (`/var/lib/attic-shared`,
+where the container writes its cache's public for the guest to publish). It is
 **not** replicated to the `recover` pool: a cache refills from the next session's builds.
 
 [cols="1,1",options="header"]

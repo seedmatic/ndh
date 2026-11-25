@@ -29,8 +29,8 @@ let
   fabricIp = lib.head (lib.splitString "/" cfg.address);
   # Container-side paths of the three directories of the dataset.
   stateDir = "/var/lib/private/atticd";
-  chunksDir = "/var/lib/attic-chunks";
-  dbDir = "/var/lib/attic-db";
+  chunksDir = "/var/lib/attic/chunks";
+  dbDir = "/var/lib/attic/db";
   secretsDir = "/var/lib/attic-secrets";
   # Shared with the guest: where attic-cache-ensure writes the cache's public for the guest to publish.
   sharedDir = "/var/lib/attic-shared";
@@ -121,7 +121,7 @@ let
     # chunks live on separate, shifted disks, so they must be declared as StateDirectory for
     # systemd to create and chown them to that dynamic user before the service starts (otherwise
     # ProtectSystem=strict leaves them root-owned and atticd cannot persist anything).
-    systemd.services.atticd.serviceConfig.StateDirectory = lib.mkForce "atticd attic-chunks attic-db";
+    systemd.services.atticd.serviceConfig.StateDirectory = lib.mkForce "atticd attic/chunks attic/db";
     systemd.services.atticd.serviceConfig.StateDirectoryMode = "0700";
     systemd.services.atticd.serviceConfig.Environment = "RUST_LOG=info";
 

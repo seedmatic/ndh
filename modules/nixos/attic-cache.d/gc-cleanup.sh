@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eu
 
-chunks_dir="/var/lib/attic-chunks"
-db_dir="/var/lib/attic-db"
+chunks_dir="/var/lib/attic/chunks"
+db_dir="/var/lib/attic/db"
 db="${db_dir}/server.db"
 storage="${chunks_dir}"
 
