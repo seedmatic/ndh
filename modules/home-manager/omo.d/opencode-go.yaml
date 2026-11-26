@@ -1,0 +1,11 @@
+profile: opencode-go
+targets:
+  - path: ~/.omo/omo.jsonc
+    kind: json
+    patches:
+      - op: set
+        path: .categories.quick.model
+        value: litellm-bioskop/agent
+      - op: set
+        path: .categories.deep-low.model
+        value: litellm-bioskop/agent-deep

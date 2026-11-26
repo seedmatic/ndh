@@ -25,6 +25,7 @@
   qemuOverlay = inputs: import ../overlays/qemu.nix inputs;
   incusOverlay = inputs: import ../overlays/incus.nix inputs;
   lazygitOverlay = inputs: import ../overlays/lazygit.nix inputs;
+  mdpatchOverlay = inputs: import ../overlays/mdpatch.nix inputs;
   tailscaleOverlay = inputs: import ../overlays/tailscale.nix inputs;
   vmToolsDeterministicOverlay = inputs: import ../overlays/vm-tools-deterministic.nix inputs;
 

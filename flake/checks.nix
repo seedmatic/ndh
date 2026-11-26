@@ -738,6 +738,10 @@ in
     inherit pkgs;
     floxConfig = import ../modules/home-manager/flox-config.d/package.nix { inherit pkgs; };
   };
+  omo-patch-bats = import ../modules/home-manager/omo-patch.d/tests/package.nix {
+    inherit pkgs;
+    omoPatch = import ../modules/home-manager/omo-patch.d/package.nix { inherit pkgs; };
+  };
   # No nix file here reads a derivation's output at evaluation (import-from-derivation).
   no-ifd-readfile = import ../nix/no-ifd-readfile.nix {
     inherit pkgs;

@@ -1,0 +1,13 @@
+profile: nikopol-aikey
+# The aikey models go through the local LLM gateway (LiteLLM on nikopol-nixos), which retries what an ssh tunnel
+# gap drops; the provider keeps its id and models, only its address and key change.
+targets:
+  - path: ~/.omo/agent/models.json
+    kind: json
+    patches:
+      - op: set
+        path: .providers.aikey-nikopol.baseUrl
+        value: http://127.0.0.1:4000/v1
+      - op: set
+        path: .providers.aikey-nikopol.apiKey
+        value: ehlo

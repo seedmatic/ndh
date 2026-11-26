@@ -362,6 +362,13 @@ forAllSystems (
       program = "${sshKeysCertifyPackage}/bin/ssh-keys-certify";
       meta.description = "Sign, on the operator seat, every SSH certificate keys.yaml declares (one host certificate per machine, its own names) and record them in keys.yaml — [--apply], dry run by default, run from repo root — src: modules/.common.d/ssh-keys-certify.d/";
     };
+    omo-patch = {
+      type = "app";
+      program = "${
+        import ../modules/home-manager/omo-patch.d/package.nix { pkgs = pkgsForSystem; }
+      }/bin/omo-patch";
+      meta.description = "Apply JSON/MD patches to agentic assets (omo-patch) — src: modules/home-manager/omo-patch.d/";
+    };
     sops-rekey = {
       type = "app";
       program = "${
