@@ -113,6 +113,14 @@ general_settings:
   trusted_proxy_ranges: []
   cancel_on_disconnect: true
 
+# The aikey models are reached through an ssh tunnel that drops for 30-80 s now and then (Wi-Fi under the vz host).
+# One deployment per model, so a cooldown would only turn a retry into "no healthy deployments": keep it off and
+# let the retries span the gap.
+router_settings:
+  num_retries: 8
+  retry_after: 10
+  disable_cooldowns: true
+
 litellm_settings:
   callbacks:
     - opencode_session_hook.session_hook

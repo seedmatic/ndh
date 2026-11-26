@@ -47,6 +47,10 @@ in
       ];
     };
 
+    # The local LLM gateway is the one consumer of that tunnel: it retries the requests a tunnel gap drops, so omo
+    # talks to :4000 only (see omo.nix) and never sees the gap.
+    services.llmGateway.aikeyGatewayUrl = "http://${bm.netGateway}:4001";
+
     # BrowserOS's MCP server answers loopback peers only, so each Mac's :9010 is reached through an ssh opened on
     # demand, by the split-DNS name `darwin.<host>`: nikopol on :9010 here, bioskop on :9020.
     ndh.mcpBrowserForward = {

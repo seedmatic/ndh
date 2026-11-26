@@ -36,33 +36,36 @@ let
 
   aikeyModels =
     if cfg.aikeyGatewayUrl != null then
-      ''
-        # Bedrock/Claude models aggregated from the aikey gateway (${cfg.aikeyGatewayUrl}).
-        - model_name: claude-haiku-4-5
-          litellm_params:
-            model: openai/claude-haiku-4-5
-            api_base: ${cfg.aikeyGatewayUrl}/v1
-            api_key: os.environ/AIKEY_API_KEY
+      lib.concatMapStringsSep "\n" (line: if line == "" then line else "  " + line) (
+        lib.splitString "\n" ''
+          # Bedrock/Claude models aggregated from the aikey gateway (${cfg.aikeyGatewayUrl}),
+          # exposed as aikey-<model> so the provider shows in the model name.
+          - model_name: aikey-claude-haiku-4-5
+            litellm_params:
+              model: openai/claude-haiku-4-5
+              api_base: ${cfg.aikeyGatewayUrl}/v1
+              api_key: os.environ/AIKEY_API_KEY
 
-        - model_name: claude-sonnet-4-5
-          litellm_params:
-            model: openai/claude-sonnet-4-5
-            api_base: ${cfg.aikeyGatewayUrl}/v1
-            api_key: os.environ/AIKEY_API_KEY
+          - model_name: aikey-claude-sonnet-4-5
+            litellm_params:
+              model: openai/claude-sonnet-4-5
+              api_base: ${cfg.aikeyGatewayUrl}/v1
+              api_key: os.environ/AIKEY_API_KEY
 
-        - model_name: claude-sonnet-5-5
-          litellm_params:
-            model: openai/claude-sonnet-5-5
-            api_base: ${cfg.aikeyGatewayUrl}/v1
-            api_key: os.environ/AIKEY_API_KEY
+          - model_name: aikey-claude-sonnet-5-5
+            litellm_params:
+              model: openai/claude-sonnet-5-5
+              api_base: ${cfg.aikeyGatewayUrl}/v1
+              api_key: os.environ/AIKEY_API_KEY
 
-        - model_name: claude-opus-5-5
-          litellm_params:
-            model: openai/claude-opus-5-5
-            api_base: ${cfg.aikeyGatewayUrl}/v1
-            api_key: os.environ/AIKEY_API_KEY
+          - model_name: aikey-claude-opus-5-5
+            litellm_params:
+              model: openai/claude-opus-5-5
+              api_base: ${cfg.aikeyGatewayUrl}/v1
+              api_key: os.environ/AIKEY_API_KEY
 
-      ''
+        ''
+      )
     else
       "";
 
@@ -185,6 +188,8 @@ in
         ];
         wants = [ "sops-install-secrets.service" ];
         wantedBy = [ "multi-user.target" ];
+        # LiteLLM reads the config once at start: restart it when the generated file changes.
+        restartTriggers = [ litellmConfig ];
         serviceConfig = {
           Type = "simple";
           User = svcUser;

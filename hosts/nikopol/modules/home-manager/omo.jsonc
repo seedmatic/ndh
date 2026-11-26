@@ -33,7 +33,7 @@
   },
   "categories": {
     "quick": {
-      "model": "aikey-nikopol/claude-sonnet-5-5",
+      "model": "aikey-nikopol/aikey-claude-sonnet-5-5",
       "textVerbosity": "low",
       "reasoning": "off"
     },
@@ -43,17 +43,17 @@
       "reasoning": "off"
     },
     "deep-low": {
-      "model": "aikey-nikopol/claude-opus-5-5",
+      "model": "aikey-nikopol/aikey-claude-opus-5-5",
       "textVerbosity": "low",
       "reasoning": "medium"
     },
     "deep-high": {
-      "model": "aikey-nikopol/claude-opus-5-5",
+      "model": "aikey-nikopol/aikey-claude-opus-5-5",
       "textVerbosity": "low",
       "reasoning": "medium"
     },
     "ultrabrain": {
-      "model": "aikey-nikopol/claude-opus-5-5",
+      "model": "aikey-nikopol/aikey-claude-opus-5-5",
       "textVerbosity": "low",
       "reasoning": "high"
     },
@@ -83,7 +83,7 @@
       "reasoning": "off"
     },
     "architect": {
-      "model": "aikey-nikopol/claude-opus-5-5",
+      "model": "aikey-nikopol/aikey-claude-opus-5-5",
       "textVerbosity": "low",
       "reasoning": "medium"
     }

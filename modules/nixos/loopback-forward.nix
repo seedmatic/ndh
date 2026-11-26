@@ -96,6 +96,8 @@ in
         wantedBy = [ "multi-user.target" ];
         wants = [ "network-online.target" ];
         after = [ "network-online.target" ];
+        # A short RestartSec would trip the default 5-starts-in-10s limit and leave the unit failed.
+        unitConfig.StartLimitIntervalSec = 0;
         serviceConfig = {
           User = "loopback-forward";
           Group = "loopback-forward";
@@ -122,7 +124,9 @@ in
             "-o"
             "ExitOnForwardFailure=yes"
             "-o"
-            "ServerAliveInterval=15"
+            "ConnectTimeout=5"
+            "-o"
+            "ServerAliveInterval=5"
             "-o"
             "ServerAliveCountMax=3"
             "-L"
@@ -130,7 +134,7 @@ in
             "${f.target.user}@${f.target.address}"
           ];
           Restart = "always";
-          RestartSec = 10;
+          RestartSec = 2;
           IPAddressDeny = "any";
           # The unit listens on one non-loopback address, so the loopback has nothing to admit.
           IPAddressAllow = [ f.target.address ] ++ f.clients;

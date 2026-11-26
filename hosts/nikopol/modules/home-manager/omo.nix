@@ -43,17 +43,18 @@ let
           }
         ];
       };
+      # aikey models go through the local LLM gateway, which retries what the ssh tunnel gaps drop.
       "aikey-nikopol" = {
-        baseUrl = "http://nixos.nikopol:4001/v1";
+        baseUrl = "http://127.0.0.1:4000/v1";
         api = "openai-completions";
-        apiKey = "aikey";
+        apiKey = "ehlo";
         compat = {
           supportsDeveloperRole = false;
           supportsReasoningEffort = false;
         };
         models = [
           {
-            id = "claude-sonnet-5-5";
+            id = "aikey-claude-sonnet-5-5";
             name = "Claude Sonnet 5.5 (Bedrock)";
             reasoning = false;
             input = [ "text" ];
@@ -61,7 +62,7 @@ let
             maxTokens = 16384;
           }
           {
-            id = "claude-opus-5-5";
+            id = "aikey-claude-opus-5-5";
             name = "Claude Opus 5.5 (Bedrock)";
             reasoning = true;
             input = [ "text" ];
@@ -69,7 +70,7 @@ let
             maxTokens = 32768;
           }
           {
-            id = "claude-haiku-4-5";
+            id = "aikey-claude-haiku-4-5";
             name = "Claude Haiku 4.5 (Bedrock)";
             reasoning = false;
             input = [ "text" ];
