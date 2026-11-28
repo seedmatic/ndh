@@ -230,7 +230,8 @@ main:deliver() {
 	mkdir -p "$GCROOTS"
 	ln -sfn "$toplevel" "$GCROOTS/$1"
 	incus start --project "$PROJECT" "$1"
-	echo "$snapshot" >&9
+	# Return the snapshot through fd 9 when the caller opened it (the `deliver` wrapper), otherwise through stdout (reconcile, main:deliver).
+	if { true >&9; } 2>/dev/null; then echo "$snapshot" >&9; else echo "$snapshot"; fi
 }
 
 main:delivery:validate() {

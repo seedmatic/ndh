@@ -60,10 +60,10 @@ rec {
       name = "ndh-attic-tokens-fetch";
       runtimeInputs = [
         pkgs.coreutils
-        pkgs.curl
         pkgs.diffutils
         pkgs.findutils
         pkgs.gnugrep
+        pkgs.incus
       ];
       text = ''
         machine=${lib.escapeShellArg machine}

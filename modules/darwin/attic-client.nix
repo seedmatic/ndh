@@ -112,7 +112,7 @@ in
           default-server = "own"
 
           [servers.own]
-          endpoint = "http://${cfg.ownCache}/"
+          endpoint = "http://${cfg.ownCache}:8080/"
           token-file = "${cfg.paths.writeToken}"
           EOF
           exec ${lib.getExe' config.ndh.atticPkgs.client "attic"} watch-store ${lib.escapeShellArg "own:${cfg.cacheName}"}
@@ -123,6 +123,8 @@ in
           GroupName = account;
           # Running exactly while the delivery's token is there: started when it lands, stopped if it goes.
           KeepAlive.PathState.${cfg.paths.writeToken} = true;
+          # A re-minted token replaces the file: restart the daemon instead of keeping the stale credential.
+          WatchPaths = [ cfg.paths.writeToken ];
           ThrottleInterval = 30;
           StandardOutPath = log;
           StandardErrorPath = log;

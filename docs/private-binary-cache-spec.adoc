@@ -40,7 +40,7 @@ flowchart LR
 
 | the two cache containers
 | `attic-bioskop` on bioskop-nixos, `attic-nikopol` on nikopol-nixos, Incus project `ndh`, unprivileged, converged
-healthy; nginx answers on `:80` of their fabric address
+healthy; atticd answers on `:8080` of their fabric address
 
 | their signing keys
 | born inside each container; their publics recorded in `catalog/private-caches.json`, with the guests' signed
@@ -1849,6 +1849,35 @@ Each service then adds only its own NixOS configuration: for attic, `services.at
 revision this spec's source facts were read on), the way `modules/.common.d/headscale-pkg.nix` pins headscale. The
 hosts' `attic-client` takes the same revision.
 
+[[container-arch]]
+== The cache container's services and their consumers
+
+[mermaid]
+....
+flowchart LR
+  subgraph CONTAINER["Cache container (Incus, one per metalspace)"]
+    ATTICD["atticd\nSQLite + chunks on ZFS\nfabric :8080"]:::svc
+  end
+  subgraph CONSUMERS["Consumers — substituters"]
+    NIX1["bioskop / bioskop-nixos\nnix substituter\nattic.bioskop:8080"]:::host
+    NIX2["nikopol / nikopol-nixos\nnix substituter\nattic.nikopol:8080"]:::host
+    NIX3["cluster builders\nno attic token"]:::none
+  end
+  ATTICD -->|"HTTP fabric :8080"| NIX1
+  ATTICD -->|"HTTP fabric :8080"| NIX2
+  NIX1 -.->|"incus file pull tokens"| CONTAINER
+  NIX2 -.->|"incus file pull tokens"| CONTAINER
+  classDef svc fill:#e8f0fe,stroke:#1a73e8
+  classDef host fill:#e6f4ea,stroke:#1e8e3e
+  classDef none fill:#fce8e6,stroke:#d93025
+....
+
+The container exposes one service on the fabric: `atticd` directly on `:8080` (no nginx, no reverse
+proxy — a proxy, if needed, lives elsewhere). The machines' Nix substituters pull from
+`attic.<metalspace>:8080` over the fabric; each machine pulls its own token directory from the
+container via `incus file pull` (not HTTP). Cluster nodes and pods have no attic token and use only
+the upstream caches.
+
 [[secrets]]
 == Secrets, tokens and substituters
 
@@ -1879,9 +1908,9 @@ in memory, checks each clear text's shape, and writes `ndh.atticClient.paths`: t
 through a file the operator opens
 | atticadm, inside each metalspace's cache container (`attic-token-mint`), piped straight into age to each target
 machine's own host key (its CURRENT slot, never a pending one), into `/var/lib/attic-tokens/<sha256 of the machine
-and its public>/`, which nginx serves at `/tokens/` (static, no listing, `no-store`, `.age` only, same port 80 and fabric
-allow-list). Each machine's `ndh-attic-tokens-fetch` (NixOS: daily timer and boot; darwin: launchd at load and
-daily, retrying for an hour after its DNS) pulls its own directory from every cache in plain HTTP, bounded, required
+and its public>/`. Each machine's `ndh-attic-tokens-fetch` (NixOS: daily timer and boot; darwin: launchd at load and
+daily, retrying for an hour after its DNS) pulls its own directory from every cache container via `incus file pull`
+(`attic-<metalspace>` project `ndh`, path `/var/lib/private/atticd/tokens/<sha>/`), bounded, required
 to be age, keeps the previous generation and runs the unseal. No push channel, no operator gesture
 |===
 

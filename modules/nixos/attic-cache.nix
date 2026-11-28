@@ -6,9 +6,9 @@
 # _Secrets_). The NixOS guest only provides the disk: `tank/nerd/attic`, under its quota, split into
 # three directories that reach the container as three disk devices.
 #
-# attic listens on loopback; nginx serves it in plain HTTP on the container's fabric address only (no TLS in the lab,
-# the operator, 2026-10-30), and the container admits only the fabrics and the tailnet: the NixOS guest forwards a LAN
-# packet routed at the fabric, so listening on the fabric alone does not keep the LAN out.
+# attic listens directly on the container's fabric address on :8080 (no TLS in the lab, the operator, 2026-10-30),
+# and the container admits only the fabrics and the tailnet: the NixOS guest forwards a LAN packet routed at the
+# fabric, so listening on the fabric alone does not keep the LAN out. nginx is gone: tokens are pulled via Incus.
 {
   config,
   lib,
@@ -75,6 +75,13 @@ let
     # Unprivileged, the container sees its store as `nobody`'s, and logrotate refuses a configuration
     # not owned by root. Its logs are the journal's, and /var/log starts empty at each delivery.
     services.logrotate.enable = false;
+
+    # /var/lib/private is 0700 root:root: only root traverses it. nginx is gone, so nothing else
+    # needs to traverse it; the secrets, state, chunks and db stay 0700 behind it.
+    systemd.tmpfiles.rules = [
+      "d /var/lib/private 0700 root root - -"
+      "d ${stateDir} 0711 atticd atticd - -"
+    ];
     systemd.network.networks."10-fabric" = {
       matchConfig.Name = "eth0";
       address = [ cfg.address ];
@@ -84,7 +91,7 @@ let
     # The NixOS guest forwards a LAN packet routed at the fabric with its source kept (measured on
     # the probe, 2026-10-16), so the container itself admits only the fabrics and the tailnet.
     networking.firewall.extraInputRules = ''
-      ip saddr { ${lib.concatStringsSep ", " cfg.allowedSources} } tcp dport 80 accept
+      ip saddr { ${lib.concatStringsSep ", " cfg.allowedSources} } tcp dport 8080 accept
     '';
 
     services.atticd = {
@@ -92,13 +99,13 @@ let
       package = config.ndh.atticPkgs.server;
       environmentFile = envFile;
       settings = {
-        listen = loopback;
+        listen = "0.0.0.0:8080";
         database.url = "sqlite://${dbDir}/server.db?mode=rwc";
         storage = {
           type = "local";
           path = chunksDir;
         };
-        api-endpoint = "http://${cfg.fqdn}/";
+        api-endpoint = "http://${cfg.fqdn}:8080/";
         garbage-collection = {
           interval = "15 minutes";
           default-retention-period = cfg.retention;
@@ -135,43 +142,6 @@ let
           ] ./attic-cache.d/server-secret.sh
         }/bin/attic-server-secret ${envFile}";
       };
-    };
-
-    services.nginx = {
-      enable = true;
-      recommendedProxySettings = true;
-      virtualHosts.${cfg.fqdn} = {
-        listen = [
-          {
-            addr = fabricIp;
-            port = 80;
-          }
-        ];
-        locations."/" = {
-          proxyPass = "http://${loopback}";
-          extraConfig = ''
-            client_max_body_size 0;
-            proxy_request_buffering off;
-          '';
-        };
-        # Each machine pulls its own tokens: ciphertext only, sealed to its access point, in a directory named by a
-        # hash; no listing, no cache on the way, nothing but .age files.
-        # Quoted: in nginx an unquoted `{` in a location regex opens the block.
-        locations."~ \"^/tokens/[0-9a-f]{64}/[a-z0-9.-]+\\.age$\"" = {
-          root = "/var/lib";
-          extraConfig = ''
-            rewrite ^/tokens/(.*)$ /attic-tokens/$1 break;
-            autoindex off;
-            add_header Cache-Control "no-store" always;
-            default_type application/octet-stream;
-          '';
-        };
-        locations."/tokens/".return = "404";
-      };
-    };
-    systemd.services.nginx = {
-      wants = [ "network-online.target" ];
-      after = [ "network-online.target" ];
     };
 
     # The tokens, minted here for every target and pulled by each machine (F6): weekly, valid twice that, so a missed
@@ -522,7 +492,6 @@ in
         "atticd.service"
         "${ndhPrefix.mkNdhUnitName "attic-server-secret"}.service"
         "${ndhPrefix.mkNdhUnitName "attic-cache-ensure"}.service"
-        "nginx.service"
       ];
       devices = {
         fabric = {
@@ -613,10 +582,14 @@ in
         zfs set quota=${lib.escapeShellArg cfg.dbQuota} ${lib.escapeShellArg cfg.dbDataset}
         # On disk the cache's database and NARs belong to a uid of the container's range (systemd 260
         # maps atticd's StateDirectory): closed here, nothing of this NixOS guest walks into them.
-        chmod 0700 ${paths.hostRoot} ${paths.hostDbRoot}
+        chmod 0700 ${paths.hostRoot} ${paths.hostDbRoot} ${paths.hostChunksRoot}
         install -d -m 0700 ${paths.hostRoot}/state ${paths.hostRoot}/secrets
         install -d -m 0755 ${paths.hostShared}
         install -d -m 0700 ${paths.hostDbRoot}
+        # The container is privileged (identity mapping), so a host uid is the container uid.
+        # atticd is a DynamicUser whose uid is 65312 in the container; chown the dataset roots to
+        # that uid so atticd can read/write its chunks, db, state, secrets and shared dir.
+        chown -R 65312:65312 ${paths.hostRoot} ${paths.hostChunksRoot} ${paths.hostDbRoot}
       '';
     };
   };

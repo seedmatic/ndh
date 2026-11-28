@@ -76,6 +76,9 @@ in
               unsealer = unseal;
             }
           );
+          # A re-minted token must reach the watch-store: it loaded its credential at start, so restart it after a
+          # successful pull. try-restart is a no-op when the service is absent or inactive.
+          ExecStartPost = "${pkgs.bash}/bin/bash -c 'systemctl try-restart ${ndhPrefix.mkNdhUnitName "attic-watch-store"}.service || true'";
         };
       };
       systemd.timers.${ndhPrefix.mkNdhUnitName "attic-tokens"} = {
@@ -107,10 +110,14 @@ in
     }
 
     (lib.mkIf cfg.watchStore.enable {
-      # Started as soon as the delivery writes the token, and at every boot once it is there.
+      # Started as soon as the delivery writes the token, and at every boot once it is there;
+      # re-triggered when the token file is replaced, so a re-minted token restarts the service.
       systemd.paths.${ndhPrefix.mkNdhUnitName "attic-watch-store"} = {
         wantedBy = [ "multi-user.target" ];
-        pathConfig.PathExists = cfg.paths.writeToken;
+        pathConfig = {
+          PathExists = cfg.paths.writeToken;
+          PathChanged = cfg.paths.writeToken;
+        };
       };
       systemd.services.${ndhPrefix.mkNdhUnitName "attic-watch-store"} = {
         description = "Push this machine's new store paths into ${cfg.ownCache}";
@@ -137,7 +144,7 @@ in
           default-server = "own"
 
           [servers.own]
-          endpoint = "http://${cfg.ownCache}/"
+          endpoint = "http://${cfg.ownCache}:8080/"
           token-file = "$CREDENTIALS_DIRECTORY/write.token"
           EOF
           exec ${lib.getExe' config.ndh.atticPkgs.client "attic"} watch-store ${lib.escapeShellArg "own:${cfg.cacheName}"}
